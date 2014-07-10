@@ -1,4 +1,4 @@
-package raft_example
+package rafted
 
 import "sync"
 import "sync/atomic"

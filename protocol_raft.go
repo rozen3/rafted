@@ -1,4 +1,4 @@
-package raft_example
+package rafted
 
 // AppendEntriesRequest is the command used to append entries to the
 // replicated log.

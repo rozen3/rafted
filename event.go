@@ -1,4 +1,4 @@
-package raft_example
+package rafted
 
 import hsm "github.com/hhkbp2/go-hsm"
 
@@ -138,7 +138,7 @@ func NewRedirectResponseEvent(response *RedirectResponse) *RedirectResponseEvent
 }
 
 type LeaderUnknownResponseEvent struct {
-    *hsm.StdEvents
+    *hsm.StdEvent
     Response *LeaderUnknownResponse
 }
 

@@ -1,4 +1,4 @@
-package raft_example
+package rafted
 
 type ReadRequest struct {
     Table  string
