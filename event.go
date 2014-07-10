@@ -49,11 +49,11 @@ func IsClientEvent(eventType hsm.EventType) bool {
 
 type RequestEvent struct {
     *hsm.StdEvent
-    ResultChan chan hsm.Event
+    ResultChan chan interface{}
 }
 
-func NewRequestEvent(eventType hsm.EventType) *RequestEvent {
-    return &RequestEvent{hsm.NewStdEvent(eventType), make(chan hsm.Event)}
+func NewRequestEvent(eventType hsm.EventType, resultChan chan interface{}) *RequestEvent {
+    return &RequestEvent{hsm.NewStdEvent(eventType), resultChan}
 }
 
 type RequestVoteRequestEvent struct {
@@ -62,8 +62,8 @@ type RequestVoteRequestEvent struct {
     Request *RequestVoteRequest
 }
 
-func NewRequestVoteRequestEvent(request *RequestVoteRequest) *RequestVoteRequestEvent {
-    return &RequestVoteRequestEvent{NewRequestEvent(EventRequestVoteRequest), request}
+func NewRequestVoteRequestEvent(request *RequestVoteRequest, resultChan chan interface{}) *RequestVoteRequestEvent {
+    return &RequestVoteRequestEvent{NewRequestEvent(EventRequestVoteRequest, resultChan), request}
 }
 
 type RequestVoteResponseEvent struct {
@@ -81,8 +81,8 @@ type AppendEntriesReqeustEvent struct {
     Request *AppendEntriesRequest
 }
 
-func NewAppendEntriesRequestEvent(request *AppendEntriesRequest) *AppendEntriesReqeustEvent {
-    return &AppendEntriesReqeustEvent{NewRequestEvent(EventAppendEntriesRequest), request}
+func NewAppendEntriesRequestEvent(request *AppendEntriesRequest, resultChan chan interface{}) *AppendEntriesReqeustEvent {
+    return &AppendEntriesReqeustEvent{NewRequestEvent(EventAppendEntriesRequest, resultChan), request}
 }
 
 type AppendEntriesResponseEvent struct {
@@ -92,6 +92,44 @@ type AppendEntriesResponseEvent struct {
 
 func NewAppendEntriesResponseEvent(response *AppendEntriesResponse) *AppendEntriesResponseEvent {
     return &AppendEntriesResponseEvent{hsm.NewStdEvent(EventAppendEntriesResponse), response}
+}
+
+type PrepareInstallSnapshotRequestEvent struct {
+    *RequestEvent
+    // extended fields
+    Request *PrepareInstallSnapshotRequest
+}
+
+func NewPrepareInstallSnapshotRequestEvent(request *PrepareInstallSnapshotRequest, resultChan chan interface{}) *PrepareInstallSnapshotRequestEvent {
+    return &PrepareInstallSnapshotRequestEvent{NewRequestEvent(EventPrepareInstallSnapshotRequest, resultChan), request}
+}
+
+type PrepareInstallSnapshotResponseEvent struct {
+    *hsm.StdEvent
+    Response *PrepareInstallSnapshotResponse
+}
+
+func NewPrepareInstallSnapshotResponseEvent(response *PrepareInstallSnapshotResponse) *PrepareInstallSnapshotResponseEvent {
+    return &PrepareInstallSnapshotResponseEvent{hsm.NewStdEvent(EventPrepareInstallSnapshotResponse), response}
+}
+
+type InstallSnapshotRequestEvent struct {
+    *RequestEvent
+    // extended fields
+    Request *InstallSnapshotRequest
+}
+
+func NewInstallSnapshotRequestEvent(request *InstallSnapshotRequest, resultChan chan interface{}) *InstallSnapshotRequestEvent {
+    return &InstallSnapshotRequestEvent{NewRequestEvent(EventInstallSnapshotRequest, resultChan), request}
+}
+
+type InstallSnapshotResponseEvent struct {
+    *hsm.StdEvent
+    Response *PrepareInstallSnapshotResponse
+}
+
+func NewInstallSnapshotResponseEvent(response *InstallSnapshotResponse) *InstallSnapshotRequestEvent {
+    return &InstallSnapshotResponseEvent{hsm.NewStdEvent(EventInstallSnapshotResponse), response}
 }
 
 type HeartbeatTimeoutEvent struct {
@@ -115,8 +153,8 @@ type ReadRequestEvent struct {
     Request *ReadRequest
 }
 
-func NewReadRequstEvent(request *ReadRequest) *ReadRequestEvent {
-    return &ReadRequestEvent{NewRequestEvent(EventReadRequest), request}
+func NewReadRequstEvent(request *ReadRequest, resultChan chan interface{}) *ReadRequestEvent {
+    return &ReadRequestEvent{NewRequestEvent(EventReadRequest, resultChan), request}
 }
 
 type ReadResponseEvent struct {

@@ -37,7 +37,11 @@ type Client interface {
     Close() error
 
     PeerAddr() net.Addr
-    RPC(requestType hsm.EventType, request interface{}, response interface{}) error
+    CallRPC(requestType hsm.EventType, request interface{}, response interface{}) error
+}
+
+type RPC interface {
+    DoRPC(target net.Addr, requestType hsm.EventType, request interface{}, response interface{}) error
 }
 
 type Server interface {
