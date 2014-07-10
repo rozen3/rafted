@@ -1,4 +1,4 @@
-package rafted
+package state
 
 import "time"
 import hsm "github.com/hhkbp2/go-hsm"

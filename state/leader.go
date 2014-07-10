@@ -1,4 +1,4 @@
-package rafted
+package state
 
 import "fmt"
 import hsm "github.com/hhkbp2/go-hsm"
