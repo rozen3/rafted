@@ -37,18 +37,13 @@ type Connection interface {
     Close() error
 
     PeerAddr() net.Addr
-    SendRecv(requestType hsm.EventType, request interface{}, response interface{}) error
+    CallRPC(request RaftEvent) (response RaftEvent, err error)
 }
 
 type Client interface {
-    CallRPC(target net.Addr, requestType hsm.EventType, request interface{}, response interface{}) error
+    CallRPCTo(target net.Addr, request RaftEvent) (response RaftEvent, err error)
 }
 
 type Server interface {
     Serve()
-}
-
-type NetworkLayer interface {
-    Client
-    Server
 }

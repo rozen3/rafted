@@ -2,10 +2,10 @@ package network
 
 import "net"
 import "bufio"
+import "errors"
 import "github.com/ugorji/go/codec"
 import hsm "github.com/hhkbp2/go-hsm"
 import rafted "github.com/hhkbp2/rafted"
-import msg "github.com/hhkbp2/rafted/message"
 
 type SocketTransport struct {
     addr net.Addr
@@ -59,36 +59,18 @@ func NewSocketConnection(addr net.Addr) *SocketConnection {
     }
 }
 
-func (self *SocketConnection) SendRecv(requestType hsm.EventType, request interface{}, response interface{}) error {
-    // write request type as one byte
-    if err := self.writer.WriteByte(requestType); err != nil {
+func (self *SocketConnection) CallRPC(request RaftEvent) (response RaftEvent, error) {
+    if err := WriteEvent(self.writer, self.encoder, request); err != nil {
         self.Close()
-        return err
-    }
-    // write the content of request
-    if err := conn.encoder.Encode(request); err != nil {
-        self.Close()
-        return err
-    }
-    // flush the request into network
-    if err := self.writer.Flush(); err != nil {
-        self.Close()
-        return err
+        return nil, err
     }
 
-    // read the response
-    // read the response type as first byte
-    if responseType, err := self.reader.ReadByte(); err != nil {
+    if event, err := ReadReponse(self.reader, self.decoder); err != nil {
         self.Close()
-        return err
-    }
-    // read the response content
-    if err := self.decoder.Decode(response); err != nil {
-        self.Close()
-        return err
+        return nil, error
     }
 
-    return nil
+    return event, nil
 }
 
 type SocketClient struct {
@@ -105,13 +87,13 @@ func NewSocketClient(poolSize uint32) *SocketClient {
     }
 }
 
-func (self *SocketClient) CallRPC(target net.Addr, requestType hsm.EventType, request interface{}, response interface{}) error {
+func (self *SocketClient) CallRPC(target net.Addr, request, response RaftEvent) error {
     connection, err := self.getConnection(target)
     if err != nil {
         return err
     }
 
-    err := connection.CallRPC(requestType, request, response)
+    err := connection.CallRPC(request, response)
     if err == nil {
         self.returnConnectionToPool(connection)
     }
@@ -165,18 +147,18 @@ func (self *SocketClient) getConnection(target net.Addr) (*SocketConnection, err
 type SocketServer struct {
     bindAddr     net.Addr
     listener     *net.TCPListener
-    eventHandler func(*rafted.RequestEvent)
+    eventHandler func(RequestEvent)
 }
 
-func NewSocketServer(bindAddr net.Addr, eventHandler func(*rafted.RequestEvent)) (*SocketServer, error) {
+func NewSocketServer(bindAddr net.Addr, eventHandler func(RequestEvent)) (*SocketServer, error) {
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
     if err != nil {
         return nil, err
     }
     return &SocketServer{
-        bindAddr: bindAddr,
-        listener: listener,
-        handler:  handler,
+        bindAddr:     bindAddr,
+        listener:     listener,
+        eventHandler: eventHandler,
     }
 }
 
@@ -221,7 +203,7 @@ func (self *SocketServer) handlCommand(reader *bufio.Reader, writer *bufio.Write
     }
 
     // decode and handle the request
-    resultChan := make(chan hsm.Event)
+    resultChan := make(chan RaftEvent)
     switch requestType {
     case rafted.EventRequestVoteRequest:
         request := &msg.RequestVoteRequest{}
@@ -268,16 +250,106 @@ func (self *SocketServer) handlCommand(reader *bufio.Reader, writer *bufio.Write
     return nil
 }
 
-type SocketRaftNode struct {
+type SocketNetworkLayer struct {
     *SocketClient
     *SocketServer
 }
 
-func NewSocketRaftNode(
+func NewSocketNetworkLayer(
     client *SocketClient,
-    server *SocketServer) *SocketRaftNode {
-    return &SocketRaftNode{
+    server *SocketServer) *SocketNetworkLayer {
+    return &SocketNetworkLayer{
         SocketClient: client,
         SocketServer: server,
+    }
+}
+
+func WriteEvent(writer *bufio.Writer, encoder *Encoder, event RaftEvent) error {
+    // write event type as first byte
+    if err := writer.WriteByte(event.Type()); err != nil {
+        return err
+    }
+    // write the content of event
+    if err := encoder.Encode(event.Message()); err != nil {
+        return err
+    }
+
+    return writer.Flush()
+}
+
+func ReadRequest(reader *bufio.Reader, decoder *Decorder) (RequestEvent, error) {
+    eventType, err := reader.ReadByte()
+    if err != nil {
+        return nil, err
+    }
+    switch eventType {
+    case rafted.EventAppendEntriesRequest:
+        request := &rafted.AppendEntriesRequest{}
+        if err := decoder.Decode(request); err != nil {
+            return nil, err
+        }
+        event := rafted.NewAppendEntriesRequestEvent(request)
+        return event, nil
+    case rafted.EventRequestVoteRequest:
+        request := &rafted.RequestVoteRequest{}
+        if err := decoder.Decode(request); err != nil {
+            return nil, err
+        }
+        return message, nil
+        event := rafted.NewRequestVoteRequestEvent(request)
+        return event, nil
+    case rafted.EventPrepareInstallSnapshotRequest:
+        request := &rafted.PrepareInstallSnapshotRequest{}
+        if err := decoder.Decode(request); err != nil {
+            return err
+        }
+        event := rafted.NewPrepareInstallSnapshotRequestEvent(request)
+        return event, nil
+    case rafted.EventInstallSnapshotRequest:
+        request := &rafted.InstallSnapshotRequest{}
+        if err := decoder.Decode(request); err != nil {
+            return err
+        }
+        event := rafted.NewInstallSnapshotRequestEvent(request)
+        return event, nil
+    default:
+        return nil, errors.New("not request event")
+    }
+}
+
+func ReadResponse(reader *bufio.Reader, decoder *Decorder) (RaftEvent, error) {
+    eventType, err := reader.ReadByte()
+    if err != nil {
+        return nil, err
+    }
+    switch eventType {
+    case rafted.EventAppendEntriesResponse:
+        response := &rafted.AppendEntriesResponse{}
+        if err := decoder.Decode(response); err != nil {
+            return nil, err
+        }
+        event := rafted.NewAppendEntriesResponseEvent(response)
+        return event, nil
+    case rafted.EventRequestVoteResponse:
+        response := &rafted.RequestVoteResponse{}
+        if err := decoder.Decode(response); err != nil {
+            return nil, err
+        }
+        event := rafted.NewRequestVoteResponseEvent(response)
+        return event, nil
+    case rafted.EventPrepareInstallSnapshotResponse:
+        response := &rafted.PrepareInstallSnapshotResponse{}
+        if err := decoder.Decode(response); err != nil {
+            return nil, err
+        }
+        event := rafted.NewPrepareInstallSnapshotResponseEvent(response)
+        return event, nil
+    case rafted.EventInstallSnapshotResponse:
+        response := &rafted.InstallSnapshotResponse{}
+        if err := decoder.Decode(response); err != nil {
+            return nil, err
+        }
+    default:
+        return nil, errors.New("not request event")
     }
 }

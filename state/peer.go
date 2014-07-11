@@ -1,6 +1,8 @@
 package state
 
 import "fmt"
+import hsm "github.com/hhkbp2/go-hsm"
+import rafted "github.com/hhkbp2/rafted"
 
 type PeerState struct {
     hsm.StateHead
@@ -20,18 +22,24 @@ func (*PeerState) ID() string {
 
 func (self *PeerState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Entry")
-    // TODO add impl
     return nil
 }
 
 func (self *PeerState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Exit")
-    // TODO add impl
     return nil
 }
 
 func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
-    fmt.Println(self.ID(), "-> Handle")
-    // TODO add impl
+    fmt.Println(self.ID(), "-> Handle, event =", event)
+    peerHSM, ok := sm.(*PeerHSM)
+    hsm.AssertTrue(ok)
+    switch {
+    case IsRaftEvent(event.Type()):
+        response, err := peerHSM.Client.SendRecv
+    }
+    // ignore all other events
     return nil
 }
+
+func (self *)

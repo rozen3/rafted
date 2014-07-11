@@ -1,14 +1,34 @@
 package rafted
 
+import "net"
 import hsm "github.com/hhkbp2/go-hsm"
 
 const (
     HSMTypePeer = hsm.HSMTypeStd + 2 + iota
 )
 
-type Peer interface {
-    Start()
-    Send(request *RequstEvent)
+type Peer struct {
+    hsm *PeerHSM
+}
+
+func NewPeer(addr net.Addr, client network.Client, responseHandler func(RaftEvent)) *Peer {
+    top := hsm.NewTop()
+    initial := hsm.NewInitial(top, PeerStateID)
+    NewPeerState(top)
+    peerHSM := NewPeerHSM(top, initial, client, responseHandler)
+    return &Peer{peerHSM}
+}
+
+func (self *Peer) Start() {
+    self.hsm.Init()
+}
+
+func (self *Peer) Send(request RaftEvent) {
+    hsm.Dispatch(request)
+}
+
+func (self *Peer) Close() {
+    self.hsm.Terminate()
 }
 
 type PeerHSM struct {
@@ -20,10 +40,11 @@ type PeerHSM struct {
     /* peer extanded fields */
 
     // network facility
-    client *Client
+    Client          network.Client
+    responseHandler func(RaftEvent)
 }
 
-func NewPeerHSM(top, initial hsm.State, client *Client) *PeerHSM {
+func NewPeerHSM(top, initial hsm.State, client network.Client, responseHandler func(RaftEvent)) *PeerHSM {
     return &PeerHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypePeer, top, initial),
         DispatchChan:     make(chan hsm.Event, 1),

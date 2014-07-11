@@ -42,41 +42,62 @@ func IsClientEvent(eventType hsm.EventType) bool {
     return (eventType >= EventClientUser)
 }
 
+type RaftEvent interface {
+    hsm.Event
+    Message() interface{}
+}
+
 type ResponsiveEvent interface {
-    Response(hsm.Event)
+    SendResponse(RaftEvent)
+    RecvResponse() RaftEvent
 }
 
-type RequestEvent struct {
+type RequestEvent interface {
+    RaftEvent
+    ResponsiveEvent
+}
+
+type RequestEventHead struct {
     *hsm.StdEvent
-    ResultChan chan hsm.Event
+    resultChan chan RaftEvent
 }
 
-func (self *RequestEvent) Response(event hsm.Event) {
-    self.ResultChan <- event
+func (self *RequestEventHead) SendResponse(event RaftEvent) {
+    self.resultChan <- event
 }
 
-func NewRequestEvent(
-    eventType hsm.EventType,
-    resultChan chan hsm.Event) *RequestEvent {
-    return &RequestEvent{hsm.NewStdEvent(eventType), resultChan}
+func (self *RequestEventHead) RecvResponse() RaftEvent {
+    response := <-self.resultChan
+    return response
+}
+
+func NewRequestEventHead(
+    eventType hsm.EventType) *RequestEvent {
+    return &RequestEventHead{
+        hsm.NewStdEvent(eventType),
+        make(chan RaftEvent, 1),
+    }
 }
 
 type AppendEntriesReqeustEvent struct {
-    *RequestEvent
-    Request *AppendEntriesRequest
+    *RequestEventHead
+    request *AppendEntriesRequest
 }
 
 func NewAppendEntriesRequestEvent(
-    request *AppendEntriesRequest,
-    resultChan chan hsm.Event) *AppendEntriesReqeustEvent {
+    request *AppendEntriesRequest) *AppendEntriesReqeustEvent {
     return &AppendEntriesReqeustEvent{
-        NewRequestEvent(EventAppendEntriesRequest, resultChan),
-        request}
+        NewRequestEventHead(EventAppendEntriesRequest),
+        request,
+    }
+}
+func (self *AppendEntriesReqeustEvent) Message() interface{} {
+    return self.request
 }
 
 type AppendEntriesResponseEvent struct {
     *hsm.StdEvent
-    Response *AppendEntriesResponse
+    response *AppendEntriesResponse
 }
 
 func NewAppendEntriesResponseEvent(
@@ -87,23 +108,30 @@ func NewAppendEntriesResponseEvent(
     }
 }
 
+func (self *AppendEntriesResponseEvent) Message() interface{} {
+    return self.response
+}
+
 type RequestVoteRequestEvent struct {
-    *RequestEvent
-    Request *RequestVoteRequest
+    *RequestEventHead
+    request *RequestVoteRequest
 }
 
 func NewRequestVoteRequestEvent(
-    request *RequestVoteRequest,
-    resultChan chan hsm.Event) *RequestVoteRequestEvent {
+    request *RequestVoteRequest) *RequestVoteRequestEvent {
     return &RequestVoteRequestEvent{
-        NewRequestEvent(EventRequestVoteRequest, resultChan),
+        NewRequestEventHead(EventRequestVoteRequest),
         request,
     }
 }
 
+func (self *RequestVoteRequestEvent) Message() interface{} {
+    return self.request
+}
+
 type RequestVoteResponseEvent struct {
     *hsm.StdEvent
-    Response *RequestVoteResponse
+    response *RequestVoteResponse
 }
 
 func NewRequestVoteResponseEvent(
@@ -114,23 +142,30 @@ func NewRequestVoteResponseEvent(
     }
 }
 
+func (self *RequestVoteRequestEvent) Message() interface{} {
+    return self.response
+}
+
 type PrepareInstallSnapshotRequestEvent struct {
-    *RequestEvent
-    Request *PrepareInstallSnapshotRequest
+    *RequestEventHead
+    request *PrepareInstallSnapshotRequest
 }
 
 func NewPrepareInstallSnapshotRequestEvent(
-    request *PrepareInstallSnapshotRequest,
-    resultChan chan hsm.Event) *PrepareInstallSnapshotRequestEvent {
+    request *PrepareInstallSnapshotRequest) *PrepareInstallSnapshotRequestEvent {
     return &PrepareInstallSnapshotRequestEvent{
-        NewRequestEvent(EventPrepareInstallSnapshotRequest, resultChan),
+        NewRequestEventHead(EventPrepareInstallSnapshotRequest),
         request,
     }
 }
 
+func (self *PrepareInstallSnapshotRequest) Message() interface{} {
+    return self.request
+}
+
 type PrepareInstallSnapshotResponseEvent struct {
     *hsm.StdEvent
-    Response *PrepareInstallSnapshotResponse
+    response *PrepareInstallSnapshotResponse
 }
 
 func NewPrepareInstallSnapshotResponseEvent(
@@ -141,24 +176,30 @@ func NewPrepareInstallSnapshotResponseEvent(
     }
 }
 
+func (self *PrepareInstallSnapshotResponseEvent) Message() interface{} {
+    return self.response
+}
+
 type InstallSnapshotRequestEvent struct {
-    *RequestEvent
-    // extended fields
-    Request *InstallSnapshotRequest
+    *RequestEventHead
+    request *InstallSnapshotRequest
 }
 
 func NewInstallSnapshotRequestEvent(
-    request *InstallSnapshotRequest,
-    resultChan chan hsm.Event) *InstallSnapshotRequestEvent {
+    request *InstallSnapshotRequest) *InstallSnapshotRequestEvent {
     return &InstallSnapshotRequestEvent{
-        NewRequestEvent(EventInstallSnapshotRequest, resultChan),
+        NewRequestEventHead(EventInstallSnapshotRequest),
         request,
     }
 }
 
+func (self *InstallSnapshotRequestEvent) Message() interface{} {
+    return self.request
+}
+
 type InstallSnapshotResponseEvent struct {
     *hsm.StdEvent
-    Response *PrepareInstallSnapshotResponse
+    response *PrepareInstallSnapshotResponse
 }
 
 func NewInstallSnapshotResponseEvent(
@@ -167,6 +208,10 @@ func NewInstallSnapshotResponseEvent(
         hsm.NewStdEvent(EventInstallSnapshotResponse),
         response,
     }
+}
+
+func (self *InstallSnapshotResponseEvent) Message() interface{} {
+    return self.response
 }
 
 type HeartbeatTimeoutEvent struct {
@@ -187,7 +232,7 @@ func NewElectionTimeoutEvent() *ElectionTimeoutEvent {
 
 type LeaderRedirectResponseEvent struct {
     *hsm.StdEvent
-    Response *LeaderRedirectResponse
+    response *LeaderRedirectResponse
 }
 
 func NewLeaderRedirectResponseEvent(
@@ -198,9 +243,13 @@ func NewLeaderRedirectResponseEvent(
     }
 }
 
+func (self *LeaderRedirectResponseEvent) Message() interface{} {
+    return self.response
+}
+
 type LeaderUnknownResponseEvent struct {
     *hsm.StdEvent
-    Response *LeaderUnknownResponse
+    response *LeaderUnknownResponse
 }
 
 func NewLeaderUnknownResponseEvent(
@@ -209,4 +258,8 @@ func NewLeaderUnknownResponseEvent(
         hsm.NewStdEvent(EventLeaderUnknownResponse),
         response,
     }
+}
+
+func (self *LeaderUnknownResponseEvent) Message() interface{} {
+    return self.response
 }
