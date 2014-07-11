@@ -32,18 +32,23 @@ type FramedTransport struct{}
 // TODO to impl Transport
 type FileTransport struct{}
 
-type Client interface {
+type Connection interface {
     Open() error
     Close() error
 
     PeerAddr() net.Addr
-    CallRPC(requestType hsm.EventType, request interface{}, response interface{}) error
+    SendRecv(requestType hsm.EventType, request interface{}, response interface{}) error
 }
 
-type RPC interface {
-    DoRPC(target net.Addr, requestType hsm.EventType, request interface{}, response interface{}) error
+type Client interface {
+    CallRPC(target net.Addr, requestType hsm.EventType, request interface{}, response interface{}) error
 }
 
 type Server interface {
     Serve()
+}
+
+type NetworkLayer interface {
+    Client
+    Server
 }

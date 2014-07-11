@@ -9,6 +9,10 @@ const (
     LeaderID    = "leader"
 )
 
+const (
+    PeerStateID = "peer"
+)
+
 func CreateRaftHSM(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration) TerminableHSM {

@@ -66,13 +66,13 @@ func (self *Follower) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
         e, ok := event.(*RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
         response := self.ProcessRequestVote(raftHSM, e.Request)
-        e.ResultChan <- NewRequestVoteResponseEvent(response)
+        e.Response(NewRequestVoteResponseEvent(response))
         return nil
     case event.Type() == EventAppendEntriesRequest:
         e, ok := event.(*AppendEntriesReqeustEvent)
         hsm.AssertTrue(ok)
         response := self.ProcessAppendEntries(raftHSM, e.Request)
-        e.ResultChan <- NewAppendEntriesResponseEvent(response)
+        e.Response(NewAppendEntriesResponseEvent(response))
         return nil
     case event.Type() == EventPrepareInstallSnapshotRequest:
         // TODO add substate
@@ -86,7 +86,7 @@ func (self *Follower) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
         // redirect client to current leader
         leader := raftHSM.GetLeader().String()
         response := &RedirectResponse{leader}
-        e.ResultChan <- NewRedirectResponseEvent(response)
+        e.Response(NewRedirectResponseEvent(response))
         return nil
     }
     return self.Super()

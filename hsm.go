@@ -4,6 +4,7 @@ import "sync"
 import "sync/atomic"
 import "net"
 import hsm "github.com/hhkbp2/go-hsm"
+import network "github.com/hhkbp2/rafted/network"
 
 const (
     HSMTypeRaft = hsm.HSMTypeStd + 1 + iota
@@ -44,6 +45,9 @@ type RaftHSM struct {
     // leader infos
     leader     net.Addr
     leaderLock sync.RWMutex
+
+    // peers
+    peers map[net.Addr]Peer
 }
 
 func NewRaftHSM(top, initial hsm.State) *RaftHSM {
@@ -51,7 +55,8 @@ func NewRaftHSM(top, initial hsm.State) *RaftHSM {
         StdHSM:           hsm.NewStdHSM(HSMTypeRaft, top, initial),
         DispatchChan:     make(chan hsm.Event, 1),
         SelfDispatchChan: make(chan hsm.Event, 1),
-        Group:            sync.WaitGroup{}}
+        Group:            sync.WaitGroup{},
+    }
 }
 
 func (self *RaftHSM) Init() {

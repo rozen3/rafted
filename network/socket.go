@@ -41,7 +41,7 @@ func (self *SocketTransport) PeerAddr() net.Addr {
     return self.conn.RemoteAddr()
 }
 
-type SocketClient struct {
+type SocketConnection struct {
     *SocketTransport
     reader  *bufio.Reader
     writer  *bufio.Writer
@@ -49,8 +49,8 @@ type SocketClient struct {
     decoder *Encoder
 }
 
-func NewSocketClient(addr net.Addr) *SocketClient {
-    return &SocketClient{
+func NewSocketConnection(addr net.Addr) *SocketConnection {
+    return &SocketConnection{
         transport: NewSocketTransport(addr),
         reader:    bufio.NewReader(transport),
         writer:    bufio.NewWriter(transport),
@@ -59,7 +59,7 @@ func NewSocketClient(addr net.Addr) *SocketClient {
     }
 }
 
-func (self *SocketClient) CallRPC(requestType hsm.EventType, request interface{}, response interface{}) error {
+func (self *SocketConnection) SendRecv(requestType hsm.EventType, request interface{}, response interface{}) error {
     // write request type as one byte
     if err := self.writer.WriteByte(requestType); err != nil {
         self.Close()
@@ -77,6 +77,12 @@ func (self *SocketClient) CallRPC(requestType hsm.EventType, request interface{}
     }
 
     // read the response
+    // read the response type as first byte
+    if responseType, err := self.reader.ReadByte(); err != nil {
+        self.Close()
+        return err
+    }
+    // read the response content
     if err := self.decoder.Decode(response); err != nil {
         self.Close()
         return err
@@ -85,75 +91,75 @@ func (self *SocketClient) CallRPC(requestType hsm.EventType, request interface{}
     return nil
 }
 
-type SocketClientRPC struct {
-    clientPool     map[net.Addr][]*SocketClient
-    clientPoolLock sync.Mutex
+type SocketClient struct {
+    connectionPool     map[net.Addr][]*SocketConnection
+    connectionPoolLock sync.Mutex
 
     poolSize uint32
 }
 
-func NewSocketClientRPC(poolSize uint32) *SocketClientRPC {
-    return &SocketClientRPC{
-        clientPool: make(map[string][]*SocketClient),
-        poolSize:   poolSize,
+func NewSocketClient(poolSize uint32) *SocketClient {
+    return &SocketClient{
+        connectionPool: make(map[string][]*SocketConnection),
+        poolSize:       poolSize,
     }
 }
 
-func (self *SocketClientRPC) DoRPC(target net.Addr, requestType hsm.EventType, request interface{}, response interface{}) error {
-    client, err := self.getClient(target)
+func (self *SocketClient) CallRPC(target net.Addr, requestType hsm.EventType, request interface{}, response interface{}) error {
+    connection, err := self.getConnection(target)
     if err != nil {
         return err
     }
 
-    err := client.CallRPC(requestType, request, response)
+    err := connection.CallRPC(requestType, request, response)
     if err == nil {
-        self.returnClientToPool(client)
+        self.returnConnectionToPool(connection)
     }
     return err
 }
 
-func (self *SocketClientRPC) getClientFromPool(target net.Addr) (*SocketClient, error) {
-    self.clientPoolLock.Lock()
-    defer self.clientPoolLock.Unlock()
+func (self *SocketClient) getConnectionFromPool(target net.Addr) (*SocketConnection, error) {
+    self.connectionPoolLock.Lock()
+    defer self.connectionPoolLock.Unlock()
 
     key := target.String()
-    clients, ok := self.clientPool[key]
+    connections, ok := self.connectionPool[key]
     if !ok || len(conns) == 0 {
-        return nil, errors.New("no client for this target")
+        return nil, errors.New("no connection for this target")
     }
 
-    client := clients[len(clients)-1]
-    self.clientPool[key] = clients[:len(clients)-1]
-    return client, nil
+    connection := connections[len(connections)-1]
+    self.connectionPool[key] = connections[:len(connections)-1]
+    return connection, nil
 }
 
-func (self *SocketClientRPC) returnClientToPool(client *SocketClient) {
-    self.clientPoolLock.Lock()
-    defer self.clientPoolLock.Unlock()
+func (self *SocketClient) returnConnectionToPool(connection *SocketConnection) {
+    self.connectionPoolLock.Lock()
+    defer self.connectionPoolLock.Unlock()
 
     key := target.String()
-    clients, ok := self.clientPool[key]
+    connections, ok := self.connectionPool[key]
 
-    if len(clients) < self.poolSize {
-        self.clientPool[key] = append(clients, client)
+    if len(connections) < self.poolSize {
+        self.connectionPool[key] = append(connections, connection)
     } else {
-        client.Close()
+        connection.Close()
     }
 }
 
-func (self *SocketClientRPC) getClient(target net.Addr) (*SocketClient, error) {
-    // check for pooled client first
-    if client, err := self.getClientFromPool(target); client != nil && err == nil {
-        return client
+func (self *SocketClient) getConnection(target net.Addr) (*SocketConnection, error) {
+    // check for pooled connection first
+    if connection, err := self.getConnectionFromPool(target); connection != nil && err == nil {
+        return connection
     }
 
-    // if there is no pooled client, create a new one
-    client := NewSocketClient(target)
-    if err := client.Open(); err != nil {
+    // if there is no pooled connection, create a new one
+    connection := NewSocketConnection(target)
+    if err := connection.Open(); err != nil {
         return nil, err
     }
 
-    return client
+    return connection
 }
 
 type SocketServer struct {
@@ -194,7 +200,7 @@ func (self *SocketServer) handleConn(conn net.Conn) {
     encoder := codec.NewEncoder(writer, &codec.MsgpackHandle{})
 
     for {
-        if err := self.handleCommand(reader, decoder, encoder); err != nil {
+        if err := self.handleCommand(reader, writer, decoder, encoder); err != nil {
             if err != io.EOF {
                 // TODO add log
             }
@@ -207,7 +213,7 @@ func (self *SocketServer) handleConn(conn net.Conn) {
     }
 }
 
-func (self *SocketServer) handlCommand(reader *bufio.Reader, decoder *Decoder, encoder *Encoder) error {
+func (self *SocketServer) handlCommand(reader *bufio.Reader, writer *bufio.Writer, decoder *Decoder, encoder *Encoder) error {
     // retrieve the request type as first byte
     requestType, err := reader.ReadByte()
     if err != nil {
@@ -215,7 +221,7 @@ func (self *SocketServer) handlCommand(reader *bufio.Reader, decoder *Decoder, e
     }
 
     // decode and handle the request
-    resultChan := make(chan interface{})
+    resultChan := make(chan hsm.Event)
     switch requestType {
     case rafted.EventRequestVoteRequest:
         request := &msg.RequestVoteRequest{}
@@ -250,9 +256,28 @@ func (self *SocketServer) handlCommand(reader *bufio.Reader, decoder *Decoder, e
     // wait for response
     select {
     case response := <-resultChan:
+        // write response type as one byte
+        if err := writer.WriteByte(response.Type()); err != nil {
+            return err
+        }
+        // write response content
         if err := encoder.Encode(response); err != nil {
             return err
         }
     }
     return nil
+}
+
+type SocketRaftNode struct {
+    *SocketClient
+    *SocketServer
+}
+
+func NewSocketRaftNode(
+    client *SocketClient,
+    server *SocketServer) *SocketRaftNode {
+    return &SocketRaftNode{
+        SocketClient: client,
+        SocketServer: server,
+    }
 }

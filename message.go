@@ -1,4 +1,4 @@
-package message
+package rafted
 
 // AppendEntriesRequest is the command used to append entries to the
 // replicated log.
@@ -92,4 +92,15 @@ type InstallSnapshotResponse struct {
     SnapshotID uint64
     SegmentID  uint64
     Success    bool
+}
+
+// LeaderRedirectResponse is to redirect client to leader.
+type LeaderRedirectResponse struct {
+    // The network addr of leader
+    LeaderAddr string
+}
+
+// LeaderUnknownResponse is to tell client we are not leader and
+// don't known which node in cluter is leader.
+type LeaderUnknownResponse struct {
 }

@@ -71,7 +71,7 @@ func (self *Candidate) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
         e, ok := event.(*RequestEvent)
         hsm.AssertTrue(ok)
         response := &LeaderUnknownResponse{}
-        e.ResultChan <- NewLeaderUnknownResponseEvent(response)
+        e.Response(NewLeaderUnknownResponseEvent(response))
         return nil
     }
     return self.Super()
@@ -91,4 +91,5 @@ func (self *Candidate) UpdateLastElectionTime() {
 
 func (self *Candidate) StartElection() {
     // TODO add impl
+
 }
