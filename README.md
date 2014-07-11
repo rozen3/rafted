@@ -8,7 +8,7 @@ rafted
 
 For more details on ```Raft```, please refer to the paper [In Search of an Understandable Consensus Algorithm][raft-paper] and the [Raft Consensus homepage][raft-homepage].
 
-## Another Raft Implementations
+## Another Raft Implementation
 
 There is a list of Raft implemetations on the [Raft website][raft-website], where you could find dozens of Raft implementations written in various programming languages. 
 
