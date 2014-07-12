@@ -59,7 +59,7 @@ func NewSocketConnection(addr net.Addr) *SocketConnection {
     }
 }
 
-func (self *SocketConnection) CallRPC(request RaftEvent) (response RaftEvent, error) {
+func (self *SocketConnection) CallRPC(request RaftEvent) (response RaftEvent, err error) {
     if err := WriteEvent(self.writer, self.encoder, request); err != nil {
         self.Close()
         return nil, err
@@ -87,20 +87,22 @@ func NewSocketClient(poolSize uint32) *SocketClient {
     }
 }
 
-func (self *SocketClient) CallRPC(target net.Addr, request, response RaftEvent) error {
+func (self *SocketClient) CallRPCTo(
+    target net.Addr, request RaftEvent) (response RaftEvent, err error) {
     connection, err := self.getConnection(target)
     if err != nil {
-        return err
+        return nil, err
     }
 
-    err := connection.CallRPC(request, response)
+    response, err := connection.CallRPC(request)
     if err == nil {
         self.returnConnectionToPool(connection)
     }
-    return err
+    return response, err
 }
 
-func (self *SocketClient) getConnectionFromPool(target net.Addr) (*SocketConnection, error) {
+func (self *SocketClient) getConnectionFromPool(
+    target net.Addr) (*SocketConnection, error) {
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
 
@@ -115,7 +117,8 @@ func (self *SocketClient) getConnectionFromPool(target net.Addr) (*SocketConnect
     return connection, nil
 }
 
-func (self *SocketClient) returnConnectionToPool(connection *SocketConnection) {
+func (self *SocketClient) returnConnectionToPool(
+    connection *SocketConnection) {
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
 
@@ -129,10 +132,12 @@ func (self *SocketClient) returnConnectionToPool(connection *SocketConnection) {
     }
 }
 
-func (self *SocketClient) getConnection(target net.Addr) (*SocketConnection, error) {
+func (self *SocketClient) getConnection(
+    target net.Addr) (*SocketConnection, error) {
     // check for pooled connection first
-    if connection, err := self.getConnectionFromPool(target); connection != nil && err == nil {
-        return connection
+    if connection, err := self.getConnectionFromPool(
+        target); connection != nil && err == nil {
+        return connection, nil
     }
 
     // if there is no pooled connection, create a new one
@@ -141,7 +146,7 @@ func (self *SocketClient) getConnection(target net.Addr) (*SocketConnection, err
         return nil, err
     }
 
-    return connection
+    return connection, nil
 }
 
 type SocketServer struct {
@@ -150,7 +155,8 @@ type SocketServer struct {
     eventHandler func(RequestEvent)
 }
 
-func NewSocketServer(bindAddr net.Addr, eventHandler func(RequestEvent)) (*SocketServer, error) {
+func NewSocketServer(bindAddr net.Addr,
+    eventHandler func(RequestEvent)) (*SocketServer, error) {
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
     if err != nil {
         return nil, err
@@ -182,7 +188,8 @@ func (self *SocketServer) handleConn(conn net.Conn) {
     encoder := codec.NewEncoder(writer, &codec.MsgpackHandle{})
 
     for {
-        if err := self.handleCommand(reader, writer, decoder, encoder); err != nil {
+        if err := self.handleCommand(
+            reader, writer, decoder, encoder); err != nil {
             if err != io.EOF {
                 // TODO add log
             }
@@ -195,57 +202,23 @@ func (self *SocketServer) handleConn(conn net.Conn) {
     }
 }
 
-func (self *SocketServer) handlCommand(reader *bufio.Reader, writer *bufio.Writer, decoder *Decoder, encoder *Encoder) error {
-    // retrieve the request type as first byte
-    requestType, err := reader.ReadByte()
-    if err != nil {
+func (self *SocketServer) handlCommand(
+    reader *bufio.Reader,
+    writer *bufio.Writer,
+    decoder *Decoder,
+    encoder *Encoder) error {
+    // read request
+    if event, err := ReadRequest(reader, decoder); err != nil {
         return err
     }
 
-    // decode and handle the request
-    resultChan := make(chan RaftEvent)
-    switch requestType {
-    case rafted.EventRequestVoteRequest:
-        request := &msg.RequestVoteRequest{}
-        if err := decoder.Decode(request); err != nil {
-            return err
-        }
-        event := rafted.NewRequestVoteRequestEvent(request, resultChan)
-        self.eventHandler(event)
-    case rafted.EventAppendEntriesRequest:
-        request := &msg.AppendEntriesRequest{}
-        if err := decoder.Decode(request); err != nil {
-            return err
-        }
-        event := rafted.NewAppendEntriesRequestEvent(request, resultChan)
-        self.eventHandler(event)
-    case rafted.EventPrepareInstallSnapshotRequest:
-        request := &msg.PrepareInstallSnapshotRequest{}
-        if err := decoder.Decode(request); err != nil {
-            return err
-        }
-        event := rafted.NewPrepareInstallSnapshotRequestEvent(request, resultChan)
-        self.eventHandler(event)
-    case rafted.EventInstallSnapshotRequest:
-        request := &msg.InstallSnapshotRequest{}
-        if err := decoder.Decode(request); err != nil {
-            return err
-        }
-        event := rafted.NewInstallSnapshotRequestEvent(request, resultChan)
-        self.eventHandler(event)
-    }
-
+    // dispatch event
+    self.eventHandler(event)
     // wait for response
-    select {
-    case response := <-resultChan:
-        // write response type as one byte
-        if err := writer.WriteByte(response.Type()); err != nil {
-            return err
-        }
-        // write response content
-        if err := encoder.Encode(response); err != nil {
-            return err
-        }
+    response := event.RecvResponse()
+    // send response
+    if err := WriteEvent(writer, encoder, response); err != nil {
+        return err
     }
     return nil
 }
@@ -264,7 +237,10 @@ func NewSocketNetworkLayer(
     }
 }
 
-func WriteEvent(writer *bufio.Writer, encoder *Encoder, event RaftEvent) error {
+func WriteEvent(
+    writer *bufio.Writer,
+    encoder *Encoder,
+    event RaftEvent) error {
     // write event type as first byte
     if err := writer.WriteByte(event.Type()); err != nil {
         return err
@@ -277,7 +253,9 @@ func WriteEvent(writer *bufio.Writer, encoder *Encoder, event RaftEvent) error {
     return writer.Flush()
 }
 
-func ReadRequest(reader *bufio.Reader, decoder *Decorder) (RequestEvent, error) {
+func ReadRequest(
+    reader *bufio.Reader,
+    decoder *Decorder) (RequestEvent, error) {
     eventType, err := reader.ReadByte()
     if err != nil {
         return nil, err
@@ -317,7 +295,9 @@ func ReadRequest(reader *bufio.Reader, decoder *Decorder) (RequestEvent, error) 
     }
 }
 
-func ReadResponse(reader *bufio.Reader, decoder *Decorder) (RaftEvent, error) {
+func ReadResponse(
+    reader *bufio.Reader,
+    decoder *Decorder) (RaftEvent, error) {
     eventType, err := reader.ReadByte()
     if err != nil {
         return nil, err

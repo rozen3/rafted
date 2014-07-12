@@ -11,11 +11,11 @@ type Peer struct {
     hsm *PeerHSM
 }
 
-func NewPeer(addr net.Addr, client network.Client, responseHandler func(RaftEvent)) *Peer {
+func NewPeer(addr net.Addr, client network.Client) *Peer {
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, PeerStateID)
     NewPeerState(top)
-    peerHSM := NewPeerHSM(top, initial, client, responseHandler)
+    peerHSM := NewPeerHSM(top, initial, client)
     return &Peer{peerHSM}
 }
 
@@ -40,11 +40,10 @@ type PeerHSM struct {
     /* peer extanded fields */
 
     // network facility
-    Client          network.Client
-    responseHandler func(RaftEvent)
+    Client network.Client
 }
 
-func NewPeerHSM(top, initial hsm.State, client network.Client, responseHandler func(RaftEvent)) *PeerHSM {
+func NewPeerHSM(top, initial hsm.State, client network.Client) *PeerHSM {
     return &PeerHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypePeer, top, initial),
         DispatchChan:     make(chan hsm.Event, 1),
