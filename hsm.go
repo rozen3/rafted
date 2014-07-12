@@ -46,16 +46,19 @@ type RaftHSM struct {
     leader     net.Addr
     leaderLock sync.RWMutex
 
+    // local addr
+    LocalAddr net.Addr
     // peers
-    peers map[net.Addr]Peer
+    PeerManager *PeerManager
 }
 
-func NewRaftHSM(top, initial hsm.State) *RaftHSM {
+func NewRaftHSM(top, initial hsm.State, localAddr net.Addr) *RaftHSM {
     return &RaftHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypeRaft, top, initial),
         DispatchChan:     make(chan hsm.Event, 1),
         SelfDispatchChan: make(chan hsm.Event, 1),
         Group:            sync.WaitGroup{},
+        LocalAddr:        localAddr,
     }
 }
 
@@ -169,6 +172,14 @@ func (self *RaftHSM) SetLeader(leader net.Addr) {
     self.leaderLock.Lock()
     defer self.leaderLock.Unlock()
     self.leader = leader
+}
+
+func (self *RaftHSM) SetPeerManager(peerManager *PeerManager) {
+    self.PeerManager = peerManager
+}
+
+func (self *RaftHSM) QuorumSize() uint32 {
+    return ((self.PeerManager.PeerNumber() + 1) / 2) + 1
 }
 
 func (self *RaftHSM) ApplyLogs() {

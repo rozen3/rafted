@@ -34,6 +34,18 @@ func IsRaftEvent(eventType hsm.EventType) bool {
     return IsEventBetween(eventType, EventRaftBegin, EventRaftEnd)
 }
 
+func IsRaftRequest(eventType hsm.EventType) bool {
+    switch eventType {
+    case EventAppendEntriesRequest:
+    case EventRequestVoteRequest:
+    case EventPrepareInstallSnapshotRequest:
+    case EventInstallSnapshotRequest:
+    default:
+        return false
+    }
+    return true
+}
+
 func IsTimeoutEvent(eventType hsm.EventType) bool {
     return IsEventBetween(eventType, EventTimeoutBegin, EventTimeoutEnd)
 }

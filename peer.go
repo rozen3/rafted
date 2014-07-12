@@ -2,20 +2,44 @@ package rafted
 
 import "net"
 import hsm "github.com/hhkbp2/go-hsm"
+import state "github.com/hhkbp2/rafted/state"
 
 const (
     HSMTypePeer = hsm.HSMTypeStd + 2 + iota
 )
 
+type PeerManager struct {
+    addrs []net.Addr
+    peers map[net.Addr]*Peer
+}
+
+func NewPeerManager(addrs []net.Addr, client network.Client, eventHandler func(RaftEvent)) *PeerManager {
+    peers := make(map[net.Addr]*Peer)
+    for _, addr := range addrs {
+        peers[addr] = NewPeer(addr, client, eventHandler)
+    }
+    return &PeerManager{addrs, peers}
+}
+
+func (self *PeerManager) Broadcast(request RaftEvent) {
+    for _, peer := range self.peers {
+        peer.Send(request)
+    }
+}
+
+func (self *PeerManager) PeerNumber() uint32 {
+    return len(self.peers)
+}
+
 type Peer struct {
     hsm *PeerHSM
 }
 
-func NewPeer(addr net.Addr, client network.Client) *Peer {
+func NewPeer(addr net.Addr, client network.Client, eventHandler func(RaftEvent)) *Peer {
     top := hsm.NewTop()
-    initial := hsm.NewInitial(top, PeerStateID)
-    NewPeerState(top)
-    peerHSM := NewPeerHSM(top, initial, client)
+    initial := hsm.NewInitial(top, state.PeerStateID)
+    state.NewPeerState(top)
+    peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler)
     return &Peer{peerHSM}
 }
 
@@ -40,15 +64,19 @@ type PeerHSM struct {
     /* peer extanded fields */
 
     // network facility
-    Client network.Client
+    Addr         net.Addr
+    Client       network.Client
+    EventHandler func(RaftEvent)
 }
 
-func NewPeerHSM(top, initial hsm.State, client network.Client) *PeerHSM {
+func NewPeerHSM(top, initial hsm.State, addr net.Addr, client network.Client, eventHandler func(RaftEvent)) *PeerHSM {
     return &PeerHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypePeer, top, initial),
         DispatchChan:     make(chan hsm.Event, 1),
         SelfDispatchChan: make(chan hsm.Event, 1),
-        client:           client,
+        Addr:             addr,
+        Client:           client,
+        EventHandler:     eventHandler,
     }
 }
 

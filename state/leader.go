@@ -5,6 +5,8 @@ import hsm "github.com/hhkbp2/go-hsm"
 
 type Leader struct {
     hsm.StateHead
+
+    // TODO add fields
 }
 
 func NewLeader(super hsm.State) *Leader {
@@ -19,6 +21,12 @@ func (*Leader) ID() string {
 
 func (self *Leader) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Entry")
+    raftHSM, ok := sm.(*RaftHSM)
+    hsm.AssertTrue(ok)
+    // init global status
+    raftHSM.SetLeader(raftHSM.LocalAddr)
+    // init status for this state
+
     return nil
 }
 

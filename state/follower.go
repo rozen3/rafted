@@ -8,6 +8,7 @@ import hsm "github.com/hhkbp2/go-hsm"
 
 type Follower struct {
     hsm.StateHead
+
     // heartbeat timeout and its time ticker
     heartbeatTimeout time.Duration
     ticker           Ticker
@@ -32,7 +33,9 @@ func (*Follower) ID() string {
 
 func (self *Follower) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Entry")
+    // init status for this status
     self.UpdateLastContactTime()
+    // start heartbeat timeout ticker
     hsm.AssertEqual(HSMTypeRaft, sm.Type())
     raftHSM, ok := sm.(SelfDispatchHSM)
     hsm.AssertTrue(ok)
@@ -47,9 +50,7 @@ func (self *Follower) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
 func (self *Follower) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Exit")
-    raftHSM, ok := sm.(*RaftHSM)
-    hsm.AssertTrue(ok)
-    raftHSM.SetLeader(nil)
+    // stop heartbeat timeout ticker
     self.ticker.Stop()
     return nil
 }
@@ -60,7 +61,7 @@ func (self *Follower) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     hsm.AssertTrue(ok)
     switch {
     case event.Type() == EventTimeoutHeartBeat:
-        raftHSM.QTran("Candidate")
+        raftHSM.QTran(CandidateID)
         return nil
     case event.Type() == EventRequestVoteRequest:
         e, ok := event.(*RequestVoteRequestEvent)
@@ -92,7 +93,9 @@ func (self *Follower) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     return self.Super()
 }
 
-func (self *Follower) ProcessRequestVote(raftHSM *RaftHSM, request *RequestVoteRequest) *RequestVoteResponse {
+func (self *Follower) ProcessRequestVote(
+    raftHSM *RaftHSM, request *RequestVoteRequest) *RequestVoteResponse {
+
     // TODO initialize peers correctly
     term := raftHSM.GetCurrentTerm()
     response := &RequestVoteResponse{
@@ -109,13 +112,15 @@ func (self *Follower) ProcessRequestVote(raftHSM *RaftHSM, request *RequestVoteR
     if request.Term > term {
         raftHSM.SetCurrentTerm(request.Term)
         response.Term = request.Term
-        // No need to call QTran("Follower") since we are already in follwer state
+        // No need to call QTran("Follower")
+        // since we are already in follwer state
     }
 
     votedFor := raftHSM.GetVotedFor()
     votedForBin, err := EncodeAddr(votedFor)
     hsm.AssertNil(err)
-    if (votedFor != nil) && (bytes.Compare(votedForBin, request.Candidate) != 0) {
+    if (votedFor != nil) &&
+        (bytes.Compare(votedForBin, request.Candidate) != 0) {
         // TODO add log
         return response
     }
@@ -135,7 +140,9 @@ func (self *Follower) ProcessRequestVote(raftHSM *RaftHSM, request *RequestVoteR
     return response
 }
 
-func (self *Follower) ProcessAppendEntries(raftHSM *RaftHSM, request *AppendEntriesRequest) *AppendEntriesResponse {
+func (self *Follower) ProcessAppendEntries(
+    raftHSM *RaftHSM, request *AppendEntriesRequest) *AppendEntriesResponse {
+
     term := raftHSM.GetCurrentTerm()
     response := &AppendEntriesResponse{
         Term:         term,
@@ -152,7 +159,8 @@ func (self *Follower) ProcessAppendEntries(raftHSM *RaftHSM, request *AppendEntr
     if request.Term > term {
         raftHSM.SetCurrentTerm(request.Term)
         response.Term = request.Term
-        // No need to call QTran("Follower") since we are already in follwer state
+        // No need to call QTran("Follower")
+        // since we are already in follwer state
     }
 
     // update current leader on every request
@@ -167,7 +175,8 @@ func (self *Follower) ProcessAppendEntries(raftHSM *RaftHSM, request *AppendEntr
         if request.PrevLogIndex == lastIndex {
             prevLogTerm = lastTerm
         } else {
-            if prevLog, err := raftHSM.GetLog().GetLog(request.PrevLogIndex); err != nil {
+            prevLog, err := raftHSM.GetLog().GetLog(request.PrevLogIndex)
+            if err != nil {
                 // TODO add log
                 return response
             } else {
@@ -203,7 +212,8 @@ func (self *Follower) ProcessAppendEntries(raftHSM *RaftHSM, request *AppendEntr
     }
 
     // Update the commit index
-    if (request.LeaderCommitIndex > 0) && (request.LeaderCommitIndex > raftHSM.GetCommitIndex()) {
+    if (request.LeaderCommitIndex > 0) &&
+        (request.LeaderCommitIndex > raftHSM.GetCommitIndex()) {
         index := min(request.LeaderCommitIndex, raftHSM.GetLastIndex())
         raftHSM.SetCommitIndex(index)
         raftHSM.ApplyLogs()

@@ -35,11 +35,28 @@ func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch {
-    case IsRaftEvent(event.Type()):
-        response, err := peerHSM.Client.SendRecv
+    case IsRaftRequest(event.Type()):
+        e, ok := event.(RaftEvent)
+        hsm.AssertTrue(ok)
+        response, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
+        if err != nil {
+            // TODO add log
+            return nil
+        }
+        peerHSM.SelfDispatch(response)
+        return nil
+    case event.Type() == EventRequestVoteResponse:
+        fallthrough
+    case event.Type() == EventAppendEntriesResponse:
+        fallthrough
+    case event.Type() == EventPrepareInstallSnapshotResponse:
+        fallthrough
+    case event.Type() == EventInstallSnapshotResponse:
+        e, ok := event.(RaftEvent)
+        hsm.AssertTrue(ok)
+        peerHSM.EventHandler(e)
+        return nil
     }
     // ignore all other events
-    return nil
+    return self.Super()
 }
-
-func (self *)
