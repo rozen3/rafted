@@ -2,7 +2,7 @@ rafted
 ======
 
 
-```rafted``` is a Golang Library that implements the Raft distributed consensus protocol.
+```rafted``` is a Golang library that implements the Raft distributed consensus protocol.
 
 ```Raft``` is an understandable consensus protocol which reaches distributed consistency by using replicated logs and state machines among a cluster of nodes.
 
