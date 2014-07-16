@@ -17,7 +17,7 @@ At the moment when this project is created, there is at least 5 implementations 
 1. [```go-raft```][go-raft-github]
 2. [```hashicorp-raft```][hashicorp-raft-github]
 
-After taking a close look into these existing raft implementation projects, we find some issues as the following. It is not easy to modify these existing projects to meet our needs. And then we decide to give a shot for a new implementation.
+After taking a close look into these existing raft implementation projects, we find some issues as the followings. It is not easy to modify these existing projects to meet our needs. And then we decide to give a shot for a new implementation.
 
 #### 1. Not Full Feature
 
@@ -43,13 +43,13 @@ Raft is a distributed consensus algorithm, which involves a lot of network inter
 
 The core of Raft is the nodes of a cluster parade in a time-to-time synchronized pace. During this process, each node goes through various states, e.g. follower, candidate, leader, snapshotting, log-compating, recovering from remote snapshot and so on. And various actions should be taken on the transfer of states. A good pattern to express state and state transfer in software is State Machine.
 
-Both ```go-raft``` and ```hashicorp-raft``` use embedded if-else/switch to implement the states and the actions around states, which is not the best method. In some degree, embedded if-else/switch weakens the code on simplicity and understandability. It's not easy to modify or extand states or actions, along with an intuitional concept of its correctness.
+Both ```go-raft``` and ```hashicorp-raft``` use nested if-else/switch to implement the states and the actions around states, which is not the best method. In some degree, nested if-else/switch weakens the code on simplicity and understandability. It's not easy to modify or extand states or actions, along with an intuitional concept of its correctness.
 
-Here I would like to introduce a method called Hierarchical State Machine(HSM) to describe states and actions for Raft nodes. HSM is a good pattern to express State Machine. It has mainly three advantages over the traditional methods(such as embedded if-else/switch, jump table, state pattern in OOP):
+Here I would like to introduce a method called Hierarchical State Machine(HSM) to describe states and actions for Raft nodes. HSM is a good pattern to express State Machine. It has some major advantages over the traditional methods(such as nested if-else/switch, state table, state pattern in OOP):
 
-1. support embedded states and behavior inheritance
-2. provide entry and exit actions for state
-3. use class hierarchy to express state hierarchy, easy to write and understand
+1. It supports nested states and behavior inheritance
+2. It provides entry and exit actions for state
+3. It uses class hierarchy to express state hierarchy. Easy to write and understand.
 
 I port HSM into Golang and make it a separate project for code reusage. Please refer to [```go-hsm```][go-hsm-github] for more infos.
 
