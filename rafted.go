@@ -7,9 +7,10 @@ func CreateRaftHSM(
 
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, FollowerID)
-    NewFollower(top, heartbeatTimeout)
-    NewCandidate(top, electionTimeout)
-    NewLeader(top)
+    raftState := NewRaftState(top)
+    NewFollower(raftState, heartbeatTimeout)
+    NewCandidate(raftState, electionTimeout)
+    NewLeader(raftState, top)
     raftHSM := NewRaftHSM(top, initial, localAddr)
     raftHSM.Init()
     return raftHSM

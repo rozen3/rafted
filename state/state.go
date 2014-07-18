@@ -4,6 +4,7 @@ import "time"
 import hsm "github.com/hhkbp2/go-hsm"
 
 const (
+    RaftStateID = "raft"
     FollowerID  = "follower"
     CandidateID = "candidate"
     LeaderID    = "leader"

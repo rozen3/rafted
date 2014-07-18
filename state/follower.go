@@ -7,7 +7,7 @@ import "bytes"
 import hsm "github.com/hhkbp2/go-hsm"
 
 type Follower struct {
-    hsm.StateHead
+    *hsm.StateHead
 
     // heartbeat timeout and its time ticker
     heartbeatTimeout time.Duration
@@ -19,7 +19,7 @@ type Follower struct {
 
 func NewFollower(super hsm.State, heartbeatTimeout time.Duration) *Follower {
     object := &Follower{
-        StateHead:        hsm.MakeStateHead(super),
+        StateHead:        hsm.NewStateHead(super),
         heartbeatTimeout: heartbeatTimeout,
         ticker:           NewRandomTicker(heartbeatTimeout),
     }
@@ -46,6 +46,10 @@ func (self *Follower) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     }
     self.ticker.Start(notifyHeartbeatTimeout)
     return nil
+}
+
+func (self *Follower) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+    return self.Super()
 }
 
 func (self *Follower) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {

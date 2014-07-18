@@ -5,12 +5,12 @@ import hsm "github.com/hhkbp2/go-hsm"
 import rafted "github.com/hhkbp2/rafted"
 
 type PeerState struct {
-    hsm.StateHead
+    *hsm.StateHead
 }
 
 func NewPeerState(super hsm.State) *PeerState {
     object := &PeerState{
-        StateHead: hsm.MakeStateHead(super),
+        StateHead: hsm.NewStateHead(super),
     }
     super.AddChild(object)
     return object

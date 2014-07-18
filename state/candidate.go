@@ -6,7 +6,7 @@ import "sync"
 import hsm "github.com/hhkbp2/go-hsm"
 
 type Candidate struct {
-    hsm.StateHead
+    *hsm.StateHead
 
     // election timeout and its time ticker
     electionTimeout time.Duration
@@ -20,7 +20,7 @@ type Candidate struct {
 
 func NewCandidate(super hsm.State, electionTimeout time.Duration) *Candidate {
     object := &Candidate{
-        StateHead:       hsm.MakeStateHead(super),
+        StateHead:       hsm.NewStateHead(super),
         electionTimeout: electionTimeout,
         ticker:          NewRandomTicker(electionTimeout),
     }

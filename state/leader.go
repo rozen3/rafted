@@ -4,13 +4,13 @@ import "fmt"
 import hsm "github.com/hhkbp2/go-hsm"
 
 type Leader struct {
-    hsm.StateHead
+    *hsm.StateHead
 
     // TODO add fields
 }
 
 func NewLeader(super hsm.State) *Leader {
-    object := &Leader{hsm.MakeStateHead(super)}
+    object := &Leader{hsm.NewStateHead(super)}
     super.AddChild(object)
     return object
 }
