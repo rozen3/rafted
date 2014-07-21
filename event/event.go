@@ -1,4 +1,4 @@
-package rafted
+package event
 
 import hsm "github.com/hhkbp2/go-hsm"
 

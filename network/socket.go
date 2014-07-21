@@ -5,7 +5,7 @@ import "bufio"
 import "errors"
 import "github.com/ugorji/go/codec"
 import hsm "github.com/hhkbp2/go-hsm"
-import rafted "github.com/hhkbp2/rafted"
+import event "github.com/hhkbp2/rafted/event"
 
 type SocketTransport struct {
     addr net.Addr
@@ -261,27 +261,27 @@ func ReadRequest(
         return nil, err
     }
     switch eventType {
-    case rafted.EventAppendEntriesRequest:
-        request := &rafted.AppendEntriesRequest{}
+    case event.EventAppendEntriesRequest:
+        request := &event.AppendEntriesRequest{}
         if err := decoder.Decode(request); err != nil {
             return nil, err
         }
-        event := rafted.NewAppendEntriesRequestEvent(request)
+        event := event.NewAppendEntriesRequestEvent(request)
         return event, nil
-    case rafted.EventRequestVoteRequest:
-        request := &rafted.RequestVoteRequest{}
+    case event.EventRequestVoteRequest:
+        request := &event.RequestVoteRequest{}
         if err := decoder.Decode(request); err != nil {
             return nil, err
         }
         return message, nil
-        event := rafted.NewRequestVoteRequestEvent(request)
+        event := event.NewRequestVoteRequestEvent(request)
         return event, nil
-    case rafted.EventInstallSnapshotRequest:
-        request := &rafted.InstallSnapshotRequest{}
+    case event.EventInstallSnapshotRequest:
+        request := &event.InstallSnapshotRequest{}
         if err := decoder.Decode(request); err != nil {
             return err
         }
-        event := rafted.NewInstallSnapshotRequestEvent(request)
+        event := event.NewInstallSnapshotRequestEvent(request)
         return event, nil
     default:
         return nil, errors.New("not request event")
@@ -296,22 +296,22 @@ func ReadResponse(
         return nil, err
     }
     switch eventType {
-    case rafted.EventAppendEntriesResponse:
-        response := &rafted.AppendEntriesResponse{}
+    case event.EventAppendEntriesResponse:
+        response := &event.AppendEntriesResponse{}
         if err := decoder.Decode(response); err != nil {
             return nil, err
         }
-        event := rafted.NewAppendEntriesResponseEvent(response)
+        event := event.NewAppendEntriesResponseEvent(response)
         return event, nil
-    case rafted.EventRequestVoteResponse:
-        response := &rafted.RequestVoteResponse{}
+    case event.EventRequestVoteResponse:
+        response := &event.RequestVoteResponse{}
         if err := decoder.Decode(response); err != nil {
             return nil, err
         }
-        event := rafted.NewRequestVoteResponseEvent(response)
+        event := event.NewRequestVoteResponseEvent(response)
         return event, nil
-    case rafted.EventInstallSnapshotResponse:
-        response := &rafted.InstallSnapshotResponse{}
+    case event.EventInstallSnapshotResponse:
+        response := &event.InstallSnapshotResponse{}
         if err := decoder.Decode(response); err != nil {
             return nil, err
         }
