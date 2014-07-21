@@ -4,7 +4,6 @@ import "sync"
 import "sync/atomic"
 import "net"
 import hsm "github.com/hhkbp2/go-hsm"
-import network "github.com/hhkbp2/rafted/network"
 
 const (
     HSMTypeRaft = hsm.HSMTypeStd + 1 + iota

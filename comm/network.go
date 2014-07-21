@@ -1,4 +1,4 @@
-package network
+package comm
 
 import "io"
 import "net"
