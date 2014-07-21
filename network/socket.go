@@ -276,13 +276,6 @@ func ReadRequest(
         return message, nil
         event := rafted.NewRequestVoteRequestEvent(request)
         return event, nil
-    case rafted.EventPrepareInstallSnapshotRequest:
-        request := &rafted.PrepareInstallSnapshotRequest{}
-        if err := decoder.Decode(request); err != nil {
-            return err
-        }
-        event := rafted.NewPrepareInstallSnapshotRequestEvent(request)
-        return event, nil
     case rafted.EventInstallSnapshotRequest:
         request := &rafted.InstallSnapshotRequest{}
         if err := decoder.Decode(request); err != nil {
@@ -316,13 +309,6 @@ func ReadResponse(
             return nil, err
         }
         event := rafted.NewRequestVoteResponseEvent(response)
-        return event, nil
-    case rafted.EventPrepareInstallSnapshotResponse:
-        response := &rafted.PrepareInstallSnapshotResponse{}
-        if err := decoder.Decode(response); err != nil {
-            return nil, err
-        }
-        event := rafted.NewPrepareInstallSnapshotResponseEvent(response)
         return event, nil
     case rafted.EventInstallSnapshotResponse:
         response := &rafted.InstallSnapshotResponse{}

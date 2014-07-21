@@ -3,7 +3,7 @@ package rafted
 // AppendEntriesRequest is the command used to append entries to the
 // replicated log.
 type AppendEntriesRequest struct {
-    // Provide the current term and leader
+    // Provide the current term and leader ID
     Term   uint64
     Leader []byte
 
@@ -34,7 +34,7 @@ type AppendEntriesResponse struct {
 // RequestVoteRequest is the command used by a candidate to ask a Raft peer
 // for a vote in an election.
 type RequestVoteRequest struct {
-    // Provide the term and our id
+    // Provide the term and our ID
     Term      uint64
     Candidate []byte
 
@@ -52,43 +52,38 @@ type RequestVoteResponse struct {
     Granted bool
 }
 
-// PrepareInstallSnapshotRequest is the command sent to a Raft peer to bootstrap its
-// log (and state machine) from a snapshot on another peer.
-type PrepareInstallSnapshotRequest struct {
-    Term   uint64
+// InstallSnapshotRequest is the request sent to a Raft follower
+// whose log is too far behind to catch up with leader.
+// Snapshot is sent to the follower in chunks from the leader.
+type InstallSnapshotRequest struct {
+    // Leader's current term
+    Term uint64
+    // Leader ID
     Leader []byte
 
-    // These are the last index/term included in the snapshot
-    LastLogIndex uint64
-    LastLogTerm  uint64
+    // the snapshot replaces all entries up through and including this index
+    LastIncludedIndex uint64
+    // term of lastIncludedIndex
+    LastLogTerm uint64
 
-    // Peer Set in the snapshot
-    Peers []byte
+    // byte offset where chunk is positioned in the snapshot file
+    Offset uint64
+
+    // raw bytes of the snapshot chunk, starting at offset
+    Data []byte
+
+    // The configuration of all servers on LastIncludedIndex log entry
+    // (when taking snapshot)
+    Servers []byte
 
     // Size of the snapshot
     Size int64
 }
 
-// PrepareInstallSnapshotResponse is the response of an PrepareInstallSnapshotRequest.
-type PrepareInstallSnapshotResponse struct {
-    Term    uint64
-    Success bool
-}
-
-// InstallSnapshotRequest is the command to start tranfering the content of snapshot
-type InstallSnapshotRequest struct {
-    SnapshotID uint64
-    SegmentID  uint64
-    Segment    []byte
-    CheckSum   []byte
-    Size       uint64
-}
-
 // InstallSnapshotResponse is the response of an InstallSnapshotRequest.
 type InstallSnapshotResponse struct {
-    SnapshotID uint64
-    SegmentID  uint64
-    Success    bool
+    // current term of the follower, for leader to update itself
+    Term uint64
 }
 
 // LeaderRedirectResponse is to redirect client to leader.

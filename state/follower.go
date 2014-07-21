@@ -79,9 +79,6 @@ func (self *Follower) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
         response := self.ProcessAppendEntries(raftHSM, e.Request)
         e.Response(NewAppendEntriesResponseEvent(response))
         return nil
-    case event.Type() == EventPrepareInstallSnapshotRequest:
-        // TODO add substate
-        return nil
     case event.Type() == EventInstallSnapshotRequest:
         // TODO add substate
         return nil

@@ -9,8 +9,6 @@ const (
     EventAppendEntriesResponse
     EventRequestVoteRequest
     EventRequestVoteResponse
-    EventPrepareInstallSnapshotRequest
-    EventPrepareInstallSnapshotResponse
     EventInstallSnapshotRequest
     EventInstallSnapshotResponse
     EventRaftEnd
@@ -38,7 +36,6 @@ func IsRaftRequest(eventType hsm.EventType) bool {
     switch eventType {
     case EventAppendEntriesRequest:
     case EventRequestVoteRequest:
-    case EventPrepareInstallSnapshotRequest:
     case EventInstallSnapshotRequest:
     default:
         return false
@@ -158,40 +155,6 @@ func (self *RequestVoteRequestEvent) Message() interface{} {
     return self.response
 }
 
-type PrepareInstallSnapshotRequestEvent struct {
-    *RequestEventHead
-    request *PrepareInstallSnapshotRequest
-}
-
-func NewPrepareInstallSnapshotRequestEvent(
-    request *PrepareInstallSnapshotRequest) *PrepareInstallSnapshotRequestEvent {
-    return &PrepareInstallSnapshotRequestEvent{
-        NewRequestEventHead(EventPrepareInstallSnapshotRequest),
-        request,
-    }
-}
-
-func (self *PrepareInstallSnapshotRequest) Message() interface{} {
-    return self.request
-}
-
-type PrepareInstallSnapshotResponseEvent struct {
-    *hsm.StdEvent
-    response *PrepareInstallSnapshotResponse
-}
-
-func NewPrepareInstallSnapshotResponseEvent(
-    response *PrepareInstallSnapshotResponse) *PrepareInstallSnapshotResponseEvent {
-    return &PrepareInstallSnapshotResponseEvent{
-        hsm.NewStdEvent(EventPrepareInstallSnapshotResponse),
-        response,
-    }
-}
-
-func (self *PrepareInstallSnapshotResponseEvent) Message() interface{} {
-    return self.response
-}
-
 type InstallSnapshotRequestEvent struct {
     *RequestEventHead
     request *InstallSnapshotRequest
@@ -211,7 +174,7 @@ func (self *InstallSnapshotRequestEvent) Message() interface{} {
 
 type InstallSnapshotResponseEvent struct {
     *hsm.StdEvent
-    response *PrepareInstallSnapshotResponse
+    response *InstallSnapshotResponse
 }
 
 func NewInstallSnapshotResponseEvent(

@@ -49,8 +49,6 @@ func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
         fallthrough
     case event.Type() == EventAppendEntriesResponse:
         fallthrough
-    case event.Type() == EventPrepareInstallSnapshotResponse:
-        fallthrough
     case event.Type() == EventInstallSnapshotResponse:
         e, ok := event.(RaftEvent)
         hsm.AssertTrue(ok)
