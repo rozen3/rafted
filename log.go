@@ -11,11 +11,11 @@ const (
     // LogNoop is used to ensure the leadership for leader.
     LogNoop
 
-    // LogAddrPeer is used to add a new node for the cluster.
-    LogAddrPeer
+    // LogAddrServer is used to add a new node for the cluster.
+    LogAddrServer
 
-    // LogRemovePeer is used to remove a node for the cluster.
-    LogRemovePeer
+    // LogRemoveServer is used to remove a node for the cluster.
+    LogRemoveServer
 
     // LogBarrier is used to ensure all preceeding operations have heen
     // applied to the FSM. A loan from hashicorp-raft.
