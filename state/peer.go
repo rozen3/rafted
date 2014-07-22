@@ -2,7 +2,6 @@ package state
 
 import "fmt"
 import hsm "github.com/hhkbp2/go-hsm"
-import rafted "github.com/hhkbp2/rafted"
 
 type PeerState struct {
     *hsm.StateHead

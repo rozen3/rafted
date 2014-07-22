@@ -1,4 +1,4 @@
-package rafted
+package persist
 
 import "io"
 

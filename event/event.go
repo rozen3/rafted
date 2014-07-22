@@ -80,8 +80,7 @@ func (self *RequestEventHead) RecvResponse() RaftEvent {
     return response
 }
 
-func NewRequestEventHead(
-    eventType hsm.EventType) *RequestEvent {
+func NewRequestEventHead(eventType hsm.EventType) *RequestEventHead {
     return &RequestEventHead{
         hsm.NewStdEvent(eventType),
         make(chan RaftEvent, 1),
@@ -95,6 +94,7 @@ type AppendEntriesReqeustEvent struct {
 
 func NewAppendEntriesRequestEvent(
     request *AppendEntriesRequest) *AppendEntriesReqeustEvent {
+
     return &AppendEntriesReqeustEvent{
         NewRequestEventHead(EventAppendEntriesRequest),
         request,
@@ -128,6 +128,7 @@ type RequestVoteRequestEvent struct {
 
 func NewRequestVoteRequestEvent(
     request *RequestVoteRequest) *RequestVoteRequestEvent {
+
     return &RequestVoteRequestEvent{
         NewRequestEventHead(EventRequestVoteRequest),
         request,
@@ -145,13 +146,14 @@ type RequestVoteResponseEvent struct {
 
 func NewRequestVoteResponseEvent(
     response *RequestVoteResponse) *RequestVoteResponseEvent {
+
     return &RequestVoteResponseEvent{
         hsm.NewStdEvent(EventRequestVoteResponse),
         response,
     }
 }
 
-func (self *RequestVoteRequestEvent) Message() interface{} {
+func (self *RequestVoteResponseEvent) Message() interface{} {
     return self.response
 }
 
@@ -178,7 +180,8 @@ type InstallSnapshotResponseEvent struct {
 }
 
 func NewInstallSnapshotResponseEvent(
-    response *InstallSnapshotResponse) *InstallSnapshotRequestEvent {
+    response *InstallSnapshotResponse) *InstallSnapshotResponseEvent {
+
     return &InstallSnapshotResponseEvent{
         hsm.NewStdEvent(EventInstallSnapshotResponse),
         response,
@@ -213,7 +216,7 @@ type LeaderRedirectResponseEvent struct {
 func NewLeaderRedirectResponseEvent(
     response *LeaderRedirectResponse) *LeaderRedirectResponseEvent {
     return &LeaderRedirectResponseEvent{
-        hsm.NewStdEvent(EventRedirectResponse),
+        hsm.NewStdEvent(EventLeaderRedirectResponse),
         response,
     }
 }
@@ -229,6 +232,7 @@ type LeaderUnknownResponseEvent struct {
 
 func NewLeaderUnknownResponseEvent(
     response *LeaderUnknownResponse) *LeaderUnknownResponseEvent {
+
     return &LeaderUnknownResponseEvent{
         hsm.NewStdEvent(EventLeaderUnknownResponse),
         response,

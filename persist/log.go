@@ -1,4 +1,4 @@
-package rafted
+package persist
 
 // LogType is used to describe different types of log entries.
 type LogType uint8

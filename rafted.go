@@ -1,5 +1,9 @@
 package rafted
 
+import (
+    "github.com/hhkbp2/rafted/comm"
+)
+
 func CreateRaftHSM(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
@@ -19,8 +23,8 @@ func CreateRaftHSM(
 type RaftNode struct {
     raftHSM     *RaftHSM
     peerManager *PeerManager
-    client      *network.Client
-    server      *network.Server
+    client      *comm.Client
+    server      *comm.Server
 }
 
 func NewRaftNode(
@@ -32,7 +36,7 @@ func NewRaftNode(
     peerAddrs []net.Addr) *RaftNode {
 
     raftHSM := NewRaftHSM(heartbeatTimeout, electionTimeout, localAddr)
-    client := network.NewSocketClient(poolSize)
+    client := comm.NewSocketClient(poolSize)
     eventHandler1 := func(event RaftEvent) {
         raftHSM.Dispatch(event)
     }
@@ -41,7 +45,7 @@ func NewRaftNode(
     }
     peerManager := NewPeerManager(peerAddrs, client, eventHandler1)
     raftHSM.SetPeerManager(peerManager)
-    server := network.NewSocketServer(bindAddr, eventHandler2)
+    server := comm.NewSocketServer(bindAddr, eventHandler2)
     return &RaftNode{
         raftHSM:     raftHSM,
         peerManager: peerManager,

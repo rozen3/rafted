@@ -1,5 +1,7 @@
 package event
 
+import "github.com/hhkbp2/rafted/persist"
+
 // AppendEntriesRequest is the command used to append entries to the
 // replicated log.
 type AppendEntriesRequest struct {
@@ -12,7 +14,7 @@ type AppendEntriesRequest struct {
     PrevLogTerm  uint64
 
     // New entries to commit
-    Entries []*LogEntry
+    Entries []*persist.LogEntry
 
     // Commit index on the leader
     LeaderCommitIndex uint64
