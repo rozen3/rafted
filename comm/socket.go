@@ -45,21 +45,23 @@ type SocketConnection struct {
     *SocketTransport
     reader  *bufio.Reader
     writer  *bufio.Writer
-    encoder *Decoder
-    decoder *Encoder
+    encoder *Encoder
+    decoder *Decoder
 }
 
 func NewSocketConnection(addr net.Addr) *SocketConnection {
     return &SocketConnection{
-        transport: NewSocketTransport(addr),
-        reader:    bufio.NewReader(transport),
-        writer:    bufio.NewWriter(transport),
-        decoder:   codec.NewDecoder(reader, &codec.MsgpackHandle{}),
-        encoder:   codec.NewEncoder(writer, &codec.MsgpackHandle{}),
+        SocketTransport: NewSocketTransport(addr),
+        reader:          bufio.NewReader(transport),
+        writer:          bufio.NewWriter(transport),
+        decoder:         codec.NewDecoder(reader, &codec.MsgpackHandle{}),
+        encoder:         codec.NewEncoder(writer, &codec.MsgpackHandle{}),
     }
 }
 
-func (self *SocketConnection) CallRPC(request RaftEvent) (response RaftEvent, err error) {
+func (self *SocketConnection) CallRPC(
+    request RaftEvent) (response RaftEvent, err error) {
+
     if err := WriteEvent(self.writer, self.encoder, request); err != nil {
         self.Close()
         return nil, err
@@ -82,13 +84,14 @@ type SocketClient struct {
 
 func NewSocketClient(poolSize uint32) *SocketClient {
     return &SocketClient{
-        connectionPool: make(map[string][]*SocketConnection),
+        connectionPool: make(map[net.Addr][]*SocketConnection),
         poolSize:       poolSize,
     }
 }
 
 func (self *SocketClient) CallRPCTo(
     target net.Addr, request RaftEvent) (response RaftEvent, err error) {
+
     connection, err := self.getConnection(target)
     if err != nil {
         return nil, err
@@ -103,12 +106,13 @@ func (self *SocketClient) CallRPCTo(
 
 func (self *SocketClient) getConnectionFromPool(
     target net.Addr) (*SocketConnection, error) {
+
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
 
     key := target.String()
     connections, ok := self.connectionPool[key]
-    if !ok || len(conns) == 0 {
+    if !ok || len(connections) == 0 {
         return nil, errors.New("no connection for this target")
     }
 
@@ -119,6 +123,7 @@ func (self *SocketClient) getConnectionFromPool(
 
 func (self *SocketClient) returnConnectionToPool(
     connection *SocketConnection) {
+
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
 
@@ -134,9 +139,10 @@ func (self *SocketClient) returnConnectionToPool(
 
 func (self *SocketClient) getConnection(
     target net.Addr) (*SocketConnection, error) {
+
     // check for pooled connection first
-    if connection, err := self.getConnectionFromPool(
-        target); connection != nil && err == nil {
+    connection, err := self.getConnectionFromPool(target)
+    if connection != nil && err == nil {
         return connection, nil
     }
 
@@ -155,8 +161,10 @@ type SocketServer struct {
     eventHandler func(RequestEvent)
 }
 
-func NewSocketServer(bindAddr net.Addr,
+func NewSocketServer(
+    bindAddr net.Addr,
     eventHandler func(RequestEvent)) (*SocketServer, error) {
+
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
     if err != nil {
         return nil, err
@@ -190,6 +198,7 @@ func (self *SocketServer) handleConn(conn net.Conn) {
     for {
         if err := self.handleCommand(
             reader, writer, decoder, encoder); err != nil {
+
             if err != io.EOF {
                 // TODO add log
             }
@@ -207,6 +216,7 @@ func (self *SocketServer) handlCommand(
     writer *bufio.Writer,
     decoder *Decoder,
     encoder *Encoder) error {
+
     // read request
     if event, err := ReadRequest(reader, decoder); err != nil {
         return err

@@ -24,9 +24,6 @@ type Transport interface {
 type BufferedTransport struct{}
 
 // TODO to impl Transport
-type MemoryTransport struct{}
-
-// TODO to impl Transport
 type FramedTransport struct{}
 
 // TODO to impl Transport
