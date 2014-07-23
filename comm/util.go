@@ -1,7 +1,9 @@
 package comm
 
-import crand "crypto/rand"
-import "fmt"
+import (
+    crand "crypto/rand"
+    "fmt"
+)
 
 func GenerateRandomUUID() string {
     buf := make([]byte, 16)

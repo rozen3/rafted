@@ -1,8 +1,10 @@
-package state
+package rafted
 
-import "time"
-import "math/rand"
-import "sync"
+import (
+    "math/rand"
+    "sync"
+    "time"
+)
 
 func RandomDuration(value time.Duration) time.Duration {
     return RandomMultipleDuration(value, 2)

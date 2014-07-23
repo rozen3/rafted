@@ -1,7 +1,10 @@
-package state
+package rafted
 
-import "fmt"
-import hsm "github.com/hhkbp2/go-hsm"
+import (
+    "fmt"
+    hsm "github.com/hhkbp2/go-hsm"
+    ev "github.com/hhkbp2/rafted/event"
+)
 
 type PeerState struct {
     *hsm.StateHead
@@ -16,7 +19,7 @@ func NewPeerState(super hsm.State) *PeerState {
 }
 
 func (*PeerState) ID() string {
-    return PeerStateID
+    return StatePeerID
 }
 
 func (self *PeerState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
@@ -34,8 +37,8 @@ func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch {
-    case IsRaftRequest(event.Type()):
-        e, ok := event.(RaftEvent)
+    case ev.IsRaftRequest(event.Type()):
+        e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
         response, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
         if err != nil {
@@ -44,12 +47,12 @@ func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
         }
         peerHSM.SelfDispatch(response)
         return nil
-    case event.Type() == EventRequestVoteResponse:
+    case event.Type() == ev.EventRequestVoteResponse:
         fallthrough
-    case event.Type() == EventAppendEntriesResponse:
+    case event.Type() == ev.EventAppendEntriesResponse:
         fallthrough
-    case event.Type() == EventInstallSnapshotResponse:
-        e, ok := event.(RaftEvent)
+    case event.Type() == ev.EventInstallSnapshotResponse:
+        e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
         peerHSM.EventHandler(e)
         return nil

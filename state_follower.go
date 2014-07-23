@@ -1,12 +1,15 @@
-package state
+package rafted
 
-import "fmt"
-import "time"
-import "sync"
-import "bytes"
-import hsm "github.com/hhkbp2/go-hsm"
+import (
+    "bytes"
+    "fmt"
+    hsm "github.com/hhkbp2/go-hsm"
+    ev "github.com/hhkbp2/rafted/event"
+    "sync"
+    "time"
+)
 
-type Follower struct {
+type FollowerState struct {
     *hsm.StateHead
 
     // heartbeat timeout and its time ticker
@@ -17,8 +20,8 @@ type Follower struct {
     lastContactTimeLock sync.RWMutex
 }
 
-func NewFollower(super hsm.State, heartbeatTimeout time.Duration) *Follower {
-    object := &Follower{
+func NewFollowerState(super hsm.State, heartbeatTimeout time.Duration) *FollowerState {
+    object := &FollowerState{
         StateHead:        hsm.NewStateHead(super),
         heartbeatTimeout: heartbeatTimeout,
         ticker:           NewRandomTicker(heartbeatTimeout),
@@ -27,11 +30,11 @@ func NewFollower(super hsm.State, heartbeatTimeout time.Duration) *Follower {
     return object
 }
 
-func (*Follower) ID() string {
-    return FollowerID
+func (*FollowerState) ID() string {
+    return StateFollowerID
 }
 
-func (self *Follower) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *FollowerState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Entry")
     // init status for this status
     self.UpdateLastContactTime()
@@ -41,65 +44,66 @@ func (self *Follower) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     hsm.AssertTrue(ok)
     notifyHeartbeatTimeout := func() {
         if TimeExpire(self.LastContactTime(), self.heartbeatTimeout) {
-            raftHSM.SelfDispatch(NewHeartbeatTimeoutEvent())
+            raftHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent())
         }
     }
     self.ticker.Start(notifyHeartbeatTimeout)
     return nil
 }
 
-func (self *Follower) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *FollowerState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     return self.Super()
 }
 
-func (self *Follower) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *FollowerState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Exit")
     // stop heartbeat timeout ticker
     self.ticker.Stop()
     return nil
 }
 
-func (self *Follower) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *FollowerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Handle, event =", event)
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
     switch {
-    case event.Type() == EventTimeoutHeartBeat:
-        raftHSM.QTran(CandidateID)
+    case event.Type() == ev.EventTimeoutHeartBeat:
+        raftHSM.QTran(StateCandidateID)
         return nil
-    case event.Type() == EventRequestVoteRequest:
-        e, ok := event.(*RequestVoteRequestEvent)
+    case event.Type() == ev.EventRequestVoteRequest:
+        e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
         response := self.ProcessRequestVote(raftHSM, e.Request)
-        e.Response(NewRequestVoteResponseEvent(response))
+        e.SendResponse(ev.NewRequestVoteResponseEvent(response))
         return nil
-    case event.Type() == EventAppendEntriesRequest:
-        e, ok := event.(*AppendEntriesReqeustEvent)
+    case event.Type() == ev.EventAppendEntriesRequest:
+        e, ok := event.(*ev.AppendEntriesReqeustEvent)
         hsm.AssertTrue(ok)
         response := self.ProcessAppendEntries(raftHSM, e.Request)
-        e.Response(NewAppendEntriesResponseEvent(response))
+        e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
         return nil
-    case event.Type() == EventInstallSnapshotRequest:
+    case event.Type() == ev.EventInstallSnapshotRequest:
         // TODO add substate
         return nil
-    case IsClientEvent(event.Type()):
-        e, ok := event.(*RequestEvent)
+    case ev.IsClientEvent(event.Type()):
+        e, ok := event.(ev.RequestEvent)
         hsm.AssertTrue(ok)
         // redirect client to current leader
         leader := raftHSM.GetLeader().String()
-        response := &RedirectResponse{leader}
-        e.Response(NewRedirectResponseEvent(response))
+        response := &ev.LeaderRedirectResponse{leader}
+        e.SendResponse(ev.NewLeaderRedirectResponseEvent(response))
         return nil
     }
     return self.Super()
 }
 
-func (self *Follower) ProcessRequestVote(
-    raftHSM *RaftHSM, request *RequestVoteRequest) *RequestVoteResponse {
+func (self *FollowerState) ProcessRequestVote(
+    raftHSM *RaftHSM,
+    request *ev.RequestVoteRequest) *ev.RequestVoteResponse {
 
     // TODO initialize peers correctly
     term := raftHSM.GetCurrentTerm()
-    response := &RequestVoteResponse{
+    response := &ev.RequestVoteResponse{
         Term:    term,
         Granted: false,
     }
@@ -141,11 +145,12 @@ func (self *Follower) ProcessRequestVote(
     return response
 }
 
-func (self *Follower) ProcessAppendEntries(
-    raftHSM *RaftHSM, request *AppendEntriesRequest) *AppendEntriesResponse {
+func (self *FollowerState) ProcessAppendEntries(
+    raftHSM *RaftHSM,
+    request *ev.AppendEntriesRequest) *ev.AppendEntriesResponse {
 
     term := raftHSM.GetCurrentTerm()
-    response := &AppendEntriesResponse{
+    response := &ev.AppendEntriesResponse{
         Term:         term,
         LastLogIndex: raftHSM.GetLastIndex(),
         Success:      false,
@@ -199,7 +204,7 @@ func (self *Follower) ProcessAppendEntries(
         lastLogIndex := raftHSM.GetLastIndex()
         if first.Index <= lastLogIndex {
             // TODO add log
-            if err := raftHSM.GetLog().Truncate(first.Index); err != nil {
+            if err := raftHSM.GetLog().TruncateAfter(first.Index); err != nil {
                 // TODO add log
                 return response
             }
@@ -225,13 +230,13 @@ func (self *Follower) ProcessAppendEntries(
     return response
 }
 
-func (self *Follower) LastContactTime() time.Time {
+func (self *FollowerState) LastContactTime() time.Time {
     self.lastContactTimeLock.RLock()
     defer self.lastContactTimeLock.RUnlock()
     return self.lastContactTime
 }
 
-func (self *Follower) UpdateLastContactTime() {
+func (self *FollowerState) UpdateLastContactTime() {
     self.lastContactTimeLock.Lock()
     defer self.lastContactTimeLock.Unlock()
     self.lastContactTime = time.Now()

@@ -2,12 +2,16 @@ package rafted
 
 import (
     "github.com/hhkbp2/rafted/comm"
+    ev "github.com/hhkbp2/rafted/event"
+    "net"
     "testing"
+    "time"
 )
 
 const (
     HeartbeatTimeout = time.Millisecond * 200
     ElectionTimeout  = time.Millisecond * 50
+    DefaultPoolSize  = 2
 )
 
 func NewTestRaftNode(
@@ -16,14 +20,14 @@ func NewTestRaftNode(
     localAddr net.Addr,
     peerAddrs []net.Addr) *RaftNode {
 
-    raftHSM := NewRaftHSM(heartbeatTimeout, electionTimeout, localAddr)
+    raftHSM := CreateRaftHSM(heartbeatTimeout, electionTimeout, localAddr)
 
     register := comm.NewMemoryTransportRegister()
-    client := comm.NewMemoryClient(localAddr, register)
-    eventHandler1 := func(event RaftEvent) {
+    client := comm.NewMemoryClient(DefaultPoolSize, register)
+    eventHandler1 := func(event ev.RaftEvent) {
         raftHSM.Dispatch(event)
     }
-    eventHandler2 := func(event RequestEvent) {
+    eventHandler2 := func(event ev.RequestEvent) {
         raftHSM.Dispatch(event)
     }
     peerManager := NewPeerManager(peerAddrs, client, eventHandler1)
@@ -39,11 +43,13 @@ func NewTestRaftNode(
 
 func TestRafted(t *testing.T) {
     allAddrs := []net.Addr{
-        NewMemoryAddr(),
-        NewMemoryAddr(),
+        comm.NewMemoryAddr(),
+        comm.NewMemoryAddr(),
     }
     node1 := NewTestRaftNode(HeartbeatTimeout, ElectionTimeout, allAddrs[0], allAddrs[1:])
     //    go node1.Run()
+    t.Log(node1)
     node2 := NewTestRaftNode(HeartbeatTimeout, ElectionTimeout, allAddrs[1], allAddrs[:1])
     //    go node2.Run()
+    t.Log(node2)
 }

@@ -1,6 +1,8 @@
 package rafted
 
-import "net"
+import (
+    "net"
+)
 
 func EncodeAddr(addr net.Addr) ([]byte, error) {
     if addr == nil {

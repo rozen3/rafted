@@ -1,10 +1,15 @@
 package comm
 
-import "errors"
-import "fmt"
-import "net"
-import "sync"
-import event "github.com/hhkbp2/rafted/event"
+import (
+    "bufio"
+    "errors"
+    "fmt"
+    ev "github.com/hhkbp2/rafted/event"
+    "github.com/ugorji/go/codec"
+    "io"
+    "net"
+    "sync"
+)
 
 const (
     DefaultTransportBufferSize = 16
@@ -42,14 +47,15 @@ func NewMemoryServerTransport(
     addr net.Addr, register *MemoryTransportRegister) *MemoryServerTransport {
 
     return &MemoryServerTransport{
-        addr,
-        make(chan *TransportChunk, DefaultTransportBufferSize),
-        register,
+        addr:       addr,
+        ConsumeCh:  make(chan *TransportChunk, DefaultTransportBufferSize),
+        ResponseCh: make(chan []byte),
+        register:   register,
     }
 }
 
 func (self *MemoryServerTransport) Open() error {
-    self.register.Register(self.addr.String(), object)
+    self.register.Register(self.addr.String(), self)
     return nil
 }
 
@@ -94,13 +100,13 @@ func (self *MemoryTransportRegister) Register(
 
     self.Lock()
     defer self.Unlock()
-    self.transport[id] = transport
+    self.transports[id] = transport
 }
 
 func (self *MemoryTransportRegister) Unregister(id string) error {
     self.Lock()
     defer self.Unlock()
-    if _, ok = self.transports[id]; ok {
+    if _, ok := self.transports[id]; ok {
         delete(self.transports, id)
         return nil
     }
@@ -112,7 +118,8 @@ func (self *MemoryTransportRegister) Get(
 
     self.RLock()
     defer self.RUnlock()
-    return self.transports[id]
+    transport, ok = self.transports[id]
+    return transport, ok
 }
 
 type MemoryTransport struct {
@@ -124,9 +131,9 @@ type MemoryTransport struct {
 
 func NewMemoryTransport(addr net.Addr, register *MemoryTransportRegister) *MemoryTransport {
     return &MemoryTransport{
-        addr,
-        make(chan []byte, DefaultTransportBufferSize),
-        register,
+        addr:      addr,
+        consumeCh: make(chan []byte, DefaultTransportBufferSize),
+        register:  register,
     }
 }
 
@@ -135,11 +142,12 @@ func (self *MemoryTransport) PeerAddr() net.Addr {
 }
 
 func (self *MemoryTransport) Open() error {
-    if transport, ok := self.register.Get(self.addr); ok {
+    if transport, ok := self.register.Get(self.addr.String()); ok {
         self.peer = transport
         return nil
     }
-    return errors.New(fmt.Sprintf("no server transport for id: %v", id))
+    return errors.New(
+        fmt.Sprintf("no server transport for id: %v", self.addr.String()))
 }
 
 func (self *MemoryTransport) Close() error {
@@ -148,13 +156,13 @@ func (self *MemoryTransport) Close() error {
 }
 
 func (self *MemoryTransport) Read(b []byte) (int, error) {
-    b = <-self.ConsumeCh
+    b = <-self.consumeCh
     return len(b), nil
 }
 
 func (self *MemoryTransport) Write(b []byte) (int, error) {
-    chunk = &TransportChunk{b, self.ConsumeCh}
-    if err := self.peer.Write(chunk); err != nil {
+    chunk := &TransportChunk{b, self.consumeCh}
+    if err := self.peer.WriteChunk(chunk); err != nil {
         return len(b), err
     }
     return len(b), nil
@@ -164,61 +172,67 @@ type MemoryConnection struct {
     *MemoryTransport
     reader  *bufio.Reader
     writer  *bufio.Writer
-    encoder *Encoder
-    decoder *Decoder
+    encoder Encoder
+    decoder Decoder
 }
 
-func NewMomeryConnection(
+func NewMemoryConnection(
     addr net.Addr, register *MemoryTransportRegister) *MemoryConnection {
 
-    return &MemoryConnection{
-        MemoryTransport: NewMemory(addr, register),
-        reader:          bufio.NewReader(transport),
-        writer:          bufio.NewWriter(transport),
-        decoder:         codec.NewDecoder(reader, &codec.MsgpackHandle{}),
-        encoder:         codec.NewEncoder(writer, &codec.MsgpackHandle{}),
+    conn := &MemoryConnection{
+        MemoryTransport: NewMemoryTransport(addr, register),
     }
+    conn.reader = bufio.NewReader(conn.MemoryTransport)
+    conn.writer = bufio.NewWriter(conn.MemoryTransport)
+    conn.decoder = codec.NewDecoder(conn.reader, &codec.MsgpackHandle{})
+    conn.encoder = codec.NewEncoder(conn.writer, &codec.MsgpackHandle{})
+    return conn
 }
 
 func (self *MemoryConnection) CallRPC(
-    request RaftEvent) (response RaftEvent, err error) {
+    request ev.RaftEvent) (response ev.RaftEvent, err error) {
 
     if err := WriteEvent(self.writer, self.encoder, request); err != nil {
         self.Close()
         return nil, err
     }
 
-    if event, err := ReadResponse(self.reader, self.decoder); err != nil {
+    event, err := ReadResponse(self.reader, self.decoder)
+    if err != nil {
         self.Close()
         return nil, err
     }
+    return event, nil
 }
 
 type MemoryClient struct {
-    connectionPool     map[net.Addr][]*MemoryConnection
+    connectionPool     map[string][]*MemoryConnection
     connectionPoolLock sync.Mutex
 
-    poolSize uint32
+    poolSize int
     register *MemoryTransportRegister
 }
 
-func NewMemoryClient(poolSize uint32, register *MemoryTransportRegister) *MemoryClient {
+func NewMemoryClient(
+    poolSize int, register *MemoryTransportRegister) *MemoryClient {
+
     return &MemoryClient{
-        connectionPool: make(map[net.Addr][]*MemoryConnection),
+        connectionPool: make(map[string][]*MemoryConnection),
         poolSize:       poolSize,
         register:       register,
     }
 }
 
 func (self *MemoryClient) CallRPCTo(
-    target net.Addr, request RaftEvent) (response RaftEvent, err error) {
+    target net.Addr,
+    request ev.RaftEvent) (response ev.RaftEvent, err error) {
 
     connection, err := self.getConnection(target)
     if err != nil {
         return nil, err
     }
 
-    response, err := connection.CallRPC(request)
+    response, err = connection.CallRPC(request)
     if err == nil {
         self.returnConnectionToPool(connection)
     }
@@ -249,8 +263,12 @@ func (self *MemoryClient) returnConnectionToPool(
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
 
-    key := target.String()
+    key := connection.PeerAddr().String()
     connections, ok := self.connectionPool[key]
+    if !ok {
+        connections = make([]*MemoryConnection, 0)
+        self.connectionPool[key] = connections
+    }
 
     if len(connections) < self.poolSize {
         self.connectionPool[key] = append(connections, connection)
@@ -260,14 +278,14 @@ func (self *MemoryClient) returnConnectionToPool(
 }
 
 func (self *MemoryClient) getConnection(
-    target net.Addr) (*MemoryClient, error) {
+    target net.Addr) (*MemoryConnection, error) {
 
     connection, err := self.getConnectionFromPool(target)
     if connection != nil && err == nil {
         return connection, nil
     }
 
-    connection := NewMemoryConnection(target, self.register)
+    connection = NewMemoryConnection(target, self.register)
     if err := connection.Open(); err != nil {
         return nil, err
     }
@@ -279,16 +297,16 @@ type MemoryServer struct {
     transport           *MemoryServerTransport
     acceptedConnections map[chan []byte]*MemoryServerTransport
 
-    eventHandler func(RequestEvent)
+    eventHandler func(ev.RequestEvent)
     register     *MemoryTransportRegister
 }
 
 func NewMemoryServer(
-    eventHandler func(RequestEvent),
+    eventHandler func(ev.RequestEvent),
     bindAddr net.Addr,
     register *MemoryTransportRegister) *MemoryServer {
 
-    transport := NewMomeryServerTransport(bindAddr, register)
+    transport := NewMemoryServerTransport(bindAddr, register)
     return &MemoryServer{
         transport:    transport,
         eventHandler: eventHandler,
@@ -303,14 +321,15 @@ func (self *MemoryServer) Serve() {
             // TODO add log
             continue
         }
-        if transport, ok := self.acceptedConnections[chunk.SourceCh]; ok {
+        transport, ok := self.acceptedConnections[chunk.SourceCh]
+        if ok {
             // connection already accepted
 
             continue
         } else {
             addr := NewMemoryAddr()
             transport := NewMemoryServerTransport(addr, self.register)
-            transport.ResponseCh = chunk.sourceCh
+            transport.ResponseCh = chunk.SourceCh
             self.acceptedConnections[chunk.SourceCh] = transport
             go self.handleConn(transport)
         }
@@ -349,10 +368,11 @@ func (self *MemoryServer) handleConn(
 func (self *MemoryServer) handleCommand(
     reader *bufio.Reader,
     writer *bufio.Writer,
-    decoder *Decoder,
-    encoder *Encoder) error {
+    decoder Decoder,
+    encoder Encoder) error {
 
-    if event, err := ReadRequest(reader, decoder); err != nil {
+    event, err := ReadRequest(reader, decoder)
+    if err != nil {
         return err
     }
 

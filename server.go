@@ -1,9 +1,13 @@
 package rafted
 
-import "sync"
-import "sync/atomic"
-import "net"
-import hsm "github.com/hhkbp2/go-hsm"
+import (
+    hsm "github.com/hhkbp2/go-hsm"
+    ev "github.com/hhkbp2/rafted/event"
+    "github.com/hhkbp2/rafted/persist"
+    "net"
+    "sync"
+    "sync/atomic"
+)
 
 const (
     HSMTypeRaft = hsm.HSMTypeStd + 1 + iota
@@ -33,7 +37,7 @@ type RaftHSM struct {
     votedForLock sync.RWMutex
     // log entries
     logLock sync.RWMutex
-    log     Log
+    log     persist.Log
 
     // the index of highest log entry known to be committed
     commitIndex uint64
@@ -80,7 +84,7 @@ func (self *RaftHSM) loop() {
             // make `SelfDispatchChan' has higher priority
             // Event in this channel would be processed first
             self.StdHSM.Dispatch2(self, event)
-            if event.Type() == EventTerm {
+            if event.Type() == ev.EventTerm {
                 return
             }
         case event := <-self.DispatchChan:
@@ -103,7 +107,7 @@ func (self *RaftHSM) SelfDispatch(event hsm.Event) {
 }
 
 func (self *RaftHSM) Terminate() {
-    self.SelfDispatch(hsm.NewStdEvent(EventTerm))
+    self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
     self.Group.Wait()
 }
 
@@ -127,7 +131,7 @@ func (self *RaftHSM) SetVotedFor(votedFor net.Addr) {
     self.votedFor = votedFor
 }
 
-func (self *RaftHSM) GetLog() Log {
+func (self *RaftHSM) GetLog() persist.Log {
     return self.log
 }
 
@@ -178,7 +182,7 @@ func (self *RaftHSM) SetPeerManager(peerManager *PeerManager) {
 }
 
 func (self *RaftHSM) QuorumSize() uint32 {
-    return ((self.PeerManager.PeerNumber() + 1) / 2) + 1
+    return ((uint32(self.PeerManager.PeerNumber()) + 1) / 2) + 1
 }
 
 func (self *RaftHSM) ApplyLogs() {

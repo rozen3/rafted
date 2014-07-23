@@ -89,7 +89,7 @@ func NewRequestEventHead(eventType hsm.EventType) *RequestEventHead {
 
 type AppendEntriesReqeustEvent struct {
     *RequestEventHead
-    request *AppendEntriesRequest
+    Request *AppendEntriesRequest
 }
 
 func NewAppendEntriesRequestEvent(
@@ -101,12 +101,12 @@ func NewAppendEntriesRequestEvent(
     }
 }
 func (self *AppendEntriesReqeustEvent) Message() interface{} {
-    return self.request
+    return self.Request
 }
 
 type AppendEntriesResponseEvent struct {
     *hsm.StdEvent
-    response *AppendEntriesResponse
+    Response *AppendEntriesResponse
 }
 
 func NewAppendEntriesResponseEvent(
@@ -118,12 +118,12 @@ func NewAppendEntriesResponseEvent(
 }
 
 func (self *AppendEntriesResponseEvent) Message() interface{} {
-    return self.response
+    return self.Response
 }
 
 type RequestVoteRequestEvent struct {
     *RequestEventHead
-    request *RequestVoteRequest
+    Request *RequestVoteRequest
 }
 
 func NewRequestVoteRequestEvent(
@@ -136,12 +136,12 @@ func NewRequestVoteRequestEvent(
 }
 
 func (self *RequestVoteRequestEvent) Message() interface{} {
-    return self.request
+    return self.Request
 }
 
 type RequestVoteResponseEvent struct {
     *hsm.StdEvent
-    response *RequestVoteResponse
+    Response *RequestVoteResponse
 }
 
 func NewRequestVoteResponseEvent(
@@ -154,12 +154,12 @@ func NewRequestVoteResponseEvent(
 }
 
 func (self *RequestVoteResponseEvent) Message() interface{} {
-    return self.response
+    return self.Response
 }
 
 type InstallSnapshotRequestEvent struct {
     *RequestEventHead
-    request *InstallSnapshotRequest
+    Request *InstallSnapshotRequest
 }
 
 func NewInstallSnapshotRequestEvent(
@@ -171,12 +171,12 @@ func NewInstallSnapshotRequestEvent(
 }
 
 func (self *InstallSnapshotRequestEvent) Message() interface{} {
-    return self.request
+    return self.Request
 }
 
 type InstallSnapshotResponseEvent struct {
     *hsm.StdEvent
-    response *InstallSnapshotResponse
+    Response *InstallSnapshotResponse
 }
 
 func NewInstallSnapshotResponseEvent(
@@ -189,7 +189,7 @@ func NewInstallSnapshotResponseEvent(
 }
 
 func (self *InstallSnapshotResponseEvent) Message() interface{} {
-    return self.response
+    return self.Response
 }
 
 type HeartbeatTimeoutEvent struct {
@@ -210,7 +210,7 @@ func NewElectionTimeoutEvent() *ElectionTimeoutEvent {
 
 type LeaderRedirectResponseEvent struct {
     *hsm.StdEvent
-    response *LeaderRedirectResponse
+    Response *LeaderRedirectResponse
 }
 
 func NewLeaderRedirectResponseEvent(
@@ -222,12 +222,12 @@ func NewLeaderRedirectResponseEvent(
 }
 
 func (self *LeaderRedirectResponseEvent) Message() interface{} {
-    return self.response
+    return self.Response
 }
 
 type LeaderUnknownResponseEvent struct {
     *hsm.StdEvent
-    response *LeaderUnknownResponse
+    Response *LeaderUnknownResponse
 }
 
 func NewLeaderUnknownResponseEvent(
@@ -240,5 +240,5 @@ func NewLeaderUnknownResponseEvent(
 }
 
 func (self *LeaderUnknownResponseEvent) Message() interface{} {
-    return self.response
+    return self.Response
 }

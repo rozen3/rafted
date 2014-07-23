@@ -1,8 +1,10 @@
 package comm
 
-import "net/http"
-import "bytes"
-import "errors"
+import (
+    "bytes"
+    "errors"
+    "net/http"
+)
 
 type HTTPTransport struct {
     url    string

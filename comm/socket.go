@@ -1,11 +1,15 @@
 package comm
 
-import "net"
-import "bufio"
-import "errors"
-import "github.com/ugorji/go/codec"
-import hsm "github.com/hhkbp2/go-hsm"
-import event "github.com/hhkbp2/rafted/event"
+import (
+    "bufio"
+    "errors"
+    hsm "github.com/hhkbp2/go-hsm"
+    ev "github.com/hhkbp2/rafted/event"
+    "github.com/ugorji/go/codec"
+    "io"
+    "net"
+    "sync"
+)
 
 type SocketTransport struct {
     addr net.Addr
@@ -13,7 +17,9 @@ type SocketTransport struct {
 }
 
 func NewSocketTransport(addr net.Addr) *SocketTransport {
-    return &SocketTransport{addr}
+    return &SocketTransport{
+        addr: addr,
+    }
 }
 
 func (self *SocketTransport) Open() error {
@@ -45,59 +51,62 @@ type SocketConnection struct {
     *SocketTransport
     reader  *bufio.Reader
     writer  *bufio.Writer
-    encoder *Encoder
-    decoder *Decoder
+    encoder Encoder
+    decoder Decoder
 }
 
 func NewSocketConnection(addr net.Addr) *SocketConnection {
-    return &SocketConnection{
+    conn := &SocketConnection{
         SocketTransport: NewSocketTransport(addr),
-        reader:          bufio.NewReader(transport),
-        writer:          bufio.NewWriter(transport),
-        decoder:         codec.NewDecoder(reader, &codec.MsgpackHandle{}),
-        encoder:         codec.NewEncoder(writer, &codec.MsgpackHandle{}),
     }
+    conn.reader = bufio.NewReader(conn.SocketTransport)
+    conn.writer = bufio.NewWriter(conn.SocketTransport)
+    conn.decoder = codec.NewDecoder(conn.reader, &codec.MsgpackHandle{})
+    conn.encoder = codec.NewEncoder(conn.writer, &codec.MsgpackHandle{})
+    return conn
 }
 
 func (self *SocketConnection) CallRPC(
-    request RaftEvent) (response RaftEvent, err error) {
+    request ev.RaftEvent) (response ev.RaftEvent, err error) {
 
     if err := WriteEvent(self.writer, self.encoder, request); err != nil {
         self.Close()
         return nil, err
     }
 
-    if event, err := ReadReponse(self.reader, self.decoder); err != nil {
+    event, err := ReadResponse(self.reader, self.decoder)
+    if err != nil {
         self.Close()
-        return nil, error
+        return nil, err
     }
 
     return event, nil
 }
 
 type SocketClient struct {
-    connectionPool     map[net.Addr][]*SocketConnection
+    connectionPool     map[string][]*SocketConnection
     connectionPoolLock sync.Mutex
 
-    poolSize uint32
+    poolSize int
 }
 
-func NewSocketClient(poolSize uint32) *SocketClient {
+func NewSocketClient(poolSize int) *SocketClient {
     return &SocketClient{
-        connectionPool: make(map[net.Addr][]*SocketConnection),
+        connectionPool: make(map[string][]*SocketConnection),
         poolSize:       poolSize,
     }
 }
 
 func (self *SocketClient) CallRPCTo(
-    target net.Addr, request RaftEvent) (response RaftEvent, err error) {
+    target net.Addr,
+    request ev.RaftEvent) (response ev.RaftEvent, err error) {
 
     connection, err := self.getConnection(target)
     if err != nil {
         return nil, err
     }
 
-    response, err := connection.CallRPC(request)
+    response, err = connection.CallRPC(request)
     if err == nil {
         self.returnConnectionToPool(connection)
     }
@@ -127,8 +136,12 @@ func (self *SocketClient) returnConnectionToPool(
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
 
-    key := target.String()
+    key := connection.PeerAddr().String()
     connections, ok := self.connectionPool[key]
+    if !ok {
+        connections = make([]*SocketConnection, 0)
+        self.connectionPool[key] = connections
+    }
 
     if len(connections) < self.poolSize {
         self.connectionPool[key] = append(connections, connection)
@@ -147,7 +160,7 @@ func (self *SocketClient) getConnection(
     }
 
     // if there is no pooled connection, create a new one
-    connection := NewSocketConnection(target)
+    connection = NewSocketConnection(target)
     if err := connection.Open(); err != nil {
         return nil, err
     }
@@ -157,13 +170,13 @@ func (self *SocketClient) getConnection(
 
 type SocketServer struct {
     bindAddr     net.Addr
-    listener     *net.TCPListener
-    eventHandler func(RequestEvent)
+    listener     net.Listener
+    eventHandler func(ev.RequestEvent)
 }
 
 func NewSocketServer(
     bindAddr net.Addr,
-    eventHandler func(RequestEvent)) (*SocketServer, error) {
+    eventHandler func(ev.RequestEvent)) (*SocketServer, error) {
 
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
     if err != nil {
@@ -173,7 +186,7 @@ func NewSocketServer(
         bindAddr:     bindAddr,
         listener:     listener,
         eventHandler: eventHandler,
-    }
+    }, nil
 }
 
 func (self *SocketServer) Serve() {
@@ -211,14 +224,15 @@ func (self *SocketServer) handleConn(conn net.Conn) {
     }
 }
 
-func (self *SocketServer) handlCommand(
+func (self *SocketServer) handleCommand(
     reader *bufio.Reader,
     writer *bufio.Writer,
-    decoder *Decoder,
-    encoder *Encoder) error {
+    decoder Decoder,
+    encoder Encoder) error {
 
     // read request
-    if event, err := ReadRequest(reader, decoder); err != nil {
+    event, err := ReadRequest(reader, decoder)
+    if err != nil {
         return err
     }
 
@@ -249,10 +263,10 @@ func NewSocketNetworkLayer(
 
 func WriteEvent(
     writer *bufio.Writer,
-    encoder *Encoder,
-    event RaftEvent) error {
+    encoder Encoder,
+    event ev.RaftEvent) error {
     // write event type as first byte
-    if err := writer.WriteByte(event.Type()); err != nil {
+    if err := writer.WriteByte(byte(event.Type())); err != nil {
         return err
     }
     // write the content of event
@@ -265,33 +279,33 @@ func WriteEvent(
 
 func ReadRequest(
     reader *bufio.Reader,
-    decoder *Decorder) (RequestEvent, error) {
+    decoder Decoder) (ev.RequestEvent, error) {
+
     eventType, err := reader.ReadByte()
     if err != nil {
         return nil, err
     }
-    switch eventType {
-    case event.EventAppendEntriesRequest:
-        request := &event.AppendEntriesRequest{}
+    switch hsm.EventType(eventType) {
+    case ev.EventAppendEntriesRequest:
+        request := &ev.AppendEntriesRequest{}
         if err := decoder.Decode(request); err != nil {
             return nil, err
         }
-        event := event.NewAppendEntriesRequestEvent(request)
+        event := ev.NewAppendEntriesRequestEvent(request)
         return event, nil
-    case event.EventRequestVoteRequest:
-        request := &event.RequestVoteRequest{}
+    case ev.EventRequestVoteRequest:
+        request := &ev.RequestVoteRequest{}
         if err := decoder.Decode(request); err != nil {
             return nil, err
         }
-        return message, nil
-        event := event.NewRequestVoteRequestEvent(request)
+        event := ev.NewRequestVoteRequestEvent(request)
         return event, nil
-    case event.EventInstallSnapshotRequest:
-        request := &event.InstallSnapshotRequest{}
+    case ev.EventInstallSnapshotRequest:
+        request := &ev.InstallSnapshotRequest{}
         if err := decoder.Decode(request); err != nil {
-            return err
+            return nil, err
         }
-        event := event.NewInstallSnapshotRequestEvent(request)
+        event := ev.NewInstallSnapshotRequestEvent(request)
         return event, nil
     default:
         return nil, errors.New("not request event")
@@ -300,32 +314,32 @@ func ReadRequest(
 
 func ReadResponse(
     reader *bufio.Reader,
-    decoder *Decorder) (RaftEvent, error) {
+    decoder Decoder) (ev.RaftEvent, error) {
+
     eventType, err := reader.ReadByte()
     if err != nil {
         return nil, err
     }
-    switch eventType {
-    case event.EventAppendEntriesResponse:
-        response := &event.AppendEntriesResponse{}
+    switch hsm.EventType(eventType) {
+    case ev.EventAppendEntriesResponse:
+        response := &ev.AppendEntriesResponse{}
         if err := decoder.Decode(response); err != nil {
             return nil, err
         }
-        event := event.NewAppendEntriesResponseEvent(response)
+        event := ev.NewAppendEntriesResponseEvent(response)
         return event, nil
-    case event.EventRequestVoteResponse:
-        response := &event.RequestVoteResponse{}
+    case ev.EventRequestVoteResponse:
+        response := &ev.RequestVoteResponse{}
         if err := decoder.Decode(response); err != nil {
             return nil, err
         }
-        event := event.NewRequestVoteResponseEvent(response)
+        event := ev.NewRequestVoteResponseEvent(response)
         return event, nil
-    case event.EventInstallSnapshotResponse:
-        response := &event.InstallSnapshotResponse{}
+    case ev.EventInstallSnapshotResponse:
+        response := &ev.InstallSnapshotResponse{}
         if err := decoder.Decode(response); err != nil {
             return nil, err
         }
-    default:
-        return nil, errors.New("not request event")
     }
+    return nil, errors.New("not request event")
 }

@@ -1,8 +1,11 @@
 package comm
 
-import "io"
-import "net"
-import hsm "github.com/hhkbp2/go-hsm"
+import (
+    "io"
+    "net"
+
+    "github.com/hhkbp2/rafted/event"
+)
 
 type Encoder interface {
     Encode(e interface{}) error
@@ -34,11 +37,13 @@ type Connection interface {
     Close() error
 
     PeerAddr() net.Addr
-    CallRPC(request RaftEvent) (response RaftEvent, err error)
+    CallRPC(request event.RaftEvent) (response event.RaftEvent, err error)
 }
 
 type Client interface {
-    CallRPCTo(target net.Addr, request RaftEvent) (response RaftEvent, err error)
+    CallRPCTo(
+        target net.Addr,
+        request event.RaftEvent) (response event.RaftEvent, err error)
 }
 
 type Server interface {

@@ -1,6 +1,8 @@
-package state
+package rafted
 
-import hsm "github.com/hhkbp2/go-hsm"
+import (
+    hsm "github.com/hhkbp2/go-hsm"
+)
 
 type RaftState struct {
     *hsm.StateHead
@@ -15,7 +17,7 @@ func NewRaftState(super hsm.State) *RaftState {
 }
 
 func (*RaftState) ID() string {
-    return RaftStateID
+    return StateRaftID
 }
 
 func (self *RaftState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
@@ -24,7 +26,7 @@ func (self *RaftState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 }
 
 func (self *RaftState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
-    sm.QInit(FollowerID)
+    sm.QInit(StateFollowerID)
     return nil
 }
 
