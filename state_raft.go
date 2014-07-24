@@ -4,6 +4,18 @@ import (
     hsm "github.com/hhkbp2/go-hsm"
 )
 
+const (
+    StateRaftID             = "raft"
+    StateFollowerID         = "follower"
+    StateSnapshotRecoveryID = "snapshot_recovery"
+    StateCandidateID        = "candidate"
+    StateLeaderID           = "leader"
+)
+
+const (
+    StatePeerID = "peer"
+)
+
 type RaftState struct {
     *hsm.StateHead
 }

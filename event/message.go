@@ -66,7 +66,7 @@ type InstallSnapshotRequest struct {
     // the snapshot replaces all entries up through and including this index
     LastIncludedIndex uint64
     // term of lastIncludedIndex
-    LastLogTerm uint64
+    LastIncludedTerm uint64
 
     // byte offset where chunk is positioned in the snapshot file
     Offset uint64

@@ -83,7 +83,9 @@ func (self *FollowerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State)
         e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
         return nil
     case event.Type() == ev.EventInstallSnapshotRequest:
-        // TODO add substate
+        // transfer to snapshot recovery state and replay this event for it
+        raftHSM.SelfDispatch(event)
+        raftHSM.QTran(StateSnapshotRecoveryID)
         return nil
     case ev.IsClientEvent(event.Type()):
         e, ok := event.(ev.RequestEvent)
