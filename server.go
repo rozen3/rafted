@@ -23,6 +23,11 @@ type TerminableHSM interface {
     Terminate()
 }
 
+type NotifiableHSM interface {
+    hsm.HSM
+    GetNotifyChan() <-chan ev.NotifyEvent
+}
+
 type RaftHSM struct {
     *hsm.StdHSM
     DispatchChan     chan hsm.Event
