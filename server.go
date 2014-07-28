@@ -37,9 +37,11 @@ type RaftHSM struct {
     /* raft extanded fields */
     // the current term
     currentTerm uint64
+
     // CandidateId that received vote in current term(or nil if none)
     votedFor     net.Addr
     votedForLock sync.RWMutex
+
     // log entries
     logLock sync.RWMutex
     log     persist.Log

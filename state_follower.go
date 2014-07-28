@@ -36,12 +36,14 @@ func (*FollowerState) ID() string {
 
 func (self *FollowerState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Entry")
+    raftHSM, ok := sm.(*RaftHSM)
+    hsm.AssertTrue(ok)
+    // init global status
+    raftHSM.SetVotedFor(nil)
     // init status for this status
     self.UpdateLastContactTime()
     // start heartbeat timeout ticker
     hsm.AssertEqual(HSMTypeRaft, sm.Type())
-    raftHSM, ok := sm.(SelfDispatchHSM)
-    hsm.AssertTrue(ok)
     notifyHeartbeatTimeout := func() {
         if TimeExpire(self.LastContactTime(), self.heartbeatTimeout) {
             raftHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent())
@@ -57,8 +59,12 @@ func (self *FollowerState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
 func (self *FollowerState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Exit")
+    raftHSM, ok := sm.(*RaftHSM)
+    hsm.AssertTrue(ok)
     // stop heartbeat timeout ticker
     self.ticker.Stop()
+    // cleanup global status
+    raftHSM.SetVotedFor(nil)
     return nil
 }
 
@@ -119,15 +125,18 @@ func (self *FollowerState) ProcessRequestVote(
     if request.Term > term {
         raftHSM.SetCurrentTerm(request.Term)
         response.Term = request.Term
-        // No need to call QTran("Follower")
-        // since we are already in follwer state
+        // No need to transfer to follwer state
+        // since we are already in it
     }
 
     votedFor := raftHSM.GetVotedFor()
     votedForBin, err := EncodeAddr(votedFor)
     hsm.AssertNil(err)
-    if (votedFor != nil) &&
-        (bytes.Compare(votedForBin, request.Candidate) != 0) {
+    if votedFor != nil {
+        if bytes.Compare(votedForBin, request.Candidate) == 0 {
+            // TODO add log
+            response.Granted = true
+        }
         // TODO add log
         return response
     }
@@ -167,8 +176,8 @@ func (self *FollowerState) ProcessAppendEntries(
     if request.Term > term {
         raftHSM.SetCurrentTerm(request.Term)
         response.Term = request.Term
-        // No need to call QTran("Follower")
-        // since we are already in follwer state
+        // No need to transfer to follower state
+        // since we are already in it
     }
 
     // update current leader on every request
