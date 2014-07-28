@@ -52,7 +52,10 @@ type RaftHSM struct {
     // local addr
     LocalAddr net.Addr
     // peers
-    PeerManager *PeerManager
+    *PeerManager
+
+    // notifier
+    *Notifier
 }
 
 func NewRaftHSM(top, initial hsm.State, localAddr net.Addr) *RaftHSM {
@@ -62,6 +65,7 @@ func NewRaftHSM(top, initial hsm.State, localAddr net.Addr) *RaftHSM {
         SelfDispatchChan: make(chan hsm.Event, 1),
         Group:            sync.WaitGroup{},
         LocalAddr:        localAddr,
+        Notifier:         NewNotifier(),
     }
 }
 
