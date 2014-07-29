@@ -19,7 +19,9 @@ func CreateRaftHSM(
     followerState := NewFollowerState(raftState, heartbeatTimeout)
     NewSnapshotRecoveryState(followerState)
     NewCandidateState(raftState, electionTimeout)
-    NewLeaderState(raftState)
+    leaderState := NewLeaderState(raftState)
+    NewUnsyncState(leaderState)
+    NewSyncState(leaderState)
     raftHSM := NewRaftHSM(top, initial, localAddr)
     raftHSM.Init()
     return raftHSM

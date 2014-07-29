@@ -22,7 +22,9 @@ func (*LeaderState) ID() string {
     return StateLeaderID
 }
 
-func (self *LeaderState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *LeaderState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     fmt.Println(self.ID(), "-> Entry")
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
@@ -33,12 +35,24 @@ func (self *LeaderState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     return nil
 }
 
-func (self *LeaderState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *LeaderState) Init(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    fmt.Println(self.ID(), "-> Init")
+    sm.QInit(StateSyncID)
+    return nil
+}
+
+func (self *LeaderState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     fmt.Println(self.ID(), "-> Exit")
     return nil
 }
 
-func (self *LeaderState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *LeaderState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     fmt.Println(self.ID(), "-> Handle, event=", event)
     switch {
     case event.Type() == ev.EventRequestVoteRequest:
