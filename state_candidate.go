@@ -21,7 +21,9 @@ type CandidateState struct {
     grantedVoteCount uint32
 }
 
-func NewCandidateState(super hsm.State, electionTimeout time.Duration) *CandidateState {
+func NewCandidateState(
+    super hsm.State, electionTimeout time.Duration) *CandidateState {
+
     object := &CandidateState{
         StateHead:       hsm.NewStateHead(super),
         electionTimeout: electionTimeout,
@@ -35,7 +37,9 @@ func (*CandidateState) ID() string {
     return StateCandidateID
 }
 
-func (self *CandidateState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *CandidateState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     fmt.Println(self.ID(), "-> Entry")
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
@@ -56,7 +60,9 @@ func (self *CandidateState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State)
     return nil
 }
 
-func (self *CandidateState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *CandidateState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     fmt.Println(self.ID(), "-> Exit")
     // stop election timeout ticker
     self.ticker.Stop()
@@ -65,7 +71,9 @@ func (self *CandidateState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) 
     return nil
 }
 
-func (self *CandidateState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *CandidateState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     fmt.Println(self.ID(), "-> Handle, event=", event)
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
@@ -92,6 +100,25 @@ func (self *CandidateState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State
         if self.grantedVoteCount >= raftHSM.QuorumSize() {
             // TODO add log
             raftHSM.QTran(StateLeaderID)
+        }
+        return nil
+    case event.Type() == ev.EventAppendEntriesRequest:
+        e, ok := event.(*ev.AppendEntriesReqeustEvent)
+        hsm.AssertTrue(ok)
+        // step down to follower state if term if equal or newer than
+        // local current term
+        if e.Request.Term >= raftHSM.GetCurrentTerm() {
+            // discover a new leader, transfer to follower state
+
+            // replay this event in future
+            raftHSM.SelfDispatch(event)
+            // record the leader
+            leader, err := DecodeAddr(e.Request.Leader)
+            if err != nil {
+                // TODO add err checking
+            }
+            raftHSM.SetLeader(leader)
+            raftHSM.QTran(StateFollowerID)
         }
         return nil
     case ev.IsClientEvent(event.Type()):
@@ -122,20 +149,24 @@ func (self *CandidateState) StartElection(raftHSM *RaftHSM) {
     // increase the term
     raftHSM.SetCurrentTerm(raftHSM.GetCurrentTerm() + 1)
 
-    // broadcast RequestVoteRequest to all peers
+    // Vote for self
+    term := raftHSM.GetCurrentTerm()
+    voteMyselfResponse := &ev.RequestVoteResponse{
+        Term:    term,
+        Granted: true,
+    }
+    raftHSM.SelfDispatch(ev.NewRequestVoteResponseEvent(voteMyselfResponse))
+    raftHSM.SetVotedFor(raftHSM.LocalAddr)
+
+    // broadcast RequestVote RPCs to all other servers
     localAddrBin, err := EncodeAddr(raftHSM.LocalAddr)
     hsm.AssertNil(err)
     request := &ev.RequestVoteRequest{
-        Term:         raftHSM.GetCurrentTerm(),
+        Term:         term,
         Candidate:    localAddrBin,
         LastLogIndex: raftHSM.GetLastIndex(),
         LastLogTerm:  raftHSM.GetLastTerm(),
     }
     event := ev.NewRequestVoteRequestEvent(request)
     raftHSM.PeerManager.Broadcast(event)
-    voteMyselfResponse := &ev.RequestVoteResponse{
-        Term:    request.Term,
-        Granted: true,
-    }
-    raftHSM.SelfDispatch(ev.NewRequestVoteResponseEvent(voteMyselfResponse))
 }

@@ -20,7 +20,9 @@ type FollowerState struct {
     lastContactTimeLock sync.RWMutex
 }
 
-func NewFollowerState(super hsm.State, heartbeatTimeout time.Duration) *FollowerState {
+func NewFollowerState(
+    super hsm.State, heartbeatTimeout time.Duration) *FollowerState {
+
     object := &FollowerState{
         StateHead:        hsm.NewStateHead(super),
         heartbeatTimeout: heartbeatTimeout,
@@ -34,7 +36,9 @@ func (*FollowerState) ID() string {
     return StateFollowerID
 }
 
-func (self *FollowerState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *FollowerState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     fmt.Println(self.ID(), "-> Entry")
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
@@ -53,11 +57,15 @@ func (self *FollowerState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) 
     return nil
 }
 
-func (self *FollowerState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *FollowerState) Init(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     return self.Super()
 }
 
-func (self *FollowerState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *FollowerState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     fmt.Println(self.ID(), "-> Exit")
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
@@ -68,7 +76,9 @@ func (self *FollowerState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     return nil
 }
 
-func (self *FollowerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *FollowerState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
     fmt.Println(self.ID(), "-> Handle, event =", event)
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
@@ -89,9 +99,16 @@ func (self *FollowerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State)
         e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
         return nil
     case event.Type() == ev.EventInstallSnapshotRequest:
-        // transfer to snapshot recovery state and replay this event for it
-        raftHSM.SelfDispatch(event)
-        raftHSM.QTran(StateSnapshotRecoveryID)
+        // transfer to snapshot recovery state and
+        // replay this event on its entry/init/handle handlers.
+        e, ok := event.(*ev.InstallSnapshotRequestEvent)
+        hsm.AssertTrue(ok)
+        if (e.Request.Term >= raftHSM.GetCurrentTerm()) &&
+            (e.Request.Offset == 0) {
+
+            raftHSM.SelfDispatch(event)
+            raftHSM.QTranOnEvent(StateSnapshotRecoveryID, event)
+        }
         return nil
     case ev.IsClientEvent(event.Type()):
         e, ok := event.(ev.RequestEvent)
@@ -152,6 +169,9 @@ func (self *FollowerState) ProcessRequestVote(
         return response
     }
 
+    candidate, err := DecodeAddr(request.Candidate)
+    // TODO add err checking
+    raftHSM.SetVotedFor(candidate)
     response.Granted = true
     return response
 }
@@ -182,7 +202,9 @@ func (self *FollowerState) ProcessAppendEntries(
 
     // update current leader on every request
     leader, err := DecodeAddr(request.Leader)
-    hsm.AssertNil(err)
+    if err != nil {
+        // TODO add err checking
+    }
     raftHSM.SetLeader(leader)
 
     if request.PrevLogIndex > 0 {
@@ -233,7 +255,7 @@ func (self *FollowerState) ProcessAppendEntries(
         (request.LeaderCommitIndex > raftHSM.GetCommitIndex()) {
         index := min(request.LeaderCommitIndex, raftHSM.GetLastIndex())
         raftHSM.SetCommitIndex(index)
-        raftHSM.ApplyLogs()
+        raftHSM.ProcessLogsUpTo(index)
     }
 
     response.Success = true

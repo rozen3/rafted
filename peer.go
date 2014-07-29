@@ -124,7 +124,7 @@ func (self *PeerHSM) Dispatch(event hsm.Event) {
 
 func (self *PeerHSM) QTran(targetStateID string) {
     target := self.StdHSM.LookupState(targetStateID)
-    self.StdHSM.QTran2(self, target)
+    self.StdHSM.QTranHSM(self, target)
 }
 
 func (self *PeerHSM) SelfDispatch(event hsm.Event) {

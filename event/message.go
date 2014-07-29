@@ -79,13 +79,15 @@ type InstallSnapshotRequest struct {
     Servers []byte
 
     // Size of the snapshot
-    Size int64
+    Size uint64
 }
 
 // InstallSnapshotResponse is the response of an InstallSnapshotRequest.
 type InstallSnapshotResponse struct {
     // current term of the follower, for leader to update itself
     Term uint64
+    // whether the request is accepted by the follower
+    Success bool
 }
 
 // LeaderRedirectResponse is to redirect client to leader.

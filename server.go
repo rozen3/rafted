@@ -43,8 +43,15 @@ type RaftHSM struct {
     votedForLock sync.RWMutex
 
     // log entries
-    logLock sync.RWMutex
     log     persist.Log
+    logLock sync.RWMutex
+
+    // state machine
+    stateMachine     persist.StateMachine
+    stateMachineLock sync.RWMutex
+
+    // snapshot
+    SnapshotManager persist.SnapshotManager
 
     // the index of highest log entry known to be committed
     commitIndex uint64
@@ -110,7 +117,12 @@ func (self *RaftHSM) Dispatch(event hsm.Event) {
 
 func (self *RaftHSM) QTran(targetStateID string) {
     target := self.StdHSM.LookupState(targetStateID)
-    self.StdHSM.QTran2(self, target)
+    self.StdHSM.QTranHSM(self, target)
+}
+
+func (self *RaftHSM) QTranOnEvent(targetStateID string, event hsm.Event) {
+    target := self.StdHSM.LookupState(targetStateID)
+    self.StdHSM.QTranHSMOnEvent(self, target, event)
 }
 
 func (self *RaftHSM) SelfDispatch(event hsm.Event) {
@@ -196,6 +208,42 @@ func (self *RaftHSM) QuorumSize() uint32 {
     return ((uint32(self.PeerManager.PeerNumber()) + 1) / 2) + 1
 }
 
-func (self *RaftHSM) ApplyLogs() {
+func (self *RaftHSM) ProcessLogsUpTo(index uint64) {
     // TODO add impl
+    lastApplied := self.GetLastApplied()
+    if index <= lastApplied {
+        // TODO add log
+        return
+    }
+
+    for i := lastApplied + 1; i <= index; i++ {
+        logEntry, err := self.log.GetLog(index)
+        if err != nil {
+            // TODO add log
+            // TODO change panic?
+            panic(err)
+        }
+        self.processLog(logEntry)
+        self.SetLastApplied(i)
+    }
+}
+
+func (self *RaftHSM) processLog(logEntry *persist.LogEntry) {
+    switch logEntry.Type {
+    case persist.LogCommand:
+        // TODO add impl
+        self.applyLog(logEntry)
+    case persist.LogNoop:
+        // just ignore
+
+        /* TODO add other types */
+
+    default:
+        // unknown log entry type
+        // TODO add log
+    }
+}
+
+func (self *RaftHSM) applyLog(logEntry *persist.LogEntry) {
+    self.stateMachine.Apply(logEntry.Data)
 }
