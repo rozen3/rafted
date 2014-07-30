@@ -13,8 +13,8 @@ const (
     EventNotifyStateChange
     EventNotifyLeaderChange
     EventNotifyTermChange
-    EventNotifyAddServer
-    EventNotifyRemoveServer
+    EventNotifyAddPeer
+    EventNotifyRemovePeer
     EventNotifyCommit
     EventNotifyEnd
 )
@@ -103,31 +103,31 @@ func NewNotifyTermChangeEvent(
     }
 }
 
-type NotifyAddServerEvent struct {
+type NotifyAddPeerEvent struct {
     *hsm.StdEvent
-    ServerAdded net.Addr
+    PeerAdded net.Addr
 }
 
-func NewNotifyAddServerEvent(
-    serverAdded net.Addr) *NotifyAddServerEvent {
+func NewNotifyAddPeerEvent(
+    peerAdded net.Addr) *NotifyAddPeerEvent {
 
-    return &NotifyAddServerEvent{
-        StdEvent:    hsm.NewStdEvent(EventNotifyAddServer),
-        ServerAdded: serverAdded,
+    return &NotifyAddPeerEvent{
+        StdEvent:  hsm.NewStdEvent(EventNotifyAddPeer),
+        PeerAdded: peerAdded,
     }
 }
 
-type NotifyRemoveServerEvent struct {
+type NotifyRemovePeerEvent struct {
     *hsm.StdEvent
-    ServerRemoved net.Addr
+    PeerRemoved net.Addr
 }
 
-func NewNotifyRemoveServerEvent(
-    serverRemoved net.Addr) *NotifyRemoveServerEvent {
+func NewNotifyRemovePeerEvent(
+    peerRemoved net.Addr) *NotifyRemovePeerEvent {
 
-    return &NotifyRemoveServerEvent{
-        StdEvent:      hsm.NewStdEvent(EventNotifyRemoveServer),
-        ServerRemoved: serverRemoved,
+    return &NotifyRemovePeerEvent{
+        StdEvent:    hsm.NewStdEvent(EventNotifyRemovePeer),
+        PeerRemoved: peerRemoved,
     }
 }
 

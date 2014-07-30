@@ -47,7 +47,7 @@ func NewRaftNode(
     eventHandler1 := func(event ev.RaftEvent) {
         raftHSM.Dispatch(event)
     }
-    eventHandler2 := func(event ev.RequestEvent) {
+    eventHandler2 := func(event ev.RaftRequestEvent) {
         raftHSM.Dispatch(event)
     }
     peerManager := NewPeerManager(peerAddrs, client, eventHandler1)

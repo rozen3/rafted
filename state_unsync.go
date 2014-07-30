@@ -59,7 +59,7 @@ func (self *UnsyncState) Handle(
     case event.Type() == ev.EventAppendEntriesResponse:
         // TODO add impl
     case ev.IsClientEvent(event.Type()):
-        e, ok := event.(ev.RequestEvent)
+        e, ok := event.(ev.ClientRequestEvent)
         hsm.AssertTrue(ok)
         response := &ev.LeaderUnsyncResponse{}
         e.SendResponse(ev.NewLeaderUnsyncResponseEvent(response))

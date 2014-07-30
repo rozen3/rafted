@@ -297,12 +297,12 @@ type MemoryServer struct {
     transport           *MemoryServerTransport
     acceptedConnections map[chan []byte]*MemoryServerTransport
 
-    eventHandler func(ev.RequestEvent)
+    eventHandler func(ev.RaftRequestEvent)
     register     *MemoryTransportRegister
 }
 
 func NewMemoryServer(
-    eventHandler func(ev.RequestEvent),
+    eventHandler func(ev.RaftRequestEvent),
     bindAddr net.Addr,
     register *MemoryTransportRegister) *MemoryServer {
 

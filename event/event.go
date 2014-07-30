@@ -16,10 +16,15 @@ const (
     EventTimeoutHeartBeat
     EventTimeoutElection
     EventTimeoutEnd
+    EventInternalBegin
+    EventPeerReplicateLog
+    EventInternalEnd
     EventLeaderRedirectResponse
     EventLeaderUnknownResponse
     EventLeaderUnsyncResponse
     EventClientUser = hsm.EventUser + 1000 + iota
+    EventClientWriteRequest
+    EventClientReadOnlyRequest
 )
 
 func IsEventBetween(eventType, beginEvent, endEvent hsm.EventType) bool {
@@ -57,39 +62,35 @@ type RaftEvent interface {
     Message() interface{}
 }
 
-type ResponsiveEvent interface {
+type RaftRequestEvent interface {
+    RaftEvent
     SendResponse(RaftEvent)
     RecvResponse() RaftEvent
 }
 
-type RequestEvent interface {
-    RaftEvent
-    ResponsiveEvent
-}
-
-type RequestEventHead struct {
+type RaftRequestEventHead struct {
     *hsm.StdEvent
     resultChan chan RaftEvent
 }
 
-func (self *RequestEventHead) SendResponse(event RaftEvent) {
+func (self *RaftRequestEventHead) SendResponse(event RaftEvent) {
     self.resultChan <- event
 }
 
-func (self *RequestEventHead) RecvResponse() RaftEvent {
+func (self *RaftRequestEventHead) RecvResponse() RaftEvent {
     response := <-self.resultChan
     return response
 }
 
-func NewRequestEventHead(eventType hsm.EventType) *RequestEventHead {
-    return &RequestEventHead{
+func NewRaftRequestEventHead(eventType hsm.EventType) *RaftRequestEventHead {
+    return &RaftRequestEventHead{
         hsm.NewStdEvent(eventType),
         make(chan RaftEvent, 1),
     }
 }
 
 type AppendEntriesReqeustEvent struct {
-    *RequestEventHead
+    *RaftRequestEventHead
     Request *AppendEntriesRequest
 }
 
@@ -97,7 +98,7 @@ func NewAppendEntriesRequestEvent(
     request *AppendEntriesRequest) *AppendEntriesReqeustEvent {
 
     return &AppendEntriesReqeustEvent{
-        NewRequestEventHead(EventAppendEntriesRequest),
+        NewRaftRequestEventHead(EventAppendEntriesRequest),
         request,
     }
 }
@@ -123,7 +124,7 @@ func (self *AppendEntriesResponseEvent) Message() interface{} {
 }
 
 type RequestVoteRequestEvent struct {
-    *RequestEventHead
+    *RaftRequestEventHead
     Request *RequestVoteRequest
 }
 
@@ -131,7 +132,7 @@ func NewRequestVoteRequestEvent(
     request *RequestVoteRequest) *RequestVoteRequestEvent {
 
     return &RequestVoteRequestEvent{
-        NewRequestEventHead(EventRequestVoteRequest),
+        NewRaftRequestEventHead(EventRequestVoteRequest),
         request,
     }
 }
@@ -159,14 +160,14 @@ func (self *RequestVoteResponseEvent) Message() interface{} {
 }
 
 type InstallSnapshotRequestEvent struct {
-    *RequestEventHead
+    *RaftRequestEventHead
     Request *InstallSnapshotRequest
 }
 
 func NewInstallSnapshotRequestEvent(
     request *InstallSnapshotRequest) *InstallSnapshotRequestEvent {
     return &InstallSnapshotRequestEvent{
-        NewRequestEventHead(EventInstallSnapshotRequest),
+        NewRaftRequestEventHead(EventInstallSnapshotRequest),
         request,
     }
 }
@@ -209,6 +210,67 @@ func NewElectionTimeoutEvent() *ElectionTimeoutEvent {
     return &ElectionTimeoutEvent{hsm.NewStdEvent(EventTimeoutElection)}
 }
 
+type ClientEvent interface {
+    hsm.Event
+}
+
+type ClientRequestEvent interface {
+    ClientEvent
+    SendResponse(ClientEvent)
+    RecvResponse() ClientEvent
+}
+
+type ClientRequestEventHead struct {
+    *hsm.StdEvent
+    resultChan chan ClientEvent
+}
+
+func (self *ClientRequestEventHead) SendResponse(event ClientEvent) {
+    self.resultChan <- event
+}
+
+func (self *ClientRequestEventHead) RecvResponse() ClientEvent {
+    response := <-self.resultChan
+    return response
+}
+
+func NewClientRequestEventHead(
+    eventType hsm.EventType) *ClientRequestEventHead {
+
+    return &ClientRequestEventHead{
+        hsm.NewStdEvent(eventType),
+        make(chan ClientEvent, 1),
+    }
+}
+
+type ClientWriteRequestEvent struct {
+    *ClientRequestEventHead
+    Request *ClientWriteRequest
+}
+
+func NewClientWriteRequestEvent(
+    request *ClientWriteRequest) *ClientWriteRequestEvent {
+
+    return &ClientWriteRequestEvent{
+        NewClientRequestEventHead(EventClientWriteRequest),
+        request,
+    }
+}
+
+type ClientReadOnlyRequestEvent struct {
+    *ClientRequestEventHead
+    Request *ClientReadOnlyRequest
+}
+
+func NewClientReadOnlyRequestEvent(
+    request *ClientReadOnlyRequest) *ClientReadOnlyRequestEvent {
+
+    return &ClientReadOnlyRequestEvent{
+        NewClientRequestEventHead(EventClientReadOnlyRequest),
+        request,
+    }
+}
+
 type LeaderRedirectResponseEvent struct {
     *hsm.StdEvent
     Response *LeaderRedirectResponse
@@ -220,10 +282,6 @@ func NewLeaderRedirectResponseEvent(
         hsm.NewStdEvent(EventLeaderRedirectResponse),
         response,
     }
-}
-
-func (self *LeaderRedirectResponseEvent) Message() interface{} {
-    return self.Response
 }
 
 type LeaderUnknownResponseEvent struct {
@@ -240,10 +298,6 @@ func NewLeaderUnknownResponseEvent(
     }
 }
 
-func (self *LeaderUnknownResponseEvent) Message() interface{} {
-    return self.Response
-}
-
 type LeaderUnsyncResponseEvent struct {
     *hsm.StdEvent
     Response *LeaderUnsyncResponse
@@ -258,6 +312,16 @@ func NewLeaderUnsyncResponseEvent(
     }
 }
 
-func (self *LeaderUnsyncResponseEvent) Message() interface{} {
-    return self.Response
+type PeerReplicateLogEvent struct {
+    *hsm.StdEvent
+    Message *PeerReplicateLog
+}
+
+func NewPeerReplicateLogEvent(
+    message *PeerReplicateLog) *PeerReplicateLogEvent {
+
+    return &PeerReplicateLogEvent{
+        hsm.NewStdEvent(EventPeerReplicateLog),
+        message,
+    }
 }

@@ -4,6 +4,8 @@ import (
     "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    "net"
+    "sync"
 )
 
 type LeaderState struct {
@@ -64,4 +66,21 @@ func (self *LeaderState) Handle(
         return nil
     }
     return self.Super()
+}
+
+type inflight struct {
+    MinCommit        uint64
+    MaxCommit        uint64
+    ToReplicate      map[uint64]ev.ClientRequestEvent
+    PeerMatchIndexes map[net.Addr]uint64
+
+    sync.Mutex
+}
+
+func NewInflight() *inflight {
+    return &inflight{
+        MinCommit:   0,
+        MaxCommit:   0,
+        ToReplicate: make(map[uint64]ev.ClientRequestEvent),
+    }
 }

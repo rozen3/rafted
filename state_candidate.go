@@ -124,7 +124,7 @@ func (self *CandidateState) Handle(
     case ev.IsClientEvent(event.Type()):
         // Don't know whether there is a leader or who is leader.
         // Return a error response.
-        e, ok := event.(ev.RequestEvent)
+        e, ok := event.(ev.ClientRequestEvent)
         hsm.AssertTrue(ok)
         response := &ev.LeaderUnknownResponse{}
         e.SendResponse(ev.NewLeaderUnknownResponseEvent(response))

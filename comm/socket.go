@@ -171,12 +171,12 @@ func (self *SocketClient) getConnection(
 type SocketServer struct {
     bindAddr     net.Addr
     listener     net.Listener
-    eventHandler func(ev.RequestEvent)
+    eventHandler func(ev.RaftRequestEvent)
 }
 
 func NewSocketServer(
     bindAddr net.Addr,
-    eventHandler func(ev.RequestEvent)) (*SocketServer, error) {
+    eventHandler func(ev.RaftRequestEvent)) (*SocketServer, error) {
 
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
     if err != nil {
@@ -279,7 +279,7 @@ func WriteEvent(
 
 func ReadRequest(
     reader *bufio.Reader,
-    decoder Decoder) (ev.RequestEvent, error) {
+    decoder Decoder) (ev.RaftRequestEvent, error) {
 
     eventType, err := reader.ReadByte()
     if err != nil {

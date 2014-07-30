@@ -1,6 +1,9 @@
 package event
 
-import "github.com/hhkbp2/rafted/persist"
+import (
+    "github.com/hhkbp2/rafted/persist"
+    "net"
+)
 
 // AppendEntriesRequest is the command used to append entries to the
 // replicated log.
@@ -90,6 +93,25 @@ type InstallSnapshotResponse struct {
     Success bool
 }
 
+// ClientWriteRequest is a write request for raft module to serve client.
+type ClientWriteRequest struct {
+    // the request content, to be applied to state machine
+    Data []byte
+}
+
+// ClientReadOnlyRequest is a read-only request for raft module to
+// serve client.
+type ClientReadOnlyRequest struct {
+    // the request content, to be applied to state machine
+    Data []byte
+}
+
+// ClientResponse is a general response of raft module answer to client.
+type ClientResponse struct {
+    // whether the request handling is a success or failure.
+    Success bool
+}
+
 // LeaderRedirectResponse is to redirect client to leader.
 type LeaderRedirectResponse struct {
     // The network addr of leader
@@ -105,4 +127,13 @@ type LeaderUnknownResponse struct {
 // synchronized with other nodes in cluster yet.
 // To handle this situation, it's a good for client to retry this request.
 type LeaderUnsyncResponse struct {
+}
+
+// PeerReplicateLog is a internal message for a peer(which represents
+// a follower) to notify leader it makes some progress on replicate logs.
+type PeerReplicateLog struct {
+    // network addr of the peer(follower)
+    Peer net.Addr
+    // index of highest log entry known to replicated to follower
+    MatchIndex uint64
 }
