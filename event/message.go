@@ -97,6 +97,12 @@ type LeaderRedirectResponse struct {
 }
 
 // LeaderUnknownResponse is to tell client we are not leader and
-// don't known which node in cluter is leader.
+// don't known which node in cluster is leader.
 type LeaderUnknownResponse struct {
+}
+
+// LeaderUnsyncResponse is to tell client we are leader but not
+// synchronized with other nodes in cluster yet.
+// To handle this situation, it's a good for client to retry this request.
+type LeaderUnsyncResponse struct {
 }

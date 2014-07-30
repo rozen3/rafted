@@ -190,7 +190,6 @@ type MemorySnapshotManager struct {
 
 func NewMemorySnapshotManager() *MemorySnapshotManager {
     lst := list.New()
-    lst.Init()
     return &MemorySnapshotManager{
         snapshotList: lst,
     }
@@ -290,7 +289,6 @@ type MemoryStateMachine struct {
 
 func NewMemoryStateMachine() *MemoryStateMachine {
     lst := list.New()
-    lst.Init()
     return &MemoryStateMachine{
         data: lst,
     }
@@ -308,7 +306,6 @@ func (self *MemoryStateMachine) MakeSnapshot() (Snapshot, error) {
     defer self.lock.Unlock()
     // copy all data
     lst := list.New()
-    lst.Init()
     lst.PushBackList(self.data)
     return NewMemorySnapshot(lst), nil
 }
@@ -324,7 +321,6 @@ func (self *MemoryStateMachine) Restore(readerCloser io.ReadCloser) error {
         return nil
     }
     data := list.New()
-    data.Init()
     var i uint64 = 0
     for ; i < length; i++ {
         byteSize, err := binary.ReadUvarint(byteReader)

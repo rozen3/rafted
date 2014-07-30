@@ -18,6 +18,7 @@ const (
     EventTimeoutEnd
     EventLeaderRedirectResponse
     EventLeaderUnknownResponse
+    EventLeaderUnsyncResponse
     EventClientUser = hsm.EventUser + 1000 + iota
 )
 
@@ -240,5 +241,23 @@ func NewLeaderUnknownResponseEvent(
 }
 
 func (self *LeaderUnknownResponseEvent) Message() interface{} {
+    return self.Response
+}
+
+type LeaderUnsyncResponseEvent struct {
+    *hsm.StdEvent
+    Response *LeaderUnsyncResponse
+}
+
+func NewLeaderUnsyncResponseEvent(
+    response *LeaderUnsyncResponse) *LeaderUnsyncResponseEvent {
+
+    return &LeaderUnsyncResponseEvent{
+        hsm.NewStdEvent(EventLeaderUnsyncResponse),
+        response,
+    }
+}
+
+func (self *LeaderUnsyncResponseEvent) Message() interface{} {
     return self.Response
 }

@@ -151,6 +151,18 @@ func (self *CandidateState) StartElection(raftHSM *RaftHSM) {
 
     // Vote for self
     term := raftHSM.GetCurrentTerm()
+    localAddrBin, err := EncodeAddr(raftHSM.LocalAddr)
+    if err != nil {
+        // TODO error handling
+    }
+    request := &ev.RequestVoteRequest{
+        Term:         term,
+        Candidate:    localAddrBin,
+        LastLogIndex: raftHSM.GetLastIndex(),
+        LastLogTerm:  raftHSM.GetLastTerm(),
+    }
+    event := ev.NewRequestVoteRequestEvent(request)
+
     voteMyselfResponse := &ev.RequestVoteResponse{
         Term:    term,
         Granted: true,
@@ -159,14 +171,5 @@ func (self *CandidateState) StartElection(raftHSM *RaftHSM) {
     raftHSM.SetVotedFor(raftHSM.LocalAddr)
 
     // broadcast RequestVote RPCs to all other servers
-    localAddrBin, err := EncodeAddr(raftHSM.LocalAddr)
-    hsm.AssertNil(err)
-    request := &ev.RequestVoteRequest{
-        Term:         term,
-        Candidate:    localAddrBin,
-        LastLogIndex: raftHSM.GetLastIndex(),
-        LastLogTerm:  raftHSM.GetLastTerm(),
-    }
-    event := ev.NewRequestVoteRequestEvent(request)
     raftHSM.PeerManager.Broadcast(event)
 }
