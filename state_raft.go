@@ -10,7 +10,7 @@ const (
     StateSnapshotRecoveryID = "snapshot_recovery"
     StateCandidateID        = "candidate"
     StateLeaderID           = "leader"
-    StateUnsynID            = "unsync"
+    StateUnsyncID           = "unsync"
     StateSyncID             = "sync"
 )
 
