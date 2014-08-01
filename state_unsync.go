@@ -10,11 +10,21 @@ import (
 type UnsyncState struct {
     *hsm.StateHead
 
-    // TODO add fields
+    noop     *InflightRequest
+    listener *ClientEventListener
 }
 
 func NewUnsyncState(super hsm.State) *UnsyncState {
-    object := &UnsyncState{hsm.NewStateHead(super)}
+    ch := make(chan persist.ClientEvent, 1)
+    object := &UnsyncState{
+        StateHead: hsm.NewStateHead(super),
+        noop: &InflightRequest{
+            LogType:    persist.LogNoop,
+            Data:       make([]byte, 0),
+            ResultChan: ch,
+        },
+        listener: NewClientEventListener(ch),
+    }
     super.AddChild(object)
     return object
 }
@@ -27,10 +37,17 @@ func (self *UnsyncState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
-    // TODO add impl
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
-    self.StartSync(raftHSM)
+    handleNoopResponse := func(event ClientEvent) {
+        if event.Type() != ev.EventClientResponse {
+            // TODO add log
+            return
+        }
+        raftHSM.SelfDispatch(event)
+    }
+    self.listener.Start(handleNoopResponse)
+    self.StartSyncSafe(raftHSM)
     return nil
 }
 
@@ -45,59 +62,46 @@ func (self *UnsyncState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
-    // TODO add impl
+    self.ClientEventListener.Stop()
     return nil
 }
 
 func (self *UnsyncState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    // TODO add impl
-    _, ok := sm.(*RaftHSM)
+    raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
     switch {
-    case event.Type() == ev.EventAppendEntriesResponse:
-        // TODO add impl
     case ev.IsClientEvent(event.Type()):
         e, ok := event.(ev.ClientRequestEvent)
         hsm.AssertTrue(ok)
         response := &ev.LeaderUnsyncResponse{}
         e.SendResponse(ev.NewLeaderUnsyncResponseEvent(response))
         return nil
+    case event.Type() == ev.ClientResponseEvent:
+        e, ok := event.(*ev.ClientResponseEvent)
+        hsm.AssertTrue(ok)
+        // TODO add different policy for retry
+        if e.Response.Success {
+            raftHSM.QTran(StateSyncID)
+        } else {
+            self.StartSyncSafe(raftHSM)
+        }
+        return nil
     }
     return self.Super()
 }
 
-func (self *UnsyncState) StartSync(raftHSM *RaftHSM) {
+func (self *UnsyncState) StartSync(raftHSM *RaftHSM) error {
     // commit a blank no-op entry into the log at the start of leader's term
+    requests := []*InflightRequest{self.noop}
+    return self.Super().StartFlight(raftHSM, requests)
+}
 
-    term := raftHSM.GetCurrentTerm()
-    leader, err := EncodeAddr(raftHSM.LocalAddr)
-    if err != nil {
-        // TODO add error handling
+func (self *UnsyncState) StartSyncSafe(raftHSM *RaftHSM) {
+    if err := self.StartSync(raftHSM); err != nil {
+        // TODO add log
+        stepdown := &ev.Stepdown{}
+        raftHSM.SelfDispatch(ev.NewStepdownEvent(stepdown))
     }
-    prevLogTerm, prevLogIndex := raftHSM.GetLastLogInfo()
-    logEntry := &persist.LogEntry{
-        Term:  term,
-        Index: prevLogIndex + 1,
-        Type:  persist.LogNoop,
-        Data:  make([]byte, 0),
-    }
-    request := &ev.AppendEntriesRequest{
-        Term:              term,
-        Leader:            leader,
-        PrevLogTerm:       prevLogTerm,
-        PrevLogIndex:      prevLogIndex,
-        Entries:           []*persist.LogEntry{logEntry},
-        LeaderCommitIndex: raftHSM.GetCommitIndex(),
-    }
-    event := ev.NewAppendEntriesRequestEvent(request)
-
-    selfResponse := &ev.AppendEntriesResponse{
-        Term:         term,
-        LastLogIndex: prevLogIndex,
-        Success:      true,
-    }
-    raftHSM.SelfDispatch(ev.NewAppendEntriesResponseEvent(selfResponse))
-    raftHSM.PeerManager.Broadcast(event)
 }

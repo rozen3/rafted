@@ -32,6 +32,41 @@ func (self *Notifier) GetNotifyChan() <-chan ev.NotifyEvent {
     return self.notifyCh
 }
 
+type ClientEventListener struct {
+    eventChan chan persist.ClientEvent
+    stopChan  chan interface{}
+    group     *sync.WaitGroup
+}
+
+func NewClientEventListener(ch chan persist.ClientEvent) {
+    return &ClientEventListener{
+        eventChan: ch,
+        &sync.WaitGroup{},
+    }
+}
+
+func (self *ClientEventListener) Start(fn func(bool)) {
+    self.group.Add(1)
+    go self.start(fn)
+}
+
+func (self *ClientEventListener) start(fn func(event ClientEvent)) {
+    defer self.group.Done()
+    for {
+        select {
+        case <-self.stopChan:
+            return
+        case event := <-self.eventChan:
+            fn(event)
+        }
+    }
+}
+
+func (self *ClientEventListener) Stop() {
+    self.stopChan <- self
+    self.group.Wait()
+}
+
 func EncodeAddr(addr net.Addr) ([]byte, error) {
     if addr == nil {
         return nil, nil

@@ -17,8 +17,11 @@ const (
     EventTimeoutElection
     EventTimeoutEnd
     EventInternalBegin
+    EventAbortSnapshotRecovery
+    EventStepdown
     EventPeerReplicateLog
     EventInternalEnd
+    EventClientResponse
     EventLeaderRedirectResponse
     EventLeaderUnknownResponse
     EventLeaderUnsyncResponse
@@ -222,16 +225,16 @@ type ClientRequestEvent interface {
 
 type ClientRequestEventHead struct {
     *hsm.StdEvent
-    resultChan chan ClientEvent
+    ResultChan chan ClientEvent
 }
 
 func (self *ClientRequestEventHead) SendResponse(event ClientEvent) {
-    self.resultChan <- event
+    self.ResultChan <- event
 }
 
 func (self *ClientRequestEventHead) RecvResponse() ClientEvent {
-    response := <-self.resultChan
-    return response
+    response := <-self.ResultChan
+    return Response
 }
 
 func NewClientRequestEventHead(
@@ -268,6 +271,20 @@ func NewClientReadOnlyRequestEvent(
     return &ClientReadOnlyRequestEvent{
         NewClientRequestEventHead(EventClientReadOnlyRequest),
         request,
+    }
+}
+
+type ClientResponseEvent struct {
+    *hsm.StdEvent
+    Response *ClientResponse
+}
+
+func NewClientResponseEvent(
+    response *ClientResponse) *ClientResponseEvent {
+
+    return &ClientResponseEvent{
+        hsm.NewStdEvent(EventClientResponse),
+        response,
     }
 }
 
@@ -309,6 +326,32 @@ func NewLeaderUnsyncResponseEvent(
     return &LeaderUnsyncResponseEvent{
         hsm.NewStdEvent(EventLeaderUnsyncResponse),
         response,
+    }
+}
+
+type AbortSnapshotRecoveryEvent struct {
+    *hsm.StdEvent
+    Message *AbortSnapshotRecovery
+}
+
+func NewAbortSnapshotRecoveryEvent(
+    message *AbortSnapshotRecovery) *AbortSnapshotRecoveryEvent {
+
+    return &AbortSnapshotRecoveryEvent{
+        hsm.NewStdEvent(EventAbortSnapshotRecovery),
+        message,
+    }
+}
+
+type StepdownEvent struct {
+    *hsm.StdEvent
+    Message *Stepdown
+}
+
+func NewStepdownEvent(message *Stepdown) *StepdownEvent {
+    return &StepdownEvent{
+        hsm.NewStdEvent(EventStepdown),
+        message,
     }
 }
 

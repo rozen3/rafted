@@ -5,7 +5,7 @@ import "io"
 // StateMachine is the interface for implementing state machine in raft.
 type StateMachine interface {
     // Apply is invoked once a log entry is commited to state machine.
-    Apply([]byte) interface{}
+    Apply([]byte) []byte
 
     // MakeSnapshot() is invoked to create a new snapshot for further writing.
     // MakeSnapshot() and Apply() are not called in multiple goroutines,

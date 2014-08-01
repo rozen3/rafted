@@ -18,9 +18,10 @@ func NewTestRaftNode(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
     localAddr net.Addr,
-    peerAddrs []net.Addr) *RaftNode {
+    otherPeerAddrs []net.Addr) *RaftNode {
 
-    raftHSM := CreateRaftHSM(heartbeatTimeout, electionTimeout, localAddr)
+    allPeers := append(otherPeerAddrs, localAddr)
+    raftHSM := CreateRaftHSM(heartbeatTimeout, electionTimeout, localAddr, allPeers)
 
     register := comm.NewMemoryTransportRegister()
     client := comm.NewMemoryClient(DefaultPoolSize, register)
@@ -30,7 +31,7 @@ func NewTestRaftNode(
     eventHandler2 := func(event ev.RaftRequestEvent) {
         raftHSM.Dispatch(event)
     }
-    peerManager := NewPeerManager(peerAddrs, client, eventHandler1)
+    peerManager := NewPeerManager(otherPeerAddrs, client, eventHandler1)
     raftHSM.SetPeerManager(peerManager)
     server := comm.NewMemoryServer(eventHandler2, localAddr, register)
     return &RaftNode{

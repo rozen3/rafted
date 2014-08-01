@@ -11,15 +11,15 @@ import (
 func CreateRaftHSM(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
-    localAddr net.Addr) *RaftHSM {
-
+    localAddr net.Addr,
+    peers []net.Addr) *RaftHSM {
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StateRaftID)
     raftState := NewRaftState(top)
     followerState := NewFollowerState(raftState, heartbeatTimeout)
     NewSnapshotRecoveryState(followerState)
     NewCandidateState(raftState, electionTimeout)
-    leaderState := NewLeaderState(raftState)
+    leaderState := NewLeaderState(raftState, peers)
     NewUnsyncState(leaderState)
     NewSyncState(leaderState)
     raftHSM := NewRaftHSM(top, initial, localAddr)
@@ -40,9 +40,10 @@ func NewRaftNode(
     poolSize int,
     localAddr net.Addr,
     bindAddr net.Addr,
-    peerAddrs []net.Addr) (*RaftNode, error) {
+    otherPeerAddrs []net.Addr) (*RaftNode, error) {
 
-    raftHSM := CreateRaftHSM(heartbeatTimeout, electionTimeout, localAddr)
+    allPeers := append(otherPeerAddrs, localAddr)
+    raftHSM := CreateRaftHSM(heartbeatTimeout, electionTimeout, localAddr, allPeers)
     client := comm.NewSocketClient(poolSize)
     eventHandler1 := func(event ev.RaftEvent) {
         raftHSM.Dispatch(event)
@@ -50,7 +51,7 @@ func NewRaftNode(
     eventHandler2 := func(event ev.RaftRequestEvent) {
         raftHSM.Dispatch(event)
     }
-    peerManager := NewPeerManager(peerAddrs, client, eventHandler1)
+    peerManager := NewPeerManager(otherPeerAddrs, client, eventHandler1)
     raftHSM.SetPeerManager(peerManager)
     server, err := comm.NewSocketServer(bindAddr, eventHandler2)
     if err != nil {

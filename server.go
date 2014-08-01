@@ -217,18 +217,23 @@ func (self *RaftHSM) ProcessLogsUpTo(index uint64) {
     }
 
     for i := lastApplied + 1; i <= index; i++ {
-        logEntry, err := self.log.GetLog(index)
-        if err != nil {
-            // TODO add log
-            // TODO change panic?
-            panic(err)
-        }
-        self.processLog(logEntry)
-        self.SetLastApplied(i)
+        self.ProcessLogAt(i)
     }
 }
 
-func (self *RaftHSM) processLog(logEntry *persist.LogEntry) {
+func (self *RaftHSM) ProcessLogAt(index uint64) []byte {
+    logEntry, err := self.log.GetLog(index)
+    if err != nil {
+        // TODO add log
+        // TODO change panic?
+        panic(err)
+    }
+    result := self.processLog(logEntry)
+    self.SetLastApplied(i)
+    return result
+}
+
+func (self *RaftHSM) processLog(logEntry *persist.LogEntry) []byte {
     switch logEntry.Type {
     case persist.LogCommand:
         // TODO add impl
@@ -244,6 +249,6 @@ func (self *RaftHSM) processLog(logEntry *persist.LogEntry) {
     }
 }
 
-func (self *RaftHSM) applyLog(logEntry *persist.LogEntry) {
-    self.stateMachine.Apply(logEntry.Data)
+func (self *RaftHSM) applyLog(logEntry *persist.LogEntry) []byte {
+    return self.stateMachine.Apply(logEntry.Data)
 }

@@ -108,7 +108,10 @@ func (self *SnapshotRecoveryState) Entry(
     if err != nil {
         // TODO add log
         self.writer = nil
+        abort := ev.AbortSnapshotRecovery{}
+        raftHSM.SelfDispatch(ev.AbortSnapshotRecoveryEvent(abort))
     } else {
+        raftHSM.SelfDispatch(event)
         self.writer = snapshotWriter
         self.snapshot = NewRemoteSnapshot(
             e.Request.Leader,
@@ -118,9 +121,6 @@ func (self *SnapshotRecoveryState) Entry(
             e.Request.Size,
             self.writer)
     }
-
-    // TODO add some policy to jump out this state if it fails to get it done.
-
     return self.Super()
 }
 
@@ -141,20 +141,12 @@ func (self *SnapshotRecoveryState) Handle(
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
     switch {
+
     case event.Type() == ev.EventTimeoutHeartBeat:
         // Ignore this event. Don't transfer to candidate state when
         // recovering from snapshot.
         return nil
     case event.Type() == ev.EventInstallSnapshotRequest:
-        if self.writer == nil {
-            // fail to create snapshot writer on entry handler
-            // TODO add log
-            if err := self.writer.Cancel(); err != nil {
-                // TODO add log
-            }
-            sm.QTran(StateFollowerID)
-            return nil
-        }
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
         if bytes.Compare(e.Request.Leader, self.snapshot.Leader) != 0 {
@@ -218,6 +210,10 @@ func (self *SnapshotRecoveryState) Handle(
                 sm.QTran(StateFollowerID)
             }
         }
+        return nil
+    case event.Type() == ev.EventAbortSnapshotRecovery:
+        // TODO add log
+        sm.QTran(StateFollowerID)
         return nil
     }
     return self.Super()

@@ -105,8 +105,6 @@ func (self *FollowerState) Handle(
         hsm.AssertTrue(ok)
         if (e.Request.Term >= raftHSM.GetCurrentTerm()) &&
             (e.Request.Offset == 0) {
-
-            raftHSM.SelfDispatch(event)
             raftHSM.QTranOnEvent(StateSnapshotRecoveryID, event)
         }
         return nil

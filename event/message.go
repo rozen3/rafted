@@ -110,6 +110,8 @@ type ClientReadOnlyRequest struct {
 type ClientResponse struct {
     // whether the request handling is a success or failure.
     Success bool
+    // the response content
+    Data []byte
 }
 
 // LeaderRedirectResponse is to redirect client to leader.
@@ -127,6 +129,12 @@ type LeaderUnknownResponse struct {
 // synchronized with other nodes in cluster yet.
 // To handle this situation, it's a good for client to retry this request.
 type LeaderUnsyncResponse struct {
+}
+
+type AbortSnapshotRecovery struct {
+}
+
+type Stepdown struct {
 }
 
 // PeerReplicateLog is a internal message for a peer(which represents
