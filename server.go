@@ -229,7 +229,7 @@ func (self *RaftHSM) ProcessLogAt(index uint64) []byte {
         panic(err)
     }
     result := self.processLog(logEntry)
-    self.SetLastApplied(i)
+    self.SetLastApplied(index)
     return result
 }
 
@@ -237,7 +237,7 @@ func (self *RaftHSM) processLog(logEntry *persist.LogEntry) []byte {
     switch logEntry.Type {
     case persist.LogCommand:
         // TODO add impl
-        self.applyLog(logEntry)
+        return self.applyLog(logEntry)
     case persist.LogNoop:
         // just ignore
 
@@ -247,6 +247,7 @@ func (self *RaftHSM) processLog(logEntry *persist.LogEntry) []byte {
         // unknown log entry type
         // TODO add log
     }
+    return make([]byte, 0)
 }
 
 func (self *RaftHSM) applyLog(logEntry *persist.LogEntry) []byte {

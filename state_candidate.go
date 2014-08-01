@@ -105,20 +105,10 @@ func (self *CandidateState) Handle(
     case event.Type() == ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesReqeustEvent)
         hsm.AssertTrue(ok)
-        // step down to follower state if term if equal or newer than
-        // local current term
+        // step down to follower state if local term is not greater than
+        // the remote one
         if e.Request.Term >= raftHSM.GetCurrentTerm() {
-            // discover a new leader, transfer to follower state
-
-            // replay this event in future
-            raftHSM.SelfDispatch(event)
-            // record the leader
-            leader, err := DecodeAddr(e.Request.Leader)
-            if err != nil {
-                // TODO add err checking
-            }
-            raftHSM.SetLeader(leader)
-            raftHSM.QTran(StateFollowerID)
+            Stepdown(raftHSM, event, e.Request.Leader)
         }
         return nil
     case ev.IsClientEvent(event.Type()):
@@ -172,4 +162,16 @@ func (self *CandidateState) StartElection(raftHSM *RaftHSM) {
 
     // broadcast RequestVote RPCs to all other servers
     raftHSM.PeerManager.Broadcast(event)
+}
+
+func Stepdown(raftHSM *RaftHSM, event hsm.Event, leaderBin []byte) {
+    // replay this event
+    raftHSM.SelfDispatch(event)
+    // record the leader
+    leader, err := DecodeAddr(leaderBin)
+    if err != nil {
+        // TODO add error handling
+    }
+    raftHSM.SetLeader(leader)
+    raftHSM.QTran(StateFollowerID)
 }

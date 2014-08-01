@@ -12,7 +12,9 @@ type SyncState struct {
 }
 
 func NewSyncState(super hsm.State) *SyncState {
-    object := &SyncState{hsm.NewStateHead(super)}
+    object := &SyncState{
+        hsm.NewStateHead(super),
+    }
     super.AddChild(object)
     return object
 }

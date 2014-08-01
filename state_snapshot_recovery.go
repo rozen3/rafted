@@ -108,8 +108,8 @@ func (self *SnapshotRecoveryState) Entry(
     if err != nil {
         // TODO add log
         self.writer = nil
-        abort := ev.AbortSnapshotRecovery{}
-        raftHSM.SelfDispatch(ev.AbortSnapshotRecoveryEvent(abort))
+        abort := &ev.AbortSnapshotRecovery{}
+        raftHSM.SelfDispatch(ev.NewAbortSnapshotRecoveryEvent(abort))
     } else {
         raftHSM.SelfDispatch(event)
         self.writer = snapshotWriter

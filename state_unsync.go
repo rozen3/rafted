@@ -15,7 +15,7 @@ type UnsyncState struct {
 }
 
 func NewUnsyncState(super hsm.State) *UnsyncState {
-    ch := make(chan persist.ClientEvent, 1)
+    ch := make(chan ev.ClientEvent, 1)
     object := &UnsyncState{
         StateHead: hsm.NewStateHead(super),
         noop: &InflightRequest{
@@ -39,7 +39,7 @@ func (self *UnsyncState) Entry(
     fmt.Println(self.ID(), "-> Entry")
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
-    handleNoopResponse := func(event ClientEvent) {
+    handleNoopResponse := func(event ev.ClientEvent) {
         if event.Type() != ev.EventClientResponse {
             // TODO add log
             return
@@ -62,7 +62,7 @@ func (self *UnsyncState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
-    self.ClientEventListener.Stop()
+    self.listener.Stop()
     return nil
 }
 
@@ -78,7 +78,7 @@ func (self *UnsyncState) Handle(
         response := &ev.LeaderUnsyncResponse{}
         e.SendResponse(ev.NewLeaderUnsyncResponseEvent(response))
         return nil
-    case event.Type() == ev.ClientResponseEvent:
+    case event.Type() == ev.EventClientResponse:
         e, ok := event.(*ev.ClientResponseEvent)
         hsm.AssertTrue(ok)
         // TODO add different policy for retry
@@ -95,7 +95,9 @@ func (self *UnsyncState) Handle(
 func (self *UnsyncState) StartSync(raftHSM *RaftHSM) error {
     // commit a blank no-op entry into the log at the start of leader's term
     requests := []*InflightRequest{self.noop}
-    return self.Super().StartFlight(raftHSM, requests)
+    leaderState, ok := self.Super().(*LeaderState)
+    hsm.AssertTrue(ok)
+    return leaderState.StartFlight(raftHSM, requests)
 }
 
 func (self *UnsyncState) StartSyncSafe(raftHSM *RaftHSM) {

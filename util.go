@@ -3,6 +3,7 @@ package rafted
 import (
     ev "github.com/hhkbp2/rafted/event"
     "net"
+    "sync"
 )
 
 const (
@@ -33,24 +34,26 @@ func (self *Notifier) GetNotifyChan() <-chan ev.NotifyEvent {
 }
 
 type ClientEventListener struct {
-    eventChan chan persist.ClientEvent
+    eventChan chan ev.ClientEvent
     stopChan  chan interface{}
     group     *sync.WaitGroup
 }
 
-func NewClientEventListener(ch chan persist.ClientEvent) {
+func NewClientEventListener(ch chan ev.ClientEvent) *ClientEventListener {
+
     return &ClientEventListener{
         eventChan: ch,
-        &sync.WaitGroup{},
+        stopChan:  make(chan interface{}),
+        group:     &sync.WaitGroup{},
     }
 }
 
-func (self *ClientEventListener) Start(fn func(bool)) {
+func (self *ClientEventListener) Start(fn func(ev.ClientEvent)) {
     self.group.Add(1)
     go self.start(fn)
 }
 
-func (self *ClientEventListener) start(fn func(event ClientEvent)) {
+func (self *ClientEventListener) start(fn func(ev.ClientEvent)) {
     defer self.group.Done()
     for {
         select {

@@ -5,6 +5,7 @@ import (
     "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    "github.com/hhkbp2/rafted/persist"
     "net"
     "sync"
 )
@@ -65,51 +66,100 @@ func (self *LeaderState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle, event=", event)
-    switch {
-    case event.Type() == ev.EventPeerReplicateLog:
+    raftHSM, ok := sm.(*RaftHSM)
+    hsm.AssertTrue(ok)
+    switch event.Type() {
+    case ev.EventPeerReplicateLog:
         e, ok := event.(*ev.PeerReplicateLogEvent)
         hsm.AssertTrue(ok)
-        goodToCommit, err := self.Inflight.Replicate(e.Peer, e.MatchIndex)
+        goodToCommit, err := self.Inflight.Replicate(
+            e.Message.Peer, e.Message.MatchIndex)
         if err != nil {
             // TODO add log
             return nil
         }
         if goodToCommit {
-            allCommitted := self.Inflight.Committed()
+            allCommitted := self.Inflight.GetCommitted()
             self.CommitInflightEntries(raftHSM, allCommitted)
         }
         return nil
-    case event.Type() == ev.EventAppendEntriesResponse:
-        e, ok := event.(*ev.AppendEntriesReqeustEvent)
+    case ev.EventAppendEntriesResponse:
+        e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
-        peerUpdate := ev.PeerReplicateLog{
+        peerUpdate := &ev.PeerReplicateLog{
             Peer:       raftHSM.LocalAddr,
             MatchIndex: e.Response.LastLogIndex,
         }
-        self.SelfDispatch(ev.NewPeerReplicateLogEvent(peerUpdate))
+        raftHSM.SelfDispatch(ev.NewPeerReplicateLogEvent(peerUpdate))
         return nil
-    case event.Type() == ev.EventRequestVoteRequest:
-        // TODO DEBUG
-        fmt.Println("Leader possible step down")
+    case ev.EventAppendEntriesRequest:
+        e, ok := event.(*ev.AppendEntriesReqeustEvent)
+        hsm.AssertTrue(ok)
+        // step down to follower state if local term is not greater than
+        // the remote one
+        if e.Request.Term >= raftHSM.GetCurrentTerm() {
+            Stepdown(raftHSM, event, e.Request.Leader)
+        }
         return nil
-    case ev.IsClientEvent(event.Type()):
-        fmt.Println("Leader process request")
+    case ev.EventRequestVoteRequest:
+        e, ok := event.(*ev.RequestVoteRequestEvent)
+        hsm.AssertTrue(ok)
+        if e.Request.Term >= raftHSM.GetCurrentTerm() {
+            Stepdown(raftHSM, event, e.Request.Candidate)
+        }
+        return nil
+    case ev.EventInstallSnapshotRequest:
+        e, ok := event.(*ev.InstallSnapshotRequestEvent)
+        hsm.AssertTrue(ok)
+        if e.Request.Term >= raftHSM.GetCurrentTerm() {
+            Stepdown(raftHSM, event, e.Request.Leader)
+        }
+        return nil
+    case ev.EventClientReadOnlyRequest:
+        e, ok := event.(*ev.ClientReadOnlyRequestEvent)
+        hsm.AssertTrue(ok)
+        self.HandleClientRequest(
+            raftHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
+        return nil
+    case ev.EventClientWriteRequest:
+        e, ok := event.(*ev.ClientWriteRequestEvent)
+        hsm.AssertTrue(ok)
+        self.HandleClientRequest(
+            raftHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
         return nil
     }
     return self.Super()
+}
+
+func (self *LeaderState) HandleClientRequest(
+    raftHSM *RaftHSM, requestData []byte, resultChan chan ev.ClientEvent) {
+
+    requests := []*InflightRequest{
+        &InflightRequest{
+            LogType:    persist.LogCommand,
+            Data:       requestData,
+            ResultChan: resultChan,
+        },
+    }
+    if err := self.StartFlight(raftHSM, requests); err != nil {
+        // TODO error handling
+    }
 }
 
 func (self *LeaderState) StartFlight(
     raftHSM *RaftHSM, requests []*InflightRequest) error {
 
     term := raftHSM.GetCurrentTerm()
-    lastLogIndex := raftHSM.GetLog().GetLastIndex()
+    lastLogIndex, err := raftHSM.GetLog().LastIndex()
+    if err != nil {
+        // TODO add error handling
+    }
 
     // construct log entries and inflight log entries
     logEntries := make([]*persist.LogEntry, 0, len(requests))
     inflightEntries := make([]*InflightEntry, 0, len(requests))
     for index, request := range requests {
-        logIndex := lastLogIndex + 1 + index
+        logIndex := lastLogIndex + 1 + uint64(index)
         logEntry := &persist.LogEntry{
             Term:  term,
             Index: logIndex,
@@ -118,22 +168,22 @@ func (self *LeaderState) StartFlight(
         }
         logEntries = append(logEntries, logEntry)
 
-        inflightEntry := NewInflight(logIndex, request, self.ClusterSize)
+        inflightEntry := NewInflightEntry(logIndex, request, self.Inflight.ClusterSize)
         inflightEntries = append(inflightEntries, inflightEntry)
     }
 
     // persist these requests locally
     if err := raftHSM.GetLog().StoreLogs(logEntries); err != nil {
         // TODO error handling; add log
-        response := &persist.ClientResponse{
+        response := &ev.ClientResponse{
             Success: false,
             Data:    make([]byte, 0),
         }
-        event := persist.NewClientResponseEvent(response)
+        event := ev.NewClientResponseEvent(response)
         for _, request := range requests {
             request.SendResponse(event)
         }
-        return error
+        return err
     }
 
     // add these requests to inflight log
@@ -190,11 +240,13 @@ type MajorityCommitCondition struct {
     MajoritySize uint32
 }
 
-func NewMajorityCommitCondition(clusterSize uint32) {
+func NewMajorityCommitCondition(
+    clusterSize uint32) *MajorityCommitCondition {
+
     return &MajorityCommitCondition{
         VoteCount:    0,
         ClusterSize:  clusterSize,
-        MajoritySize: (ClusterSize / 2) + 1,
+        MajoritySize: (clusterSize / 2) + 1,
     }
 }
 
@@ -211,10 +263,10 @@ func (self *MajorityCommitCondition) IsCommitted() bool {
 type InflightRequest struct {
     LogType    persist.LogType
     Data       []byte
-    ResultChan chan persist.ClientEvent
+    ResultChan chan ev.ClientEvent
 }
 
-func (self *InflightRequest) SendResponse(event persist.ClientEvent) {
+func (self *InflightRequest) SendResponse(event ev.ClientEvent) {
     self.ResultChan <- event
 }
 
@@ -239,24 +291,24 @@ func NewInflightEntry(
 type Inflight struct {
     MinIndex         uint64
     MaxIndex         uint64
-    ToCommit         []*InflightEntry
-    Committed        []*InflightEntry
+    ToCommitEntries  []*InflightEntry
+    CommittedEntries []*InflightEntry
     ClusterSize      uint32
     PeerMatchIndexes map[net.Addr]uint64
 
     sync.Mutex
 }
 
-func NewInflight(peers []net.Addr) *inflight {
+func NewInflight(peers []net.Addr) *Inflight {
     peerMatchIndexes := make(map[net.Addr]uint64)
     for _, peer := range peers {
         peerMatchIndexes[peer] = 0
     }
-    return &inflight{
+    return &Inflight{
         MinIndex:         0,
         MaxIndex:         0,
-        ToCommit:         make([]*InflightEntry, 0),
-        Committed:        make([]*InflightEntry, 0),
+        ToCommitEntries:  make([]*InflightEntry, 0),
+        CommittedEntries: make([]*InflightEntry, 0),
         ClusterSize:      uint32(len(peers)),
         PeerMatchIndexes: peerMatchIndexes,
     }
@@ -265,14 +317,14 @@ func NewInflight(peers []net.Addr) *inflight {
 func (self *Inflight) Init() {
     self.MinIndex = 0
     self.MaxIndex = 0
-    self.ToCommit = make([]*InflightEntry, 0)
-    self.Committed = make([]*InflightEntry, 0)
+    self.ToCommitEntries = make([]*InflightEntry, 0)
+    self.CommittedEntries = make([]*InflightEntry, 0)
     for k, _ := range self.PeerMatchIndexes {
         self.PeerMatchIndexes[k] = 0
     }
 }
 
-func (self *Inflight) Add(logIndex uint64, request InflightRequest) error {
+func (self *Inflight) Add(logIndex uint64, request *InflightRequest) error {
     self.Lock()
     defer self.Unlock()
 
@@ -286,7 +338,7 @@ func (self *Inflight) Add(logIndex uint64, request InflightRequest) error {
     }
 
     toCommit := NewInflightEntry(logIndex, request, self.ClusterSize)
-    self.ToCommit = append(self.ToCommit, toCommit)
+    self.ToCommitEntries = append(self.ToCommitEntries, toCommit)
     return nil
 }
 
@@ -300,18 +352,18 @@ func (self *Inflight) AddAll(toCommits []*InflightEntry) error {
 
     // check the indexes are incremental
     index := self.MaxIndex
-    for toCommit := range toCommits {
-        if !(index < toCommit.LogIndex) {
+    for _, entry := range toCommits {
+        if !(index < entry.LogIndex) {
             return errors.New("log index should be incremental")
         }
-        index = toCommit.LogIndex
+        index = entry.LogIndex
     }
 
     self.MaxIndex = index
     if self.MinIndex == 0 {
-        self.MinIndex = toCommits[0].Index
+        self.MinIndex = toCommits[0].LogIndex
     }
-    self.ToCommit = append(self.ToCommit, toCommits...)
+    self.ToCommitEntries = append(self.ToCommitEntries, toCommits...)
     return nil
 }
 
@@ -332,7 +384,7 @@ func (self *Inflight) Replicate(
                 newMatchIndex, matchIndex))
     }
     // update vote count for new replicated log
-    for _, toCommit := range self.ToCommit {
+    for _, toCommit := range self.ToCommitEntries {
         if toCommit.LogIndex > newMatchIndex {
             break
         }
@@ -347,8 +399,8 @@ func (self *Inflight) Replicate(
 
     // only inflight requests with log index up to(including)
     // newMatchIndex are possible to be good to commit
-    committedIndex = 0
-    for _, toCommit := range self.ToCommit {
+    committedIndex := 0
+    for _, toCommit := range self.ToCommitEntries {
         if toCommit.LogIndex > newMatchIndex {
             break
         }
@@ -358,20 +410,20 @@ func (self *Inflight) Replicate(
         committedIndex++
     }
     if committedIndex > 0 {
-        self.Committed = append(
-            self.Committed, self.ToCommit[:committedIndex]...)
-        self.ToCommit = self.ToCommit[committedIndex:]
+        self.CommittedEntries = append(
+            self.CommittedEntries, self.ToCommitEntries[:committedIndex]...)
+        self.ToCommitEntries = self.ToCommitEntries[committedIndex:]
         return true, nil
     } else {
         return false, nil
     }
 }
 
-func (self *Inflight) Committed() []*InflightEntry {
+func (self *Inflight) GetCommitted() []*InflightEntry {
     self.Lock()
     defer self.Unlock()
 
-    committed := self.Committed
-    self.Committed = make([]*InflightEntry, 0)
+    committed := self.CommittedEntries
+    self.CommittedEntries = make([]*InflightEntry, 0)
     return committed
 }

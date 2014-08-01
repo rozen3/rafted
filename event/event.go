@@ -234,7 +234,7 @@ func (self *ClientRequestEventHead) SendResponse(event ClientEvent) {
 
 func (self *ClientRequestEventHead) RecvResponse() ClientEvent {
     response := <-self.ResultChan
-    return Response
+    return response
 }
 
 func NewClientRequestEventHead(
