@@ -294,11 +294,11 @@ func NewMemoryStateMachine() *MemoryStateMachine {
     }
 }
 
-func (self *MemoryStateMachine) Apply(p []byte) interface{} {
+func (self *MemoryStateMachine) Apply(p []byte) []byte {
     self.lock.Lock()
     defer self.lock.Unlock()
     self.data.PushBack(p)
-    return nil
+    return p
 }
 
 func (self *MemoryStateMachine) MakeSnapshot() (Snapshot, error) {

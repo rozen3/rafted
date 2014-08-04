@@ -15,7 +15,11 @@ const (
 )
 
 const (
-    StatePeerID = "peer"
+    StatePeerID             = "peer"
+    StatePeerIdleID         = "peer_idle"
+    StatePeerReplicatingID  = "peer_replicating"
+    StatePeerStandardModeID = "peer_standard_mode"
+    StatePeerPipelineModeID = "peer_pipeline_mode"
 )
 
 type RaftState struct {
