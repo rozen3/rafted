@@ -46,50 +46,166 @@ func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     return self.Super()
 }
 
-type PeerDeactivatedState struct {
+type DeactivatePeerState struct {
     *hsm.StateHead
 }
 
-func NewPeerDeactivateState(super hsm.State) *PeerDeactivatedState {
-    object := &PeerDeactivatedState{
+func NewPeerDeactivateState(super hsm.State) *DeactivatePeerState {
+    object := &DeactivatePeerState{
         StateHead: hsm.NewStateHead(super),
     }
     super.AddChild(object)
     return object
 }
 
-func (*PeerDeactivatedState) ID() string {
-    return StatePeerDeactivatedID
+func (*DeactivatePeerState) ID() string {
+    return StateDeactivatePeerID
 }
 
-func (self *PeerDeactivatedState) Entry(
+func (self *DeactivatePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
     return nil
 }
 
-func (self *PeerDeactivatedState) Exit(
+func (self *DeactivatePeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
     return nil
 }
 
-func (self *PeerDeactivatedState) Handle(
+func (self *DeactivatePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle, event =", event)
     switch event.Type() {
     case ev.EventPeerActivate:
         // TODO add log
-        sm.QTranOnEvent(StatePeerActivatedID, event)
+        sm.QTran(StateActivatedPeerID)
         return nil
     }
     return self.Super()
 }
 
-type PeerActivatedState struct {
+type ActivatedPeerState struct {
+    *hsm.StateHead
+}
+
+func NewActivatedPeerState(
+    super hsm.State) *ActivatedPeerState {
+
+    object := &ActivatedPeerState{
+        StateHead: hsm.NewStateHead(super),
+    }
+    super.AddChild(object)
+    return object
+}
+
+func (*ActivatedPeerState) ID() string {
+    return StateActivatedPeerID
+}
+
+func (self *ActivatedPeerState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    fmt.Println(self.ID(), "-> Entry")
+    return nil
+}
+
+func (self *ActivatedPeerState) Init(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    fmt.Println(self.ID(), "-> Init")
+    sm.QInit(StatePeerIdleID)
+    return nil
+}
+
+func (self *ActivatedPeerState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    fmt.Println(self.ID(), "-> Exit")
+    return nil
+}
+
+func (self *ActivatedPeerState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    fmt.Println(self.ID(), "-> Handle, event =", event)
+    switch event.Type() {
+    case ev.EventRequestVoteRequest:
+        e, ok := event.(ev.RaftEvent)
+        hsm.AssertTrue(ok)
+        response, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
+        if err != nil {
+            // TODO add log
+            return nil
+        }
+        peerHSM.SelfDispatch(response)
+        return nil
+    case event.Type() == ev.EventRequestVoteResponse:
+        e, ok := event.(ev.RaftEvent)
+        hsm.AssertTrue(ok)
+        peerHSM.EventHandler(e)
+        return nil
+    case ev.EventPeerDeactivate:
+        // TODO add log
+        sm.QTran(StateDeactivatePeerID)
+        return nil
+    }
+    return self.Super()
+}
+
+type CandidatePeerState struct {
+    *hsm.StateHead
+}
+
+func NewCandidatePeerState(super hsm.State) *CandidatePeerState {
+    object := &CandidatePeerState{
+        StateHead: hsm.NewStateHead(super),
+    }
+    super.AddChild(object)
+    return object
+}
+
+func (*CandidatePeerState) ID() string {
+    return StateCandidatePeerID
+}
+
+func (self *CandidatePeerState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    fmt.Println(self.ID(), "-> Entry")
+    return nil
+}
+
+func (self *CandidatePeerState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    fmt.Println(self.ID(), "-> Exit")
+    return nil
+}
+
+func (self *CandidatePeerState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    fmt.Println(self.ID(), "-> Handle")
+    switch event.Type() {
+    case ev.EventAppendEntriesRequest:
+        peerHSM, ok := sm.(*PeerHSM)
+        hsm.AssertTrue(ok)
+        peerHSM.SelfDispatch(event)
+        sm.QTran(StateLeaderPeerID)
+        return nil
+    case ev.EventPeerEnterLeader:
+        sm.QTran(StateLeaderPeerID)
+        return nil
+    }
+    return self.Super()
+}
+
+type LeaderPeerState struct {
     *hsm.StateHead
 
     // term of highest log entry known to be replicated on the peer
@@ -111,12 +227,12 @@ type PeerActivatedState struct {
     maxAppendEntriesSize uint64
 }
 
-func NewPeerActivatedState(
+func NewLeaderPeerState(
     super hsm.State,
     heartbeatTimeout time.Duration,
-    maxAppendEntriesSize uint64) *PeerActivatedState {
+    maxAppendEntriesSize uint64) *LeaderPeerState {
 
-    object := &PeerActivatedState{
+    object := &LeaderPeerState{
         StateHead:            hsm.NewStateHead(super),
         heartbeatTimeout:     heartbeatTimeout,
         ticker:               NewRandomTicker(heartbeatTimeout),
@@ -126,22 +242,22 @@ func NewPeerActivatedState(
     return object
 }
 
-func (*PeerActivatedState) ID() string {
-    return StatePeerActivatedID
+func (*LeaderPeerState) ID() string {
+    return StateLeaderPeerID
 }
 
-func (self *PeerActivatedState) Entry(
+func (self *LeaderPeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
-    activateEvent, ok := event.(*ev.PeerActivateEvent)
-    hsm.AssertTrue(ok)
     // local initialization
-    self.term = activateEvent.Message.Term
+    self.term = peerHSM.GetRaftHSM().GetCurrentTerm()
     self.matchIndex = 0
-    self.nextIndex = activateEvent.Message.LastLogIndex + 1
+    self.nextIndex = peerHSM.GetRaftHSM().GetLog().LastIndex() + 1
+    // trigger a check on whether to start log replication
+    peerHSM.SelfDispatch(ev.NewPeerCheckLogReplicationEvent())
     // init timer
     self.UpdateLastContactTime()
     deliverHearbeatTimeout := func() {
@@ -152,22 +268,13 @@ func (self *PeerActivatedState) Entry(
                 Timeout:         self.heartbeatTimeout,
             }
             peerHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
-            self.UpdateLastContactTime()
         }
     }
     self.ticker.Start(deliverHearbeatTimeout)
     return nil
 }
 
-func (self *PeerActivatedState) Init(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Init")
-    sm.QInit(StatePeerIdleID)
-    return nil
-}
-
-func (self *PeerActivatedState) Exit(
+func (self *LeaderPeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
@@ -176,181 +283,134 @@ func (self *PeerActivatedState) Exit(
     return nil
 }
 
-func (self *PeerActivatedState) Handle(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Handle, event =", event)
-    switch event.Type() {
-    case ev.EventPeerDeactivate:
-        // TODO add log
-        sm.QTran(StatePeerDeactivatedID)
-        return nil
-    }
-    return self.Super()
-}
-
-func (self *PeerActivatedState) GetTerm() uint64 {
-    return atomic.LoadUint64(&self.term)
-}
-
-func (self *PeerActivatedState) SetTerm(term uint64) {
-    atomic.StoreUint64(&self.term, term)
-}
-
-func (self *PeerActivatedState) GetIndexInfo() (uint64, uint64) {
-    self.indexLock.RLock()
-    defer self.indexLock.RUnlock()
-    return self.matchIndex, self.nextIndex
-}
-
-func (self *PeerActivatedState) SetMatchIndex(index uint64) {
-    self.indexLock.Lock()
-    defer self.indexLock.Unlock()
-    self.matchIndex = index
-    self.nextIndex = self.matchIndex + 1
-}
-
-func (self *PeerActivatedState) LastContactTime() time.Time {
-    self.lastContactTimeLock.RLock()
-    defer self.lastContactTimeLock.RUnlock()
-    return self.lastContactTime
-}
-
-func (self *PeerActivatedState) UpdateLastContactTime() {
-    self.lastContactTimeLock.Lock()
-    defer self.lastContactTimeLock.Unlock()
-    self.lastContactTime = time.Now()
-}
-
-func (self *PeerActivatedState) GetMaxAppendEntriesSize() uint64 {
-    return atomic.LoadUint64(&self.maxAppendEntriesSize)
-}
-
-func (self *PeerActivatedState) SetMaxAppendEntriesSize(size uint64) {
-    atomic.StoreUint64(&self.maxAppendEntriesSize, size)
-}
-
-type PeerIdleState struct {
-    *hsm.StateHead
-}
-
-func NewPeerIdleState(super hsm.State) *PeerIdleState {
-    object := &PeerIdleState{
-        StateHead: hsm.NewStateHead(super),
-    }
-    super.AddChild(object)
-    return object
-}
-
-func (*PeerIdleState) ID() string {
-    return StatePeerIdleID
-}
-
-func (self *PeerIdleState) Entry(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Entry")
-    return nil
-}
-
-func (self *PeerIdleState) Init(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Init")
-    peerHSM, ok := sm.(*PeerHSM)
-    hsm.AssertTrue(ok)
-    peerHSM.SelfDispatch(ev.NewPeerCheckLogReplicationEvent())
-    return self.Super()
-}
-
-func (self *PeerIdleState) Exit(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Exit")
-    return nil
-}
-
-func (self *PeerIdleState) Handle(
+func (self *LeaderPeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle")
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch {
-    case ev.IsRaftRequest(event.Type()):
-        peerHSM.SelfDispatch(event)
-        sm.QTran(StatePeerReplicatingID)
-        return nil
     case ev.EventHeartbeatTimeout:
         fallthrough
     case ev.EventPeerCheckLogReplication:
         // check whether the peer falls behind the leader
-        activatedState, ok := self.Super().(*PeerActivatedState)
-        hsm.AssertTrue(ok)
-        matchIndex, nextIndex := activatedState.GetIndexInfo()
+        matchIndex, nextIndex := self.GetIndexInfo()
         if matchIndex < peerHSM.GetLog().LastIndex() {
-            sm.QTran(StatePeerReplicatingID)
+            sm.QTran(StatePeerStandardModeID)
+            return nil
+        }
+        // the peer is up-to-date, then send a pure heartbeat AE
+        raftHSM := peerHSM.GetRaftHSM()
+        leader, err := EncodeAddr(raftHSM.LocalAddr)
+        if err != nil {
+            // TODO error handling
+        }
+        prevLogIndex := raftHSM.GetLog().LastIndex()
+        log, err := raftHSM.GetLog().GetLog(prevLogIndex)
+        if err != nil {
+            // TODO error handling
+        }
+        prevLogTerm := log.Term
+        request := &ev.AppendEntriesRequest{
+            Term:              raftHSM.GetCurrentTerm(),
+            Leader:            leader,
+            PrevLogTerm:       prevLogIndex,
+            PrevLogIndex:      prevLogTerm,
+            Entries:           make([]*persist.LogEntry, 0),
+            LeaderCommitIndex: raftHSM.GetCommitIndex(),
+        }
+        event := ev.NewAppendEntriesRequestEvent(request)
+        respEvent, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
+        if err != nil {
+            // TODO error handling
+        }
+        e, ok := respEvent.(*ev.AppendEntriesResponseEvent)
+        if !ok {
+            // TODO error handling
+        }
+        peerHSM.SelfDispatch(e)
+        return nil
+    case ev.EventAppendEntriesResponse:
+        e, ok := event.(*ev.AppendEntriesResponseEvent)
+        hsm.AssertTrue(ok)
+        raftHSM := peerHSM.GetRaftHSM()
+        if e.Response.Term > raftHSM.GetCurrentTerm() {
+            raftHSM.SelfDispatch(ev.NewStepdownEvent())
+        }
+        if e.Response.LastLogIndex != self.GetMatchIndex() {
+            // TODO add log
+            if e.Reponse.LastLogIndex > self.GetMatchIndex() {
+                message := &ev.PeerReplicateLog{
+                    Peer:       peerHSM.Addr,
+                    MatchIndex: self.GetMatchIndex(),
+                }
+                event := ev.NewPeerReplicateLogEvent(message)
+                raftHSM.SelfDispatch(event)
+            }
+            self.SetMatchIndex(e.Response.LastLogIndex)
+        }
+        // don't care whether response is success
+        self.UpdateLastContactTime()
+        // check whether the peer is up-to-date
+        matchIndex, nextIndex := self.GetIndexInfo()
+        if matchIndex == peerHSM.GetLog().LastIndex() {
+            sm.QTran(StateLeaderPeerID)
         }
         return nil
     }
     return self.Super()
 }
 
-type PeerReplicatingState struct {
+func (self *LeaderPeerState) GetTerm() uint64 {
+    return atomic.LoadUint64(&self.term)
+}
+
+func (self *LeaderPeerState) SetTerm(term uint64) {
+    atomic.StoreUint64(&self.term, term)
+}
+
+func (self *LeaderPeerState) GetIndexInfo() (uint64, uint64) {
+    self.indexLock.RLock()
+    defer self.indexLock.RUnlock()
+    return self.matchIndex, self.nextIndex
+}
+
+func (self *LeaderPeerState) SetMatchIndex(index uint64) {
+    self.indexLock.Lock()
+    defer self.indexLock.Unlock()
+    self.matchIndex = index
+    self.nextIndex = self.matchIndex + 1
+}
+
+func (self *LeaderPeerState) LastContactTime() time.Time {
+    self.lastContactTimeLock.RLock()
+    defer self.lastContactTimeLock.RUnlock()
+    return self.lastContactTime
+}
+
+func (self *LeaderPeerState) UpdateLastContactTime() {
+    self.lastContactTimeLock.Lock()
+    defer self.lastContactTimeLock.Unlock()
+    self.lastContactTime = time.Now()
+}
+
+func (self *LeaderPeerState) GetMaxAppendEntriesSize() uint64 {
+    return atomic.LoadUint64(&self.maxAppendEntriesSize)
+}
+
+func (self *LeaderPeerState) SetMaxAppendEntriesSize(size uint64) {
+    atomic.StoreUint64(&self.maxAppendEntriesSize, size)
+}
+
+type StandardModePeerState struct {
     *hsm.StateHead
 }
 
-func NewPeerReplicatingState(super hsm.State) *PeerReplicatingState {
-    object := &PeerReplicatingState{
-        StateHead: hsm.NewStateHead(super),
-    }
-    super.AddChild(object)
-    return object
-}
-
-func (*PeerReplicatingState) ID() string {
-    return StatePeerReplicatingID
-}
-
-func (self *PeerReplicatingState) Entry(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Entry")
-    // TODO add impl
-    return nil
-}
-
-func (self *PeerReplicatingState) Init(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Init")
-    sm.QInit(StatePeerStandardModeID)
-    return nil
-}
-
-func (self *PeerReplicatingState) Exit(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Exit")
-    return nil
-}
-
-func (self *PeerReplicatingState) Handle(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Handle")
-    return self.Super()
-}
-
-type PeerStandardModeState struct {
-    *hsm.StateHead
-}
-
-func NewPeerStandardModeState(
+func NewStandardModePeerState(
     super hsm.State,
-    maxSnapshotChunkSize uint64) *PeerStandardModeState {
+    maxSnapshotChunkSize uint64) *StandardModePeerState {
 
-    object := &PeerStandardModeState{
+    object := &StandardModePeerState{
         StateHead:            hsm.NewStateHead(super),
         maxSnapshotChunkSize: maxSnapshotChunkSize,
     }
@@ -358,75 +418,75 @@ func NewPeerStandardModeState(
     return object
 }
 
-func (*PeerStandardModeState) ID() string {
-    return StatePeerStandardModeID
+func (*StandardModePeerState) ID() string {
+    return StateStandardModePeerID
 }
 
-func (self *PeerStandardModeState) Entry(
+func (self *StandardModePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
 
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
-    activatedState, ok := self.Super().Super().(*PeerActivatedState)
+    replicatingState, ok := self.Super().(*LeaderPeerState)
     hsm.AssertTrue(ok)
-
-    request := MakeAppendEntriesRequest(peerHSM, activatedState)
-    peerHSM.SelfDispatch(request)
+    event := self.SetupReplicating(peerHSM, replicatingState)
+    peerHSM.SelfDispatch(event)
     return nil
 }
 
-func (self *PeerStandardModeState) Init(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Init")
-    return self.Super()
-}
-
-func (self *PeerStandardModeState) Exit(
+func (self *StandardModePeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
     return nil
 }
 
-func (self *PeerStandardModeState) Handle(
+func (self *StandardModePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle, event =", event)
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
-    switch {
-    case ev.IsRaftRequest(event.Type()):
+    switch event.Type() {
+    case ev.EventHeartbeatTimeout:
+        event := self.SetupReplicating(peerHSM)
+        peerHSM.SelfDispatch(event)
+    case ev.EventAppendEntriesRequest:
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
-        response, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
+        respEvent, err := peerHSM.CLient.CallRPCTo(peerHSM.Addr, e)
         if err != nil {
-            // TODO add log
-            return nil
+            // TODO error handling
         }
-        peerHSM.SelfDispatch(response)
+        e, ok := respEvent.(*ev.AppendEntriesResponseEvent)
+        if !ok {
+            // TODO error handling
+        }
+        peerHSM.SelfDispatch(e)
         return nil
-    case event.Type() == ev.EventRequestVoteResponse:
-        e, ok := event.(ev.RaftEvent)
+    case ev.EventAppendEntriesResponse:
+        e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
-        peerHSM.EventHandler(e)
-        return nil
-    case event.Type() == ev.EventAppendEntriesResponse:
-        // TODO
-        return nil
-    case event.Type() == ev.EventInstallSnapshotResponse:
-        // TODO
+        raftHSM := peerHSM.GetRaftHSM()
+        if e.Response.LastLogIndex < raftHSM.GetLog().LastIndex() {
+            // not done replicating the peer log
+            event := self.SetupReplicating(peerHSM)
+            peerHSM.SelfDispatch(event)
+        }
+        return self.Super()
+    case ev.EventEnterSnapshotMode:
+        // TODO add log
+        sm.QTran(StateSnapshotModePeerID)
         return nil
     }
-    // ignore all other events
     return self.Super()
 }
 
-func (self *PeerStandardModeState) SetupReplicatingRequestEvent(
+func (self *StandardModePeerState) SetupReplicating(
     peerHSM *PeerHSM,
-    activatedState *PeerActivatedState) hsm.Event {
+    activatedState *ActivatedPeerState) (event hsm.Event) {
 
     matchIndex, nextIndex := activatedState.GetIndexInfo()
     raftHSM := peerHSM.GetRaftHSM()
@@ -446,110 +506,258 @@ func (self *PeerStandardModeState) SetupReplicatingRequestEvent(
             Entries:           make([]*persist.LogEntry, 0),
             LeaderCommitIndex: raftHSM.GetCommitIndex(),
         }
-        event := ev.NewAppendEntriesRequestEvent(request)
+        event = ev.NewAppendEntriesRequestEvent(request)
     case matchIndex < lastSnapshotIndex:
-        event := ev.NewPeerEnterSnapshotModeEvent
-        snapshotManager := raftHSM.GetSnapshotManager()
-        snapshotMetas, err := snapshotManager.list()
-        if err != nil {
-            // TODO error handling
-        }
-        if len(snapshots) == 0 {
-            // TODO error handling
-        }
-
-        id := snapshotMetas[0].ID
-        meta, snapshot, err := snapshotManager.Open(id)
-        if err != nil {
-            // TODO error handling
-        }
-        defer snapshot.Close()
-        // TODO
-    case matchIndex == lastSnapshotIndex:
-        log, err := peerHSM.GetRaftHSM().GetLog().GetLog(nextIndex)
-        if err != nil {
-            // TODO add log
-        }
+        event = ev.NewPeerEnterSnapshotModeEvent()
     default:
-        // TODO
-    }
+        log, err := raftHSM.GetLog().GetLog(nextIndex)
+        if err != nil {
+            // TODO error handling
+        }
+        prevLogIndex := log.Index
+        prevLogTerm := log.Term
 
+        logEntries := make([]*persist.LogEntry, 0, self.maxAppendEntriesSize)
+        maxIndex := Min(
+            nextIndex+uint64(self.maxAppendEntriesSize)-1,
+            raftHSM.GetLog().LastIndex())
+        for i := nextIndex; i <= maxIndex; i++ {
+            if log, err = raftHSM.GetLog().GetLog(i); err != nil {
+                // TODO error handling
+            }
+            logEntries = append(logEntries, log)
+        }
+        request := &ev.AppendEntriesRequest{
+            Term:              raftHSM.GetCurrentTerm(),
+            Leader:            leader,
+            PrevLogTerm:       prevLogTerm,
+            PrevLogIndex:      prevLogIndex,
+            Entries:           logEntries,
+            LeaderCommitIndex: raftHSM.GetCommitIndex(),
+        }
+        event = ev.NewAppendEntriesRequestEvent(request)
+    }
+    return event
 }
 
-type PeerSnapshotModeState struct {
+type SnapshotModePeerState struct {
     *hsm.StateHead
 
     maxSnapshotChunkSize uint64
+    snapshotOffset       uint64
+    lastChunk            []byte
     snapshotMeta         *persist.SnapshotMeta
     snapshotReadCloser   io.ReadCloser
 }
 
-func NewPeerSnapshotModeState(
+func NewSnapshotModePeerState(
     super hsm.State,
-    maxSnapshotChunkSize uint64) *PeerSnapshotModeState {
+    maxSnapshotChunkSize uint64) *SnapshotModePeerState {
 
-    object := &PeerSnapshotModeState{
+    object := &SnapshotModePeerState{
         maxSnapshotChunkSize: maxSnapshotChunkSize,
     }
     super.AddChild(object)
     return object
 }
 
-func (*PeerSnapshotModeState) ID() string {
-    return StatePeerSnapshotModeID
+func (*SnapshotModePeerState) ID() string {
+    return StateSnapshotModePeerID
 }
 
-func (self *PeerSnapshotModeState) Entry(
+func (self *SnapshotModePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
+
+    peerHSM, ok := sm.(*PeerHSM)
+    hsm.AssertTrue(ok)
+    raftHSM := peerHSM.GetRaftHSM()
+    snapshotManager := raftHSM.GetSnapshotManager()
+    snapshotMetas, err := snapshotManager.list()
+    if err != nil {
+        // TODO error handling
+    }
+    if len(snapshots) == 0 {
+        // TODO error handling
+    }
+
+    id := snapshotMetas[0].ID
+    meta, readCloser, err := snapshotManager.Open(id)
+    if err != nil {
+        // TODO error handling
+    }
+    self.snapshotMeta = meta
+    self.snapshotReadCloser = readCloser
+
+    // TODO
+    leader, err := EncodeAddr(raftHSM.LocalAddr)
+    if err != nil {
+        // err handling
+    }
+
+    self.offset = 0
+    self.lastChunk = make([]byte, 0)
+    data := make([]byte, self.maxSnapshotChunkSize)
+    n, err := self.snapshotReadCloser.Read(data)
+    if n > 0 {
+        self.lastChunk = data[:n]
+        request := &ev.InstallSnapshotRequest{
+            Term:              raftHSM.GetCurrentTerm(),
+            Leader:            leader,
+            LastIncludedIndex: self.snapshotMeta.LastIncludedIndex,
+            LastIncludedTerm:  self.snapshotMeta.LastIncludedTerm,
+            Offset:            self.offset,
+            Data:              self.lastChunk,
+            // TODO add servers
+            Servers: make([]byte, 0),
+            Size:    self.snapshotMeta.Size,
+        }
+        event := ev.NewInstallSnapshotRequestEvent(request)
+    } else {
+        if err == io.EOF || err == nil {
+            // TODO add log
+        } else {
+            // TODO add log
+        }
+        event := ev.NewPeerAbortSnapshotModeEvent()
+    }
+    peerHSM.SelfDispatch(event)
     return nil
 }
 
-func (self *PeerSnapshotModeState) Exit(
+func (self *SnapshotModePeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
+    if err := self.snapshotReadCloser.Close(); err != nil {
+        // TODO error handling
+    }
+    self.snapshotMeta = nil
+    self.offset = 0
+    self.lastChunk = nil
+    return nil
 }
 
-func (self *PeerSnapshotModeState) Handle(
+func (self *SnapshotModePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle")
+    peerHSM, ok := sm.(*PeerHSM)
+    hsm.AssertTrue(ok)
+    raftHSM := peerHSM.GetRaftHSM()
+    switch event.Type() {
+    case ev.EventInstallSnapshotRequest:
+        e, ok := event.(ev.RaftEvent)
+        hsm.AssertTrue(ok)
+        respEvent, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
+        if err != nil {
+            // TODO add log
+            nil
+        }
+        if responseEvent.Type() != ev.EventInstallSnapshotResponse {
+            // TODO error handling
+        }
+        snapshotRespEvent, ok := respEvent.(*ev.InstallSnapshotResponseEvent)
+        if !ok {
+            // TODO error handling
+        }
+        if snapshotRespEvent.Response.Term > raftHSM.GetCurrentTerm() {
+            event := ev.NewStepdownEvent()
+            raftHSM.SelfDispatch(event)
+            peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
+            return nil
+        }
+        if snapshotRespEvent.Response.Success {
+            // send next chunk
+            self.offset += len(self.lastChunk)
+            if self.offset == self.snapshotMeta.Size {
+                // all snapshot send
+                // TODO add log
+                sm.QTran(StateStandardModePeerID)
+                return nil
+            }
+
+            data := make([]byte, self.maxSnapshotChunkSize)
+            n, err := self.snapshotReadCloser.Read(data)
+            if n > 0 {
+                self.lastChunk = data[:n]
+                request := &ev.InstallSnapshotRequest{
+                    Term:              raftHSM.GetCurrentTerm(),
+                    Leader:            leader,
+                    LastIncludedIndex: self.snapshotMeta.LastIncludedIndex,
+                    LastIncludedTerm:  self.snapshotMeta.LastIncludedTerm,
+                    Offset:            self.offset,
+                    Data:              self.lastChunk,
+                    // TODO add servers
+                    Servers: make([]byte, 0),
+                    Size:    self.snapshotMeta.Size,
+                }
+                event := ev.NewInstallSnapshotRequestEvent(request)
+                peerHSM.SelfDispatch(event)
+            } else {
+                if err == io.EOF || err == nil {
+                    // TODO error handling
+                } else {
+                    // TODO error handling
+                }
+            }
+        } else {
+            // resend last chunk
+            request := &ev.InstallSnapshotRequest{
+                Term:              raftHSM.GetCurrentTerm(),
+                Leader:            leader,
+                LastIncludedIndex: self.snapshotMeta.LastIncludedIndex,
+                LastIncludedTerm:  self.snapshotMeta.LastIncludedTerm,
+                Offset:            self.offset,
+                Data:              self.lastChunk,
+                // TODO add servers
+                Servers: make([]byte, 0),
+                Size:    self.snapshotMeta.Size,
+            }
+            event := ev.NewInstallSnapshotRequestEvent(request)
+            peerHSM.SelfDispatch(event)
+        }
+        return nil
+    case ev.EventPeerAbortSnapshotMode:
+        // TODO add log
+        sm.QTran(StateStandardModePeerID)
+        return nil
+    }
     return self.Super()
 }
 
-type PeerPipelineModeState struct {
+type PipelineModePeerState struct {
     *hsm.StateHead
 }
 
-func NewPeerPipelineModeState(super hsm.State) *PeerPipelineModeState {
-    object := &PeerPipelineModeState{
+func NewPipelineModePeerState(super hsm.State) *PipelineModePeerState {
+    object := &PipelineModePeerState{
         StateHead: hsm.NewStateHead(super),
     }
     super.AddChild(object)
     return object
 }
 
-func (*PeerPipelineModeState) ID() string {
-    return StatePeerPipelineModeID
+func (*PipelineModePeerState) ID() string {
+    return StatePipelineModePeerID
 }
 
-func (self *PeerPipelineModeState) Entry(
+func (self *PipelineModePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
     return nil
 }
 
-func (self *PeerPipelineModeState) Exit(
+func (self *PipelineModePeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
     return nil
 }
 
-func (self *PeerPipelineModeState) Handle(
+func (self *PipelineModePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle")

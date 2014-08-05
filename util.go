@@ -81,16 +81,16 @@ func DecodeAddr(addr []byte) (net.Addr, error) {
     return net.ResolveTCPAddr("", string(addr))
 }
 
-// min returns the minimum.
-func min(a, b uint64) uint64 {
+// Min returns the minimum.
+func Min(a, b uint64) uint64 {
     if a <= b {
         return a
     }
     return b
 }
 
-// max returns the maximum
-func max(a, b uint64) uint64 {
+// Max returns the maximum
+func Max(a, b uint64) uint64 {
     if a >= b {
         return a
     }

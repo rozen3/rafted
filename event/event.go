@@ -22,6 +22,7 @@ const (
     EventPeerReplicateLog
     EventPeerActivate
     EventPeerDeactivate
+    EventPeerEnterLeader
     EventPeerCheckLogReplication
     EventPeerEnterSnapshotMode
     EventInternalEnd
@@ -381,13 +382,11 @@ func NewPeerReplicateLogEvent(
 
 type PeerActivateEvent struct {
     *hsm.StdEvent
-    Message *PeerActivate
 }
 
 func NewPeerActivateEvent(message *PeerActivate) *PeerActivateEvent {
     return &PeerActivateEvent{
         hsm.NewStdEvent(EventPeerActivate),
-        message,
     }
 }
 
@@ -418,5 +417,15 @@ type PeerEnterSnapshotModeEvent struct {
 func NewPeerEnterSnapshotModeEvent() *PeerEnterSnapshotModeEvent {
     return &PeerEnterSnapshotModeEvent{
         hsm.NewStdEvent(EventPeerEnterSnapshotMode),
+    }
+}
+
+type PeerAbortSnapshotModeEvent struct {
+    *hsm.StdEvent
+}
+
+func NewPeerAbortSnapshotModeEvent() *PeerAbortSnapshotModeEvent {
+    return &PeerAbortSnapshotModeEvent{
+        hsm.NewStdEvent(EventAbortSnapshotMode),
     }
 }

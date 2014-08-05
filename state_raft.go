@@ -16,13 +16,13 @@ const (
 
 const (
     StatePeerID             = "peer"
-    StatePeerDeactivatedID  = "peer_deactivated"
-    StatePeerActivatedID    = "peer_activated"
-    StatePeerIdleID         = "peer_idle"
-    StatePeerReplicatingID  = "peer_replicating"
-    StatePeerStandardModeID = "peer_standard_mode"
-    StatePeerSnapshotModeID = "peer_snapshot_mode"
-    StatePeerPipelineModeID = "peer_pipeline_mode"
+    StateDeactivatedPeerID  = "deactivated_peer"
+    StateActivatedPeerID    = "activated_peer"
+    StateCandidatePeerID    = "candidate_peer"
+    StateLeaderPeerID       = "leader_peer"
+    StateStandardModePeerID = "standard_mode_peer"
+    StateSnapshotModePeerID = "snapshot_mode_peer"
+    StatePipelineModePeerID = "pipeline_mode_peer"
 )
 
 type RaftState struct {

@@ -144,8 +144,3 @@ type HeartbeatTimeout struct {
     LastContactTime time.Time
     Timeout         time.Duration
 }
-
-type PeerActivate struct {
-    Term         uint64
-    LastLogIndex uint64
-}
