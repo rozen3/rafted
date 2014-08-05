@@ -131,12 +131,6 @@ type LeaderUnknownResponse struct {
 type LeaderUnsyncResponse struct {
 }
 
-type AbortSnapshotRecovery struct {
-}
-
-type Stepdown struct {
-}
-
 // PeerReplicateLog is a internal message for a peer(which represents
 // a follower) to notify leader it makes some progress on replicate logs.
 type PeerReplicateLog struct {
@@ -144,4 +138,14 @@ type PeerReplicateLog struct {
     Peer net.Addr
     // index of highest log entry known to replicated to follower
     MatchIndex uint64
+}
+
+type HeartbeatTimeout struct {
+    LastContactTime time.Time
+    Timeout         time.Duration
+}
+
+type PeerActivate struct {
+    Term         uint64
+    LastLogIndex uint64
 }

@@ -38,10 +38,6 @@ type RaftHSM struct {
     // the current term
     currentTerm uint64
 
-    // CandidateId that received vote in current term(or nil if none)
-    votedFor     net.Addr
-    votedForLock sync.RWMutex
-
     // log entries
     log     persist.Log
     logLock sync.RWMutex
@@ -50,15 +46,20 @@ type RaftHSM struct {
     stateMachine     persist.StateMachine
     stateMachineLock sync.RWMutex
 
-    // snapshot
-    SnapshotManager persist.SnapshotManager
-
     // the index of highest log entry known to be committed
     commitIndex uint64
     // the index of highest log entry applied to state machine
     lastApplied uint64
 
-    // extanded fields
+    // snapshot
+    SnapshotManager persist.SnapshotManager
+    // the latest snapshot term/index
+    lastSnapshotTerm  uint64
+    lastSnapshotIndex uint64
+
+    // CandidateId that received vote in current term(or nil if none)
+    votedFor     net.Addr
+    votedForLock sync.RWMutex
     // leader infos
     leader     net.Addr
     leaderLock sync.RWMutex
@@ -186,6 +187,26 @@ func (self *RaftHSM) GetLastApplied() uint64 {
 
 func (self *RaftHSM) SetLastApplied(index uint64) {
     atomic.StoreUint64(&self.lastApplied, index)
+}
+
+func (self *RaftHSM) GetSnapshotManager() persist.SnapshotManager {
+    return self.SnapshotManager
+}
+
+func (self *RaftHSM) GetLastSnapshotTerm() uint64 {
+    return atomic.LoadUint64(&self.lastSnapshotTerm)
+}
+
+func (self *RaftHSM) SetLastSnapshotTerm(term uint64) {
+    atomic.StoreUint64(&self.lastSnapshotTerm, term)
+}
+
+func (self *RaftHSM) GetLastSnapshotIndex() uint64 {
+    return atomic.LoadUint64(&self.lastSnapshotIndex)
+}
+
+func (self *RaftHSM) SetLastSnapshotIndex(index uint64) {
+    atomic.StoreUint64(&self.lastSnapshotIndex, index)
 }
 
 func (self *RaftHSM) GetLeader() net.Addr {

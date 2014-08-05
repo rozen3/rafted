@@ -40,6 +40,7 @@ func (self *FollowerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
+    hsm.AssertEqual(HSMTypeRaft, sm.Type())
     raftHSM, ok := sm.(*RaftHSM)
     hsm.AssertTrue(ok)
     // init global status
@@ -47,13 +48,18 @@ func (self *FollowerState) Entry(
     // init status for this status
     self.UpdateLastContactTime()
     // start heartbeat timeout ticker
-    hsm.AssertEqual(HSMTypeRaft, sm.Type())
-    notifyHeartbeatTimeout := func() {
-        if TimeExpire(self.LastContactTime(), self.heartbeatTimeout) {
-            raftHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent())
+    deliverHeartbeatTimeout := func() {
+        lastContactTime := self.LastContactTime()
+        if TimeExpire(lastContactTime, self.heartbeatTimeout) {
+            timeout := &HeartbeatTimeout{
+                LastContactTime: lastContactTime,
+                Timeout:         self.heartbeatTimeout,
+            }
+            raftHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
+            self.UpdateLastContactTime()
         }
     }
-    self.ticker.Start(notifyHeartbeatTimeout)
+    self.ticker.Start(deliverHeartbeatTimeout)
     return nil
 }
 

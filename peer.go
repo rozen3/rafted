@@ -17,10 +17,15 @@ type PeerManager struct {
     peers map[net.Addr]*Peer
 }
 
-func NewPeerManager(addrs []net.Addr, client comm.Client, eventHandler func(ev.RaftEvent)) *PeerManager {
+func NewPeerManager(
+    raftHSM *RaftHSM,
+    addrs []net.Addr,
+    client comm.Client,
+    eventHandler func(ev.RaftEvent)) *PeerManager {
+
     peers := make(map[net.Addr]*Peer)
     for _, addr := range addrs {
-        peers[addr] = NewPeer(addr, client, eventHandler)
+        peers[addr] = NewPeer(raftHSM, addr, client, eventHandler)
     }
     return &PeerManager{addrs, peers}
 }
@@ -46,7 +51,13 @@ func NewPeer(
 
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StatePeerID)
-    NewPeerState(top)
+    peerState := NewPeerState(top)
+    NewPeerDeactivatedState(peerState)
+    activatedState := NewPeerActivatedState(peerState)
+    NewPeerIdleState(activatedState)
+    replicatingState := NewPeerReplicatingState(activatedState)
+    NewPeerStandardModeState(replicatingState)
+    NewPeerPipelineModeState(replicatingState)
     peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler)
     return &Peer{peerHSM}
 }
@@ -70,6 +81,8 @@ type PeerHSM struct {
     Group            sync.WaitGroup
 
     /* peer extanded fields */
+    raftHSM *RaftHSM
+    log     persist.Log
 
     // network facility
     Addr         net.Addr
@@ -134,4 +147,12 @@ func (self *PeerHSM) SelfDispatch(event hsm.Event) {
 func (self *PeerHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
     self.Group.Wait()
+}
+
+func (self *PeerHSM) GetRaftHSM() *RaftHSM {
+    return self.raftHSM
+}
+
+func (self *PeerHSM) GetLog() persist.Log {
+    return self.log
 }

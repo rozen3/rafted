@@ -16,9 +16,12 @@ const (
 
 const (
     StatePeerID             = "peer"
+    StatePeerDeactivatedID  = "peer_deactivated"
+    StatePeerActivatedID    = "peer_activated"
     StatePeerIdleID         = "peer_idle"
     StatePeerReplicatingID  = "peer_replicating"
     StatePeerStandardModeID = "peer_standard_mode"
+    StatePeerSnapshotModeID = "peer_snapshot_mode"
     StatePeerPipelineModeID = "peer_pipeline_mode"
 )
 

@@ -20,6 +20,10 @@ const (
     EventAbortSnapshotRecovery
     EventStepdown
     EventPeerReplicateLog
+    EventPeerActivate
+    EventPeerDeactivate
+    EventPeerCheckLogReplication
+    EventPeerEnterSnapshotMode
     EventInternalEnd
     EventClientResponse
     EventLeaderRedirectResponse
@@ -199,10 +203,16 @@ func (self *InstallSnapshotResponseEvent) Message() interface{} {
 
 type HeartbeatTimeoutEvent struct {
     *hsm.StdEvent
+    Message *HeartbeatTimeout
 }
 
-func NewHeartbeatTimeoutEvent() *HeartbeatTimeoutEvent {
-    return &HeartbeatTimeoutEvent{hsm.NewStdEvent(EventTimeoutHeartBeat)}
+func NewHeartbeatTimeoutEvent(
+    message *HeartbeatTimeout) *HeartbeatTimeoutEvent {
+
+    return &HeartbeatTimeoutEvent{
+        hsm.NewStdEvent(EventTimeoutHeartBeat),
+        message,
+    }
 }
 
 type ElectionTimeoutEvent struct {
@@ -366,5 +376,47 @@ func NewPeerReplicateLogEvent(
     return &PeerReplicateLogEvent{
         hsm.NewStdEvent(EventPeerReplicateLog),
         message,
+    }
+}
+
+type PeerActivateEvent struct {
+    *hsm.StdEvent
+    Message *PeerActivate
+}
+
+func NewPeerActivateEvent(message *PeerActivate) *PeerActivateEvent {
+    return &PeerActivateEvent{
+        hsm.NewStdEvent(EventPeerActivate),
+        message,
+    }
+}
+
+type PeerDeactivateEvent struct {
+    *hsm.StdEvent
+}
+
+func NewPeerDeactivateEvent() *PeerDeactivateEvent {
+    return &PeerDeactivateEvent{
+        hsm.NewStdEvent(EventPeerDeactivate),
+    }
+}
+
+type PeerCheckLogReplicationEvent struct {
+    *hsm.StdEvent
+}
+
+func NewPeerCheckLogReplicationEvent() *PeerCheckLogReplicationEvent {
+    return &PeerCheckLogReplicationEvent{
+        hsm.NewStdEvent(EventPeerCheckLogReplication),
+    }
+}
+
+type PeerEnterSnapshotModeEvent struct {
+    *hsm.StdEvent
+}
+
+func NewPeerEnterSnapshotModeEvent() *PeerEnterSnapshotModeEvent {
+    return &PeerEnterSnapshotModeEvent{
+        hsm.NewStdEvent(EventPeerEnterSnapshotMode),
     }
 }

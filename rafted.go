@@ -51,7 +51,7 @@ func NewRaftNode(
     eventHandler2 := func(event ev.RaftRequestEvent) {
         raftHSM.Dispatch(event)
     }
-    peerManager := NewPeerManager(otherPeerAddrs, client, eventHandler1)
+    peerManager := NewPeerManager(raftHSM, otherPeerAddrs, client, eventHandler1)
     raftHSM.SetPeerManager(peerManager)
     server, err := comm.NewSocketServer(bindAddr, eventHandler2)
     if err != nil {
