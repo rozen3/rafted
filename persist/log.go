@@ -34,17 +34,25 @@ type LogEntry struct {
 // It provides functions to store and retrieve LogEntry.
 // Any implementation of this interface should ensure the duration.
 type Log interface {
-    // Returns the index of the first LogEntry written. 0 for no entries.
-    FirstIndex() (uint64, error)
-
-    // Returns the term of the first LogEntry written. 0 for no entries.
+    // Returns the term of the first LogEntry written. 0 for no entry.
     FirstTerm() (uint64, error)
 
-    // Returns the index of the last LogEntry written. 0 for no entries.
+    // Returns the index of the first LogEntry written. 0 for no entry.
+    FirstIndex() (uint64, error)
+
+    // Returns the term and index of the first LogEntry written.
+    // Both term and index are 0 if there is no entry.
+    FirstEntryInfo() (term uint64, index uint64, err error)
+
+    // Returns the term mof the last LogEntry written. 0 for no entry.
+    LastTerm() (uint64, error)
+
+    // Returns the index of the last LogEntry written. 0 for no entry.
     LastIndex() (uint64, error)
 
-    // Returns the term mof the last LogEntry written. 0 for no entries.
-    LastTerm() (uint64, error)
+    // Returns the term and index of the last LogEntry written.
+    // Both term and index are 0 if there is no entry.
+    LastEntryInfo() (term uint64, index uint64, err error)
 
     // Gets a log entry at a given index
     GetLog(index uint64) (*LogEntry, error)
