@@ -23,6 +23,9 @@ type SnapshotManager interface {
     // along with the configuration of all servers
     Create(term, index uint64, Servers []byte) (SnapshotWriter, error)
 
+    // LastSnapshotInfo returns the term and logIndex of the latest snapshot.
+    LastSnapshotInfo() (term uint64, logIndex uint64, err error)
+
     // List lists metadatas of all durable snapshots.
     // Metadatas shoud be returned in descending order, with the highest index first.
     List() ([]*SnapshotMeta, error)

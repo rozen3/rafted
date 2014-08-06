@@ -5,7 +5,7 @@ import (
 )
 
 const (
-    StateRaftID             = "raft"
+    StateLocalID            = "local"
     StateFollowerID         = "follower"
     StateSnapshotRecoveryID = "snapshot_recovery"
     StateCandidateID        = "candidate"
@@ -25,38 +25,38 @@ const (
     StatePipelineModePeerID = "pipeline_mode_peer"
 )
 
-type RaftState struct {
+type LocalState struct {
     *hsm.StateHead
 }
 
-func NewRaftState(super hsm.State) *RaftState {
-    object := &RaftState{
+func NewLocalState(super hsm.State) *LocalState {
+    object := &LocalState{
         hsm.NewStateHead(super),
     }
     super.AddChild(object)
     return object
 }
 
-func (*RaftState) ID() string {
+func (*LocalState) ID() string {
     return StateRaftID
 }
 
-func (self *RaftState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *LocalState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     // ignore events
     return nil
 }
 
-func (self *RaftState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *LocalState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     sm.QInit(StateFollowerID)
     return nil
 }
 
-func (self *RaftState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *LocalState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     // ignore events
     return nil
 }
 
-func (self *RaftState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+func (self *LocalState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     // TODO add event handling if needed
     return nil
 }

@@ -8,36 +8,40 @@ import (
     "sync"
 )
 
-const (
-    HSMTypePeer = hsm.HSMTypeStd + 2 + iota
-)
-
 type PeerManager struct {
-    addrs []net.Addr
-    peers map[net.Addr]*Peer
+    peerAddrs []net.Addr
+    peerMap   map[net.Addr]*Peer
+    peerLock  sync.RWMutex
 }
 
 func NewPeerManager(
-    raftHSM *RaftHSM,
-    addrs []net.Addr,
+    peerAddrs []net.Addr,
     client comm.Client,
-    eventHandler func(ev.RaftEvent)) *PeerManager {
+    eventHandler func(ev.RaftEvent),
+    local *Local) *PeerManager {
 
-    peers := make(map[net.Addr]*Peer)
-    for _, addr := range addrs {
-        peers[addr] = NewPeer(raftHSM, addr, client, eventHandler)
+    peerMap := make(map[net.Addr]*Peer)
+    for _, addr := range peerAddrs {
+        peerMap[addr] = NewPeer(addr, client, eventHandler, local)
     }
-    return &PeerManager{addrs, peers}
+    return &PeerManager{
+        peerAddrs: peerAddrs,
+        peerMap:   peerMap,
+    }
 }
 
 func (self *PeerManager) Broadcast(request ev.RaftEvent) {
-    for _, peer := range self.peers {
+    self.peerLock.RLock()
+    defer self.peerLock.RUnlock()
+    for _, peer := range self.peerMap {
         peer.Send(request)
     }
 }
 
 func (self *PeerManager) PeerNumber() int {
-    return len(self.peers)
+    self.peerLock.RLock()
+    defer self.peerLock.RUnlock()
+    return len(self.peerAddrs)
 }
 
 type Peer struct {
@@ -47,18 +51,20 @@ type Peer struct {
 func NewPeer(
     addr net.Addr,
     client comm.Client,
-    eventHandler func(ev.RaftEvent)) *Peer {
+    eventHandler func(ev.RaftEvent),
+    local *Local) *Peer {
 
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StatePeerID)
     peerState := NewPeerState(top)
-    NewPeerDeactivatedState(peerState)
-    activatedState := NewPeerActivatedState(peerState)
-    NewPeerIdleState(activatedState)
-    replicatingState := NewPeerReplicatingState(activatedState)
-    NewPeerStandardModeState(replicatingState)
-    NewPeerPipelineModeState(replicatingState)
-    peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler)
+    NewDeactivatedPeerState(peerState)
+    activatedPeerState := NewActivatedPeerState(peerState)
+    NewCandidatePeerState(activatedPeerState)
+    leaderPeerState := NewLeaderPeerState(activatedPeerState)
+    NewStandardModePeerState(leaderPeerState)
+    NewSnapshotModePeerState(leaderPeerState)
+    NewPipelineModePeerState(leaderPeerState)
+    peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler, local)
     return &Peer{peerHSM}
 }
 
@@ -76,33 +82,32 @@ func (self *Peer) Close() {
 
 type PeerHSM struct {
     *hsm.StdHSM
-    DispatchChan     chan hsm.Event
-    SelfDispatchChan chan hsm.Event
-    Group            sync.WaitGroup
+    dispatchChan     chan hsm.Event
+    selfDispatchChan chan hsm.Event
+    group            sync.WaitGroup
 
-    /* peer extanded fields */
-    raftHSM *RaftHSM
-    log     persist.Log
-
-    // network facility
-    Addr         net.Addr
-    Client       comm.Client
-    EventHandler func(ev.RaftEvent)
+    addr         net.Addr
+    client       comm.Client
+    eventHandler func(ev.RaftEvent)
+    local        *Local
 }
 
 func NewPeerHSM(
-    top, initial hsm.State,
+    top hsm.State,
+    initial hsm.State,
     addr net.Addr,
     client comm.Client,
-    eventHandler func(ev.RaftEvent)) *PeerHSM {
+    eventHandler func(ev.RaftEvent),
+    local *Local) *PeerHSM {
 
     return &PeerHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypePeer, top, initial),
-        DispatchChan:     make(chan hsm.Event, 1),
-        SelfDispatchChan: make(chan hsm.Event, 1),
-        Addr:             addr,
-        Client:           client,
-        EventHandler:     eventHandler,
+        dispatchChan:     make(chan hsm.Event, 1),
+        selfDispatchChan: make(chan hsm.Event, 1),
+        addr:             addr,
+        client:           client,
+        eventHandler:     eventHandler,
+        local:            Local,
     }
 }
 
@@ -112,27 +117,27 @@ func (self *PeerHSM) Init() {
 }
 
 func (self *PeerHSM) eventLoop() {
-    self.Group.Add(1)
+    self.group.Add(1)
     go self.loop()
 }
 
 func (self *PeerHSM) loop() {
-    defer self.Group.Done()
+    defer self.group.Done()
     for {
         select {
-        case event := <-self.SelfDispatchChan:
+        case event := <-self.selfDispatchChan:
             self.StdHSM.Dispatch2(self, event)
             if event.Type() == ev.EventTerm {
                 return
             }
-        case event := <-self.DispatchChan:
+        case event := <-self.dispatchChan:
             self.StdHSM.Dispatch2(self, event)
         }
     }
 }
 
 func (self *PeerHSM) Dispatch(event hsm.Event) {
-    self.DispatchChan <- event
+    self.dispatchChan <- event
 }
 
 func (self *PeerHSM) QTran(targetStateID string) {
@@ -141,18 +146,14 @@ func (self *PeerHSM) QTran(targetStateID string) {
 }
 
 func (self *PeerHSM) SelfDispatch(event hsm.Event) {
-    self.SelfDispatchChan <- event
+    self.selfDispatchChan <- event
 }
 
 func (self *PeerHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
-    self.Group.Wait()
+    self.group.Wait()
 }
 
-func (self *PeerHSM) GetRaftHSM() *RaftHSM {
-    return self.raftHSM
-}
-
-func (self *PeerHSM) GetLog() persist.Log {
-    return self.log
+func (self *PeerHSM) GetLocal() *Local {
+    return self.local
 }

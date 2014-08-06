@@ -79,7 +79,7 @@ func (self *CandidateState) Handle(
     hsm.AssertTrue(ok)
     switch {
     case event.Type() == ev.EventTimeoutElection:
-        // transfer to self, trigger `Exit' and `Entry'
+        // transfer to self, trigger Exit and Entry
         raftHSM.QTran(StateCandidateID)
         return nil
     case event.Type() == ev.EventRequestVoteResponse:

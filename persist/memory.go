@@ -387,3 +387,6 @@ func (self *MemorySnapshot) Release() {
 
     // empty body
 }
+
+type MemoryConfigManager struct {
+}

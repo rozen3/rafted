@@ -1,5 +1,9 @@
 package persist
 
+import (
+    "net"
+)
+
 type Config struct {
     Servers    []net.Addr
     NewServers []net.Addr

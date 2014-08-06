@@ -3,6 +3,7 @@ package event
 import (
     "github.com/hhkbp2/rafted/persist"
     "net"
+    "time"
 )
 
 // AppendEntriesRequest is the command used to append entries to the

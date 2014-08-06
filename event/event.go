@@ -25,6 +25,7 @@ const (
     EventPeerEnterLeader
     EventPeerCheckLogReplication
     EventPeerEnterSnapshotMode
+    EventPeerAbortSnapshotMode
     EventInternalEnd
     EventClientResponse
     EventLeaderRedirectResponse
@@ -342,27 +343,21 @@ func NewLeaderUnsyncResponseEvent(
 
 type AbortSnapshotRecoveryEvent struct {
     *hsm.StdEvent
-    Message *AbortSnapshotRecovery
 }
 
-func NewAbortSnapshotRecoveryEvent(
-    message *AbortSnapshotRecovery) *AbortSnapshotRecoveryEvent {
-
+func NewAbortSnapshotRecoveryEvent() *AbortSnapshotRecoveryEvent {
     return &AbortSnapshotRecoveryEvent{
         hsm.NewStdEvent(EventAbortSnapshotRecovery),
-        message,
     }
 }
 
 type StepdownEvent struct {
     *hsm.StdEvent
-    Message *Stepdown
 }
 
-func NewStepdownEvent(message *Stepdown) *StepdownEvent {
+func NewStepdownEvent() *StepdownEvent {
     return &StepdownEvent{
         hsm.NewStdEvent(EventStepdown),
-        message,
     }
 }
 
@@ -384,7 +379,7 @@ type PeerActivateEvent struct {
     *hsm.StdEvent
 }
 
-func NewPeerActivateEvent(message *PeerActivate) *PeerActivateEvent {
+func NewPeerActivateEvent() *PeerActivateEvent {
     return &PeerActivateEvent{
         hsm.NewStdEvent(EventPeerActivate),
     }
@@ -426,6 +421,6 @@ type PeerAbortSnapshotModeEvent struct {
 
 func NewPeerAbortSnapshotModeEvent() *PeerAbortSnapshotModeEvent {
     return &PeerAbortSnapshotModeEvent{
-        hsm.NewStdEvent(EventAbortSnapshotMode),
+        hsm.NewStdEvent(EventPeerAbortSnapshotMode),
     }
 }

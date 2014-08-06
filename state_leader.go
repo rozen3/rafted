@@ -13,16 +13,12 @@ import (
 type LeaderState struct {
     *hsm.StateHead
 
-    // TODO add fields
-    Peers    []net.Addr
     Inflight *Inflight
 }
 
-func NewLeaderState(super hsm.State, peers []net.Addr) *LeaderState {
+func NewLeaderState(super hsm.State) *LeaderState {
     object := &LeaderState{
         StateHead: hsm.NewStateHead(super),
-        Peers:     peers,
-        Inflight:  NewInflight(peers),
     }
     super.AddChild(object)
     return object
@@ -41,6 +37,7 @@ func (self *LeaderState) Entry(
     // init global status
     raftHSM.SetLeader(raftHSM.LocalAddr)
     // init status for this state
+    // TODO init inflight
     self.Inflight.Init()
     return nil
 }
