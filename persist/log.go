@@ -22,12 +22,29 @@ const (
     LogBarrier
 )
 
+// Configuration represents the membership of the cluster.
+type Configuration struct {
+    // There are three possible combinations of Servers and NewServers:
+    // 1. Servers != nil, NewServers == nil
+    //     It's not in member change procedure now. Servers contains
+    //     all members of the cluster.
+    // 2. Servers != nil, NewServers != nil
+    //     It's in member change procedure phase 1. Servers contains
+    //     all old members of the cluster, and NewServers is the new members.
+    // 3. Servers == nil, NewServers != nil
+    //     It's in member change procedure phase 2. NewServers contains
+    //     all the new members of the cluster.
+    Servers    []byte
+    NewServers []byte
+}
+
 // LogEntry is the element of replicated log in raft.
 type LogEntry struct {
     Term  uint64
     Index uint64
     Type  LogType
     Data  []byte
+    Conf  *Configuration
 }
 
 // Log is the interface for local durable log in raft.
