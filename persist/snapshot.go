@@ -16,7 +16,7 @@ type SnapshotMeta struct {
     Servers []byte
 }
 
-// SnapshotManager is the interface for snapshot maintainment.
+// SnapshotManager is the interface for durable snapshot management.
 // It provides functions to store and restrieve snapshots.
 type SnapshotManager interface {
     // Create begins a snapshot at a given index and term,

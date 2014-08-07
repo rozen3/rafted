@@ -22,7 +22,7 @@ const (
     LogBarrier
 )
 
-// Configuration represents the membership of the cluster.
+// Configuration represents the serialization of membership of the cluster.
 type Configuration struct {
     // There are three possible combinations of Servers and NewServers:
     // 1. Servers != nil, NewServers == nil
@@ -90,6 +90,6 @@ type Log interface {
     TruncateBefore(index uint64) error
 
     // Delete the log entries after the given index,
-    // not including the log entry right at index.
+    // including the log entry right at index.
     TruncateAfter(index uint64) error
 }
