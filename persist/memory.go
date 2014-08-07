@@ -23,6 +23,18 @@ func NewMemoryLog() *MemoryLog {
     }
 }
 
+func (self *MemoryLog) FirstTerm() (uint64, error) {
+    self.logLock.RLock()
+    defer self.logLock.RUnlock()
+
+    if len(self.logEntries) == 0 {
+        return 0, nil
+    }
+
+    entry := self.logEntries[0]
+    return entry.Term, nil
+}
+
 func (self *MemoryLog) FirstIndex() (uint64, error) {
     self.logLock.RLock()
     defer self.logLock.RUnlock()
@@ -35,7 +47,19 @@ func (self *MemoryLog) FirstIndex() (uint64, error) {
     return entry.Index, nil
 }
 
-func (self *MemoryLog) FirstTerm() (uint64, error) {
+func (self *MemoryLog) FirstEntryInfo() (uint64, uint64, error) {
+    self.logLock.RLock()
+    defer self.logLock.RUnlock()
+
+    if len(self.logEntries) == 0 {
+        return 0, 0, nil
+    }
+
+    entry := self.logEntries[0]
+    return entry.Term, entry.Index, nil
+}
+
+func (self *MemoryLog) LastTerm() (uint64, error) {
     self.logLock.RLock()
     defer self.logLock.RUnlock()
 
@@ -43,7 +67,7 @@ func (self *MemoryLog) FirstTerm() (uint64, error) {
         return 0, nil
     }
 
-    entry := self.logEntries[0]
+    entry := self.logEntries[len(self.logEntries)-1]
     return entry.Term, nil
 }
 
@@ -59,16 +83,16 @@ func (self *MemoryLog) LastIndex() (uint64, error) {
     return entry.Index, nil
 }
 
-func (self *MemoryLog) LastTerm() (uint64, error) {
+func (self *MemoryLog) LastEntryInfo() (uint64, uint64, error) {
     self.logLock.RLock()
     defer self.logLock.RUnlock()
 
     if len(self.logEntries) == 0 {
-        return 0, nil
+        return 0, 0, nil
     }
 
     entry := self.logEntries[len(self.logEntries)-1]
-    return entry.Term, nil
+    return entry.Term, entry.Index, nil
 }
 
 func (self *MemoryLog) GetLog(index uint64) (*LogEntry, error) {
@@ -389,4 +413,51 @@ func (self *MemorySnapshot) Release() {
 }
 
 type MemoryConfigManager struct {
+    configs *list.List
+    lock    sync.RWMutex
+}
+
+func NewMemoryConfigManager(
+    firstLogIndex uint64, conf *Config) *MemoryConfigManager {
+
+    lst := list.New()
+    meta := &ConfigMeta{
+        FromLogIndex: firstLogIndex,
+        ToLogIndex:   0,
+        Conf:         conf,
+    }
+    lst.PushBack(meta)
+    return &MemoryConfigManager{
+        configs: lst,
+    }
+}
+
+func (self *MemoryConfigManager) PushConfig(
+    logIndex uint64, conf *Config) error {
+
+    self.lock.Lock()
+    defer self.lock.Unlock()
+    elem := self.configs.Back()
+    meta, _ := elem.Value.(*ConfigMeta)
+    meta.ToLogIndex = logIndex - 1
+
+    newMeta := &ConfigMeta{
+        FromLogIndex: logIndex,
+        ToLogIndex:   0,
+        Conf:         conf,
+    }
+    self.configs.PushBack(newMeta)
+}
+
+func (self *MemoryConfigManager) TruncateConfigAfter(
+    logIndex uint64) (*Config, error) {
+
+    elem := self.configs.Back()
+    for ; elem != nil; e = e.Prev() {
+        meta, _ := elem.Value.(*ConfigMeta)
+        if logIndex < meta.FromLogIndex {
+            continue
+        }
+    }
+    // TODO add impl
 }

@@ -53,3 +53,46 @@ func (self *ReaderCloserWrapper) Close() error {
     // empty body
     return nil
 }
+
+func AddrEqual(addr1 net.Addr, addr2 net.Addr) bool {
+    if (addr1 == nil) && (addr2 == nil) {
+        return true
+    } else if (addr1 == nil) || (addr2 == nil) {
+        return false
+    }
+    return ((addr1.Network() == addr2.Network()) &&
+        (addr1.String() == addr2.String()))
+}
+
+func AddrsEqual(addrs1 []net.Addr, addrs2 []net.Addr) bool {
+    if len(addrs1) != len(addrs2) {
+        return false
+    }
+    for i, addr := range addrs1 {
+        if !AddrEqual(addr, addrs2[i]) {
+            return false
+        }
+    }
+    return true
+}
+
+func ConfigEqual(conf1 *Config, conf2 *Config) bool {
+    if (conf1.Servers == nil) && (conf2.Servers == nil) {
+        if (conf1.NewServers == nil) && (conf2.NewServers == nil) {
+            return true
+        } else if (conf1.NewServers == nil) || (conf2.NewServers == nil) {
+            return false
+        }
+        return AddrsEqual(conf1.NewServers, conf2.NewServers)
+    } else if (conf1.Servers == nil) || (conf1.Servers == nil) {
+        return false
+    }
+
+    if (conf1.NewServers == nil) && (conf2.NewServers == nil) {
+        return AddrsEqual(conf1.Servers, conf2.Servers)
+    } else if (conf1.NewServers == nil) || (conf2.NewServers == nil) {
+        return false
+    }
+    return (AddrsEqual(conf1.Servers, conf2.Servers) &&
+        AddrsEqual(conf1.NewServers, conf2.NewServers))
+}

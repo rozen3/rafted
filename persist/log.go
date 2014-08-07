@@ -71,6 +71,11 @@ type Log interface {
     // Both term and index are 0 if there is no entry.
     LastEntryInfo() (term uint64, index uint64, err error)
 
+    // Returns the index of
+    CommitIndex()
+
+    StoreCommitIndex()
+
     // Gets a log entry at a given index
     GetLog(index uint64) (*LogEntry, error)
 
