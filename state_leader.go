@@ -82,7 +82,7 @@ func (self *LeaderState) Handle(
             self.CommitInflightEntries(localHSM, allCommitted)
         }
         return nil
-    case ev.EventStepDown:
+    case ev.EventStepdown:
         // TODO add log
         sm.QTran(StateFollowerID)
         return nil
@@ -198,24 +198,31 @@ func (self *LeaderState) StartFlight(
         // TODO add error handling
         return err
     }
-    prevLogTerm, prevLogIndex := localHSM.Log().LastEntryInfo()
+    lastLogTerm, lastLogIndex, err := localHSM.Log().LastEntryInfo()
+    if err != nil {
+        // TODO error handling
+    }
+    committedIndex, err := localHSM.Log().CommittedIndex()
+    if err != nil {
+        // TODO error handling
+    }
     request := &ev.AppendEntriesRequest{
         Term:              term,
         Leader:            leader,
-        PrevLogTerm:       prevLogTerm,
-        PrevLogIndex:      prevLogIndex,
+        PrevLogIndex:      lastLogIndex,
+        PrevLogTerm:       lastLogTerm,
         Entries:           logEntries,
-        LeaderCommitIndex: localHSM.GetCommitIndex(),
+        LeaderCommitIndex: committedIndex,
     }
     event := ev.NewAppendEntriesRequestEvent(request)
 
     selfResponse := &ev.AppendEntriesResponse{
         Term:         term,
-        LastLogIndex: prevLogIndex,
+        LastLogIndex: lastLogIndex,
         Success:      true,
     }
     localHSM.SelfDispatch(ev.NewAppendEntriesResponseEvent(selfResponse))
-    localHSM.PeerManager.Broadcast(event)
+    localHSM.PeerManager().Broadcast(event)
     return nil
 }
 
@@ -223,7 +230,10 @@ func (self *LeaderState) CommitInflightEntries(
     localHSM *LocalHSM, entries []*InflightEntry) {
 
     for _, entry := range entries {
-        result := localHSM.ProcessLogAt(entry.LogIndex)
+        result, err := localHSM.ProcessLogAt(entry.LogIndex)
+        if err != nil {
+            // TODO error handling
+        }
         response := &ev.ClientResponse{
             Success: true,
             Data:    result,
@@ -328,8 +338,7 @@ func (self *UnsyncState) StartSync(localHSM *LocalHSM) error {
 func (self *UnsyncState) StartSyncSafe(localHSM *LocalHSM) {
     if err := self.StartSync(localHSM); err != nil {
         // TODO add log
-        stepdown := &ev.Stepdown{}
-        localHSM.SelfDispatch(ev.NewStepdownEvent(stepdown))
+        localHSM.SelfDispatch(ev.NewStepdownEvent())
     }
 }
 

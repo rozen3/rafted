@@ -145,11 +145,15 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
     if err != nil {
         // TODO error handling
     }
+    lastLogTerm, lastLogIndex, err := localHSM.Log().LastEntryInfo()
+    if err != nil {
+        // TODO error handling
+    }
     request := &ev.RequestVoteRequest{
         Term:         term,
         Candidate:    localAddrBin,
-        LastLogIndex: localHSM.GetLastIndex(),
-        LastLogTerm:  localHSM.GetLastTerm(),
+        LastLogIndex: lastLogIndex,
+        LastLogTerm:  lastLogTerm,
     }
     event := ev.NewRequestVoteRequestEvent(request)
 
@@ -161,7 +165,7 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
     localHSM.SetVotedFor(localHSM.GetLocalAddr())
 
     // broadcast RequestVote RPCs to all other servers
-    localHSM.PeerManager.Broadcast(event)
+    localHSM.PeerManager().Broadcast(event)
 }
 
 func Stepdown(localHSM *LocalHSM, event hsm.Event, term uint64, leaderBin []byte) {

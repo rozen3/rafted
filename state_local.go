@@ -40,7 +40,7 @@ func NewLocalState(super hsm.State) *LocalState {
 }
 
 func (*LocalState) ID() string {
-    return StateRaftID
+    return StateLocalID
 }
 
 func (self *LocalState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
@@ -67,7 +67,7 @@ type NeedPeersState struct {
     *hsm.StateHead
 }
 
-func NewNeedPeersState(super hsm.State) *LocalState {
+func NewNeedPeersState(super hsm.State) *NeedPeersState {
     object := &NeedPeersState{
         hsm.NewStateHead(super),
     }
@@ -86,6 +86,7 @@ func (self *NeedPeersState) Entry(
     hsm.AssertTrue(ok)
     // coordinate peer into ActivatedPeerState
     localHSM.PeerManager().Broadcast(ev.NewPeerActivateEvent())
+    return nil
 }
 
 func (self *NeedPeersState) Exit(
@@ -95,4 +96,12 @@ func (self *NeedPeersState) Exit(
     hsm.AssertTrue(ok)
     // coordinate peer into DeactivatePeerState
     localHSM.PeerManager().Broadcast(ev.NewPeerDeactivateEvent())
+    return nil
+}
+
+func (self *NeedPeersState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    // TODO add log
+    return self.Super()
 }

@@ -11,15 +11,19 @@ import (
 )
 
 type MemoryLog struct {
-    indexMap   map[uint64]uint64
-    logEntries []*LogEntry
-    logLock    sync.RWMutex
+    indexMap         map[uint64]uint64
+    logEntries       []*LogEntry
+    lastAppliedIndex uint64
+    committedIndex   uint64
+    logLock          sync.RWMutex
 }
 
 func NewMemoryLog() *MemoryLog {
     return &MemoryLog{
-        indexMap:   make(map[uint64]uint64),
-        logEntries: make([]*LogEntry, 0),
+        indexMap:         make(map[uint64]uint64),
+        logEntries:       make([]*LogEntry, 0),
+        lastAppliedIndex: 0,
+        committedIndex:   0,
     }
 }
 
@@ -74,7 +78,10 @@ func (self *MemoryLog) LastTerm() (uint64, error) {
 func (self *MemoryLog) LastIndex() (uint64, error) {
     self.logLock.RLock()
     defer self.logLock.RUnlock()
+    return self.lastIndex()
+}
 
+func (self *MemoryLog) lastIndex() (uint64, error) {
     if len(self.logEntries) == 0 {
         return 0, nil
     }
@@ -93,6 +100,46 @@ func (self *MemoryLog) LastEntryInfo() (uint64, uint64, error) {
 
     entry := self.logEntries[len(self.logEntries)-1]
     return entry.Term, entry.Index, nil
+}
+
+func (self *MemoryLog) CommittedIndex() (uint64, error) {
+    self.logLock.RLock()
+    defer self.logLock.RUnlock()
+    return self.committedIndex, nil
+}
+
+func (self *MemoryLog) StoreCommittedIndex(index uint64) error {
+    self.logLock.Lock()
+    defer self.logLock.Unlock()
+    lastLogIndex, err := self.lastIndex()
+    if err != nil {
+        return err
+    }
+    if (index > self.lastAppliedIndex) && (index < lastLogIndex) {
+        self.committedIndex = index
+        return nil
+    }
+    return errors.New("invalid index")
+}
+
+func (self *MemoryLog) LastAppliedIndex() (uint64, error) {
+    self.logLock.RLock()
+    defer self.logLock.RUnlock()
+    return self.lastAppliedIndex, nil
+}
+
+func (self *MemoryLog) StoreLastAppliedIndex(index uint64) error {
+    self.logLock.Lock()
+    defer self.logLock.Unlock()
+    firstLogIndex, err := self.FirstIndex()
+    if err != nil {
+        return err
+    }
+    if (index > firstLogIndex) && (index < self.committedIndex) {
+        self.lastAppliedIndex = index
+        return nil
+    }
+    return errors.New("invalid index")
 }
 
 func (self *MemoryLog) GetLog(index uint64) (*LogEntry, error) {
@@ -137,6 +184,10 @@ func (self *MemoryLog) TruncateBefore(index uint64) error {
     self.logLock.Lock()
     defer self.logLock.Unlock()
 
+    if index > self.lastAppliedIndex {
+        return errors.New("invalid index after lastAppliedIndex")
+    }
+
     storedIndex, ok := self.indexMap[index]
     if !ok {
         return errors.New("no such index")
@@ -158,6 +209,10 @@ func (self *MemoryLog) TruncateBefore(index uint64) error {
 func (self *MemoryLog) TruncateAfter(index uint64) error {
     self.logLock.Lock()
     defer self.logLock.Unlock()
+
+    if index <= self.committedIndex {
+        return errors.New("invalid index before committedIndex")
+    }
 
     storedIndex, ok := self.indexMap[index]
     if !ok {
@@ -228,6 +283,15 @@ func (self *MemorySnapshotManager) Create(
     instance := NewMemorySnapshotInstance(term, index, Servers)
     self.snapshotList.PushBack(instance)
     return NewMemorySnapshotWriter(instance), nil
+}
+
+func (self *MemorySnapshotManager) LastSnapshotInfo() (uint64, uint64, error) {
+    if self.snapshotList.Len() == 0 {
+        return 0, 0, nil
+    }
+    elem := self.snapshotList.Back()
+    meta, _ := elem.Value.(*SnapshotMeta)
+    return meta.LastIncludedTerm, meta.LastIncludedIndex, nil
 }
 
 func (self *MemorySnapshotManager) List() ([]*SnapshotMeta, error) {
@@ -447,6 +511,7 @@ func (self *MemoryConfigManager) PushConfig(
         Conf:         conf,
     }
     self.configs.PushBack(newMeta)
+    return nil
 }
 
 func (self *MemoryConfigManager) LastConfig() (*Config, error) {
@@ -460,14 +525,14 @@ func (self *MemoryConfigManager) LastConfig() (*Config, error) {
 func (self *MemoryConfigManager) GetConfig(logIndex uint64) (*Config, error) {
     self.lock.RLock()
     defer self.lock.RUnlock()
-    for elem := self.configs.Back(); elem != nil; elem = elem.Prev() {
-        meta, _ := elem.Value.(*ConfigMeta)
+    for e := self.configs.Back(); e != nil; e = e.Prev() {
+        meta, _ := e.Value.(*ConfigMeta)
         if logIndex < meta.FromLogIndex {
             continue
         }
         return meta.Conf, nil
     }
-    return nil, erros.New("index out of bound")
+    return nil, errors.New("index out of bound")
 }
 
 func (self *MemoryConfigManager) List() ([]*ConfigMeta, error) {
@@ -475,17 +540,17 @@ func (self *MemoryConfigManager) List() ([]*ConfigMeta, error) {
     defer self.lock.RUnlock()
     metas := make([]*ConfigMeta, 0, self.configs.Len())
     for e := self.configs.Front(); e != nil; e = e.Next() {
-        meta, _ := elem.Value.(*ConfigMeta)
+        meta, _ := e.Value.(*ConfigMeta)
         metas = append(metas, meta)
     }
-    return metas
+    return metas, nil
 }
 
 func (self *MemoryConfigManager) TruncateBefore(logIndex uint64) error {
     self.lock.Lock()
     defer self.lock.Unlock()
     for e := self.configs.Front(); e != nil; e = e.Next() {
-        meta, _ := elem.Value.(*ConfigMeta)
+        meta, _ := e.Value.(*ConfigMeta)
         if logIndex > meta.ToLogIndex {
             continue
         }
@@ -507,29 +572,29 @@ func (self *MemoryConfigManager) TruncateBefore(logIndex uint64) error {
     return errors.New("index out of bound")
 }
 
-func (self *MemoryConfigManager) TruncateConfigAfter(
+func (self *MemoryConfigManager) TruncateAfter(
     logIndex uint64) (*Config, error) {
 
     self.lock.Lock()
     defer self.lock.Unlock()
-    for elem := self.configs.Back(); elem != nil; e = e.Prev() {
-        meta, _ := elem.Value.(*ConfigMeta)
+    for e := self.configs.Back(); e != nil; e = e.Prev() {
+        meta, _ := e.Value.(*ConfigMeta)
         if logIndex < meta.FromLogIndex {
             continue
         }
         if logIndex == meta.FromLogIndex {
-            if elem == self.configs.Front() {
-                ListTruncate(self.configs, elem.Next())
+            if e == self.configs.Front() {
+                ListTruncate(self.configs, e.Next())
                 meta.ToLogIndex = 0
                 return meta.Conf, nil
             } else {
-                prev := elem.Prev()
-                meta, _ := prev.Value.(*Config)
-                ListTruncate(self.configs, elem)
+                prev := e.Prev()
+                meta, _ := prev.Value.(*ConfigMeta)
+                ListTruncate(self.configs, e)
                 return meta.Conf, nil
             }
         } else {
-            ListTruncate(self.configs, elem.Next())
+            ListTruncate(self.configs, e.Next())
             meta.ToLogIndex = 0
             return meta.Conf, nil
         }

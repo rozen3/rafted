@@ -1,10 +1,14 @@
 package rafted
 
 import (
+    "errors"
     "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    "github.com/hhkbp2/rafted/persist"
+    "io"
     "sync"
+    "sync/atomic"
     "time"
 )
 
@@ -32,7 +36,7 @@ func (self *PeerState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
 func (self *PeerState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     fmt.Println(self.ID(), "-> Init")
-    sm.QInit(StatePeerDeactivatedID)
+    sm.QInit(StateDeactivatedPeerID)
     return nil
 }
 
@@ -46,37 +50,37 @@ func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     return self.Super()
 }
 
-type DeactivatePeerState struct {
+type DeactivatedPeerState struct {
     *hsm.StateHead
 }
 
-func NewPeerDeactivateState(super hsm.State) *DeactivatePeerState {
-    object := &DeactivatePeerState{
+func NewDeactivatedPeerState(super hsm.State) *DeactivatedPeerState {
+    object := &DeactivatedPeerState{
         StateHead: hsm.NewStateHead(super),
     }
     super.AddChild(object)
     return object
 }
 
-func (*DeactivatePeerState) ID() string {
-    return StateDeactivatePeerID
+func (*DeactivatedPeerState) ID() string {
+    return StateDeactivatedPeerID
 }
 
-func (self *DeactivatePeerState) Entry(
+func (self *DeactivatedPeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
     return nil
 }
 
-func (self *DeactivatePeerState) Exit(
+func (self *DeactivatedPeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
     return nil
 }
 
-func (self *DeactivatePeerState) Handle(
+func (self *DeactivatedPeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle, event =", event)
@@ -93,9 +97,7 @@ type ActivatedPeerState struct {
     *hsm.StateHead
 }
 
-func NewActivatedPeerState(
-    super hsm.State) *ActivatedPeerState {
-
+func NewActivatedPeerState(super hsm.State) *ActivatedPeerState {
     object := &ActivatedPeerState{
         StateHead: hsm.NewStateHead(super),
     }
@@ -118,7 +120,7 @@ func (self *ActivatedPeerState) Init(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Init")
-    sm.QInit(StatePeerIdleID)
+    sm.QInit(StateActivatedPeerID)
     return nil
 }
 
@@ -133,25 +135,27 @@ func (self *ActivatedPeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle, event =", event)
+    peerHSM, ok := sm.(*PeerHSM)
+    hsm.AssertTrue(ok)
     switch event.Type() {
     case ev.EventRequestVoteRequest:
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
-        response, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
+        response, err := peerHSM.Client().CallRPCTo(peerHSM.Addr(), e)
         if err != nil {
             // TODO add log
             return nil
         }
         peerHSM.SelfDispatch(response)
         return nil
-    case event.Type() == ev.EventRequestVoteResponse:
+    case ev.EventRequestVoteResponse:
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
-        peerHSM.EventHandler(e)
+        peerHSM.EventHandler()(e)
         return nil
     case ev.EventPeerDeactivate:
         // TODO add log
-        sm.QTran(StateDeactivatePeerID)
+        sm.QTran(StateDeactivatedPeerID)
         return nil
     }
     return self.Super()
@@ -221,22 +225,17 @@ type LeaderPeerState struct {
     ticker           Ticker
     // last time we have contact from the peer
     lastContactTime     time.Time
-    LastContactTimeLock sync.RWMutex
-
-    // configuration
-    maxAppendEntriesSize uint64
+    lastContactTimeLock sync.RWMutex
 }
 
 func NewLeaderPeerState(
     super hsm.State,
-    heartbeatTimeout time.Duration,
-    maxAppendEntriesSize uint64) *LeaderPeerState {
+    heartbeatTimeout time.Duration) *LeaderPeerState {
 
     object := &LeaderPeerState{
-        StateHead:            hsm.NewStateHead(super),
-        heartbeatTimeout:     heartbeatTimeout,
-        ticker:               NewRandomTicker(heartbeatTimeout),
-        maxAppendEntriesSize: maxAppendEntriesSize,
+        StateHead:        hsm.NewStateHead(super),
+        heartbeatTimeout: heartbeatTimeout,
+        ticker:           NewRandomTicker(heartbeatTimeout),
     }
     super.AddChild(object)
     return object
@@ -255,10 +254,14 @@ func (self *LeaderPeerState) Entry(
     // local initialization
     self.term = peerHSM.Local().GetCurrentTerm()
     self.matchIndex = 0
-    self.nextIndex = peerHSM.Local().Log().LastIndex() + 1
+    lastLogIndex, err := peerHSM.Local().Log().LastIndex()
+    if err != nil {
+        // TODO error handling
+    }
+    self.nextIndex = lastLogIndex + 1
     self.UpdateLastContactTime()
     // trigger a check on whether to start log replication
-    timeout := &HeartbeatTimeout{
+    timeout := &ev.HeartbeatTimeout{
         LastContactTime: self.LastContactTime(),
         Timeout:         self.heartbeatTimeout,
     }
@@ -267,7 +270,7 @@ func (self *LeaderPeerState) Entry(
     deliverHearbeatTimeout := func() {
         lastContactTime := self.LastContactTime()
         if TimeExpire(lastContactTime, self.heartbeatTimeout) {
-            timeout := &HeartbeatTimeout{
+            timeout := &ev.HeartbeatTimeout{
                 LastContactTime: lastContactTime,
                 Timeout:         self.heartbeatTimeout,
             }
@@ -293,16 +296,21 @@ func (self *LeaderPeerState) Handle(
     fmt.Println(self.ID(), "-> Handle")
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
-    switch {
-    case ev.EventHeartbeatTimeout:
+    local := peerHSM.Local()
+    switch event.Type() {
+    case ev.EventTimeoutHeartbeat:
         // check whether the peer falls behind the leader
-        matchIndex, nextIndex := self.GetIndexInfo()
-        if matchIndex < peerHSM.Local().Log().LastIndex() {
-            sm.QTran(StatePeerStandardModeID)
+        matchIndex, _ := self.GetIndexInfo()
+        lastLogIndex, err := local.Log().LastIndex()
+        if err != nil {
+            // TODO error handling
+        }
+        if matchIndex < lastLogIndex {
+            sm.QTran(StateStandardModePeerID)
             return nil
         }
         // the peer is up-to-date, then send a pure heartbeat AE
-        local := peerHSM.Local()
+
         leader, err := EncodeAddr(local.GetLocalAddr())
         if err != nil {
             // TODO error handling
@@ -311,7 +319,7 @@ func (self *LeaderPeerState) Handle(
         if err != nil {
             // TODO error handling
         }
-        committedIndex, err := local.Log().CommitIndex()
+        committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
             // TODO error handling
         }
@@ -323,32 +331,32 @@ func (self *LeaderPeerState) Handle(
             Entries:           make([]*persist.LogEntry, 0),
             LeaderCommitIndex: committedIndex,
         }
-        event := ev.NewAppendEntriesRequestEvent(request)
-        respEvent, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
+        e := ev.NewAppendEntriesRequestEvent(request)
+        respEvent, err := peerHSM.Client().CallRPCTo(peerHSM.Addr(), e)
         if err != nil {
             // TODO error handling
         }
-        e, ok := respEvent.(*ev.AppendEntriesResponseEvent)
+        appendEntriesResponseEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
         if !ok {
             // TODO error handling
         }
         // update last contact timer
         self.UpdateLastContact()
-        peerHSM.SelfDispatch(e)
+        peerHSM.SelfDispatch(appendEntriesResponseEvent)
         return nil
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
-        local := peerHSM.Local()
         if e.Response.Term > local.GetCurrentTerm() {
             local.SelfDispatch(ev.NewStepdownEvent())
         }
-        if e.Response.LastLogIndex != self.GetMatchIndex() {
+        matchIndex, _ := self.GetIndexInfo()
+        if e.Response.LastLogIndex != matchIndex {
             // TODO add log
-            if e.Reponse.LastLogIndex > self.GetMatchIndex() {
+            if e.Response.LastLogIndex > matchIndex {
                 message := &ev.PeerReplicateLog{
-                    Peer:       peerHSM.Addr,
-                    MatchIndex: self.GetMatchIndex(),
+                    Peer:       peerHSM.Addr(),
+                    MatchIndex: matchIndex,
                 }
                 event := ev.NewPeerReplicateLogEvent(message)
                 local.SelfDispatch(event)
@@ -398,25 +406,19 @@ func (self *LeaderPeerState) UpdateLastContact() {
     self.ticker.Reset()
 }
 
-func (self *LeaderPeerState) GetMaxAppendEntriesSize() uint64 {
-    return atomic.LoadUint64(&self.maxAppendEntriesSize)
-}
-
-func (self *LeaderPeerState) SetMaxAppendEntriesSize(size uint64) {
-    atomic.StoreUint64(&self.maxAppendEntriesSize, size)
-}
-
 type StandardModePeerState struct {
     *hsm.StateHead
+
+    maxAppendEntriesSize uint64
 }
 
 func NewStandardModePeerState(
     super hsm.State,
-    maxSnapshotChunkSize uint64) *StandardModePeerState {
+    maxAppendEntriesSize uint64) *StandardModePeerState {
 
     object := &StandardModePeerState{
         StateHead:            hsm.NewStateHead(super),
-        maxSnapshotChunkSize: maxSnapshotChunkSize,
+        maxAppendEntriesSize: maxAppendEntriesSize,
     }
     super.AddChild(object)
     return object
@@ -451,13 +453,13 @@ func (self *StandardModePeerState) Handle(
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
-    case ev.EventHeartbeatTimeout:
+    case ev.EventTimeoutHeartbeat:
         event := self.SetupReplicating(peerHSM)
         peerHSM.SelfDispatch(event)
     case ev.EventAppendEntriesRequest:
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
-        responseEvent, err := peerHSM.CLient.CallRPCTo(peerHSM.Addr, e)
+        responseEvent, err := peerHSM.Client().CallRPCTo(peerHSM.Addr(), e)
         if err != nil {
             // TODO error handling
         }
@@ -468,7 +470,7 @@ func (self *StandardModePeerState) Handle(
         // update last contact timer
         leaderPeerState, ok := self.Super().(*LeaderPeerState)
         hsm.AssertTrue(ok)
-        LeaderPeerState.UpdateLastContact()
+        leaderPeerState.UpdateLastContact()
         // dispatch response to self, just jump to the next case block
         peerHSM.SelfDispatch(aeResponseEvent)
         return nil
@@ -476,7 +478,11 @@ func (self *StandardModePeerState) Handle(
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
         local := peerHSM.Local()
-        if e.Response.LastLogIndex < local.Log().LastIndex() {
+        lastLogIndex, err := local.Log().LastIndex()
+        if err != nil {
+            // TODO error handling
+        }
+        if e.Response.LastLogIndex < lastLogIndex {
             // peer log has not caught up with us leader yet
             event := self.SetupReplicating(peerHSM)
             peerHSM.SelfDispatch(event)
@@ -485,7 +491,7 @@ func (self *StandardModePeerState) Handle(
             sm.QTran(StateLeaderPeerID)
         }
         return self.Super()
-    case ev.EventEnterSnapshotMode:
+    case ev.EventPeerEnterSnapshotMode:
         // TODO add log
         sm.QTran(StateSnapshotModePeerID)
         return nil
@@ -500,8 +506,7 @@ func (self *StandardModePeerState) SetupReplicating(
     hsm.AssertTrue(ok)
     matchIndex, nextIndex := leaderPeerState.GetIndexInfo()
     local := peerHSM.Local()
-    lastSnapshotTerm, lastSnapshotIndex, err :=
-        local.SnapshotManager().LastSnapshotInfo()
+    _, lastSnapshotIndex, err := local.SnapshotManager().LastSnapshotInfo()
     if err != nil {
         // TODO error handling
     }
@@ -534,8 +539,12 @@ func (self *StandardModePeerState) SetupReplicating(
         prevLogIndex := log.Index
         prevLogTerm := log.Term
 
+        lastLogIndex, err := local.Log().LastIndex()
+        if err != nil {
+            // TODO error handling
+        }
         entriesSize := Min(uint64(self.maxAppendEntriesSize),
-            (local.Log().LastIndex() - matchIndex))
+            (lastLogIndex - matchIndex))
         maxIndex := nextIndex + entriesSize - 1
         logEntries := make([]*persist.LogEntry, 0, entriesSize)
         for i := nextIndex; i <= maxIndex; i++ {
@@ -547,6 +556,10 @@ func (self *StandardModePeerState) SetupReplicating(
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
             // TODO add error handling
+        }
+        leader, err := EncodeAddr(local.GetLocalAddr())
+        if err != nil {
+            // err handling
         }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
@@ -565,7 +578,7 @@ type SnapshotModePeerState struct {
     *hsm.StateHead
 
     maxSnapshotChunkSize uint64
-    snapshotOffset       uint64
+    offset               uint64
     lastChunk            []byte
     snapshotMeta         *persist.SnapshotMeta
     snapshotReadCloser   io.ReadCloser
@@ -576,6 +589,7 @@ func NewSnapshotModePeerState(
     maxSnapshotChunkSize uint64) *SnapshotModePeerState {
 
     object := &SnapshotModePeerState{
+        StateHead:            hsm.NewStateHead(super),
         maxSnapshotChunkSize: maxSnapshotChunkSize,
     }
     super.AddChild(object)
@@ -594,17 +608,16 @@ func (self *SnapshotModePeerState) Entry(
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     local := peerHSM.Local()
-    snapshotManager := local.GetSnapshotManager()
-    snapshotMetas, err := snapshotManager.list()
+    snapshotMetas, err := local.SnapshotManager().List()
     if err != nil {
         // TODO error handling
     }
-    if len(snapshots) == 0 {
+    if len(snapshotMetas) == 0 {
         // TODO error handling
     }
 
     id := snapshotMetas[0].ID
-    meta, readCloser, err := snapshotManager.Open(id)
+    meta, readCloser, err := local.SnapshotManager().Open(id)
     if err != nil {
         // TODO error handling
     }
@@ -617,7 +630,9 @@ func (self *SnapshotModePeerState) Entry(
     if err != nil {
         // err handling
     }
-    if err := self.SendNextChunk(local.GetCurrentTerm(), leader); err != nil {
+    if err := self.SendNextChunk(
+        peerHSM, local.GetCurrentTerm(), leader); err != nil {
+
         peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
     }
     return nil
@@ -647,10 +662,9 @@ func (self *SnapshotModePeerState) Handle(
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
-        responseEvent, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
+        responseEvent, err := peerHSM.Client().CallRPCTo(peerHSM.Addr(), e)
         if err != nil {
             // TODO add log
-            nil
         }
         if responseEvent.Type() != ev.EventInstallSnapshotResponse {
             // TODO error handling
@@ -663,7 +677,7 @@ func (self *SnapshotModePeerState) Handle(
         // update last contact timer
         leaderPeerState, ok := self.Super().(*LeaderPeerState)
         hsm.AssertTrue(ok)
-        LeaderPeerState.UpdateLastContact()
+        leaderPeerState.UpdateLastContact()
 
         if snapshotResponseEvent.Response.Term > local.GetCurrentTerm() {
             event := ev.NewStepdownEvent()
@@ -681,7 +695,7 @@ func (self *SnapshotModePeerState) Handle(
 
         if snapshotResponseEvent.Response.Success {
             // last chunk replicated
-            self.offset += len(self.lastChunk)
+            self.offset += uint64(len(self.lastChunk))
             if self.offset == self.snapshotMeta.Size {
                 // all chunk send, snapshot replication done
                 // TODO add log
@@ -690,7 +704,12 @@ func (self *SnapshotModePeerState) Handle(
             }
 
             // send next chunk
-            self.SendNextChunk(local.GetCurrentTerm(), leader)
+            if err := self.SendNextChunk(
+                peerHSM, local.GetCurrentTerm(), leader); err != nil {
+
+                // TODO add log
+                peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
+            }
         } else {
             // resend last chunk
             e := self.SetupRequest(local.GetCurrentTerm(), leader)
@@ -722,7 +741,9 @@ func (self *SnapshotModePeerState) SetupRequest(
     return event
 }
 
-func (self *SnapshotModePeerState) SendNextChunk(term uint64, leader []byte) error {
+func (self *SnapshotModePeerState) SendNextChunk(
+    peerHSM *PeerHSM, term uint64, leader []byte) error {
+
     data := make([]byte, self.maxSnapshotChunkSize)
     n, err := self.snapshotReadCloser.Read(data)
     if n > 0 {

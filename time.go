@@ -37,6 +37,7 @@ type Ticker interface {
 }
 
 type SimpleTicker struct {
+    timeout   time.Duration
     ticker    *time.Ticker
     stopChan  chan interface{}
     resetChan chan interface{}
@@ -45,6 +46,7 @@ type SimpleTicker struct {
 
 func NewSimpleTicker(timeout time.Duration) *SimpleTicker {
     return &SimpleTicker{
+        timeout:   timeout,
         ticker:    time.NewTicker(timeout),
         stopChan:  make(chan interface{}),
         resetChan: make(chan interface{}),
@@ -64,7 +66,7 @@ func (self *SimpleTicker) start(fn func()) {
         case <-self.stopChan:
             return
         case <-self.resetChan:
-            self.ticker = time.NewTicker(timeout)
+            self.ticker = time.NewTicker(self.timeout)
         case <-self.ticker.C:
             fn()
         }

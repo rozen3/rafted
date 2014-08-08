@@ -41,10 +41,10 @@ type ConfigManager interface {
 
     // Delete the config metadata before and up to the given index,
     // including the given index.
-    TruncateConfigBefore(logIndex uint64) error
+    TruncateBefore(logIndex uint64) error
 
     // Delete the config metadata after the given index,
     // including the given index. And returns the config
     // at the log entry right before the given index.
-    TruncateConfigAfter(logIndex uint64) (*Config, error)
+    TruncateAfter(logIndex uint64) (*Config, error)
 }

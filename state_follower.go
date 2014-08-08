@@ -5,6 +5,7 @@ import (
     "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    "github.com/hhkbp2/rafted/persist"
     "sync"
     "time"
 )
@@ -50,7 +51,7 @@ func (self *FollowerState) Entry(
     deliverHeartbeatTimeout := func() {
         lastContactTime := self.LastContactTime()
         if TimeExpire(lastContactTime, self.heartbeatTimeout) {
-            timeout := &HeartbeatTimeout{
+            timeout := &ev.HeartbeatTimeout{
                 LastContactTime: lastContactTime,
                 Timeout:         self.heartbeatTimeout,
             }
@@ -81,7 +82,7 @@ func (self *FollowerState) Handle(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
-    case event.Type() == ev.EventTimeoutHeartBeat:
+    case event.Type() == ev.EventTimeoutHeartbeat:
         localHSM.QTran(StateCandidateID)
         return nil
     case event.Type() == ev.EventRequestVoteRequest:
@@ -91,6 +92,8 @@ func (self *FollowerState) Handle(
         response, toSend := self.ProcessRequestVote(localHSM, e.Request)
         if toSend {
             e.SendResponse(ev.NewRequestVoteResponseEvent(response))
+        } else {
+            localHSM.SelfDispatch(event)
         }
         return nil
     case event.Type() == ev.EventAppendEntriesRequest:
@@ -100,6 +103,8 @@ func (self *FollowerState) Handle(
         response, toSend := self.ProcessAppendEntries(localHSM, e.Request)
         if toSend {
             e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
+        } else {
+            localHSM.SelfDispatch(event)
         }
         return nil
     case event.Type() == ev.EventInstallSnapshotRequest:
@@ -147,7 +152,6 @@ func (self *FollowerState) ProcessRequestVote(
         // the old leader is now invalidated
         localHSM.SetLeader(nil)
         // transfer to follwer state for a new term
-        localHSM.SelfDispatch(event)
         localHSM.QTran(StateFollowerID)
         return nil, false
     }
@@ -193,9 +197,13 @@ func (self *FollowerState) ProcessAppendEntries(
     request *ev.AppendEntriesRequest) (*ev.AppendEntriesResponse, bool) {
 
     term := localHSM.GetCurrentTerm()
+    lastLogTerm, lastLogIndex, err := localHSM.Log().LastEntryInfo()
+    if err != nil {
+        // TODO error handling
+    }
     response := &ev.AppendEntriesResponse{
         Term:         term,
-        LastLogIndex: localHSM.Log().LastIndex(),
+        LastLogIndex: lastLogIndex,
         Success:      false,
     }
 
@@ -216,7 +224,6 @@ func (self *FollowerState) ProcessAppendEntries(
         // update leader in new term
         localHSM.SetLeader(leader)
         // transfer to follower state for a new term
-        localHSM.SelfDispatch(event)
         localHSM.QTran(StateFollowerID)
         return nil, false
     }
@@ -232,11 +239,9 @@ func (self *FollowerState) ProcessAppendEntries(
     }
 
     if request.PrevLogIndex > 0 {
-        lastTerm, lastIndex := localHSM.Log().LastEntryInfo()
-
         var prevLogTerm uint64
-        if request.PrevLogIndex == lastIndex {
-            prevLogTerm = lastTerm
+        if request.PrevLogIndex == lastLogIndex {
+            prevLogTerm = lastLogTerm
         } else {
             prevLog, err := localHSM.Log().GetLog(request.PrevLogIndex)
             if err != nil {
@@ -258,7 +263,6 @@ func (self *FollowerState) ProcessAppendEntries(
         first := request.Entries[0]
 
         // Delete any conflicting entries
-        lastLogIndex := localHSM.Log().LastIndex()
         if first.Index <= lastLogIndex {
             // TODO add log
             if err := localHSM.Log().TruncateAfter(first.Index); err != nil {
@@ -275,10 +279,14 @@ func (self *FollowerState) ProcessAppendEntries(
     }
 
     // Update the commit index
+    committedIndex, err := localHSM.Log().CommittedIndex()
+    if err != nil {
+        // TODO error handling
+    }
     if (request.LeaderCommitIndex > 0) &&
-        (request.LeaderCommitIndex > localHSM.Log().CommitIndex()) {
-        index := min(request.LeaderCommitIndex, localHSM.Log().LastIndex())
-        localHSM.Log().SetCommitIndex(index)
+        (request.LeaderCommitIndex > committedIndex) {
+        index := Min(request.LeaderCommitIndex, lastLogIndex)
+        localHSM.Log().StoreCommittedIndex(index)
         localHSM.ProcessLogsUpTo(index)
     }
 

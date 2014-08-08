@@ -6,6 +6,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     "net"
     "sync"
+    "time"
 )
 
 type PeerManager struct {
@@ -15,6 +16,9 @@ type PeerManager struct {
 }
 
 func NewPeerManager(
+    heartbeatTimeout time.Duration,
+    maxAppendEntriesSize uint64,
+    maxSnapshotChunkSize uint64,
     peerAddrs []net.Addr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
@@ -22,19 +26,28 @@ func NewPeerManager(
 
     peerMap := make(map[net.Addr]*Peer)
     for _, addr := range peerAddrs {
-        peerMap[addr] = NewPeer(addr, client, eventHandler, local)
+        peerMap[addr] = NewPeer(
+            heartbeatTimeout,
+            maxAppendEntriesSize,
+            maxSnapshotChunkSize,
+            addr,
+            client,
+            eventHandler,
+            local)
     }
-    return &PeerManager{
+    object := &PeerManager{
         peerAddrs: peerAddrs,
         peerMap:   peerMap,
     }
+    local.SetPeerManager(object)
+    return object
 }
 
-func (self *PeerManager) Broadcast(request ev.RaftEvent) {
+func (self *PeerManager) Broadcast(event hsm.Event) {
     self.peerLock.RLock()
     defer self.peerLock.RUnlock()
     for _, peer := range self.peerMap {
-        peer.Send(request)
+        peer.Send(event)
     }
 }
 
@@ -49,6 +62,9 @@ type Peer struct {
 }
 
 func NewPeer(
+    heartbeatTimeout time.Duration,
+    maxAppendEntriesSize uint64,
+    maxSnapshotChunkSize uint64,
     addr net.Addr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
@@ -60,9 +76,9 @@ func NewPeer(
     NewDeactivatedPeerState(peerState)
     activatedPeerState := NewActivatedPeerState(peerState)
     NewCandidatePeerState(activatedPeerState)
-    leaderPeerState := NewLeaderPeerState(activatedPeerState)
-    NewStandardModePeerState(leaderPeerState)
-    NewSnapshotModePeerState(leaderPeerState)
+    leaderPeerState := NewLeaderPeerState(activatedPeerState, heartbeatTimeout)
+    NewStandardModePeerState(leaderPeerState, maxAppendEntriesSize)
+    NewSnapshotModePeerState(leaderPeerState, maxSnapshotChunkSize)
     NewPipelineModePeerState(leaderPeerState)
     peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler, local)
     return &Peer{peerHSM}
@@ -72,8 +88,8 @@ func (self *Peer) Start() {
     self.hsm.Init()
 }
 
-func (self *Peer) Send(request ev.RaftEvent) {
-    self.hsm.Dispatch(request)
+func (self *Peer) Send(event hsm.Event) {
+    self.hsm.Dispatch(event)
 }
 
 func (self *Peer) Close() {
@@ -107,7 +123,7 @@ func NewPeerHSM(
         addr:             addr,
         client:           client,
         eventHandler:     eventHandler,
-        local:            Local,
+        local:            local,
     }
 }
 
@@ -152,6 +168,18 @@ func (self *PeerHSM) SelfDispatch(event hsm.Event) {
 func (self *PeerHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
     self.group.Wait()
+}
+
+func (self *PeerHSM) Addr() net.Addr {
+    return self.addr
+}
+
+func (self *PeerHSM) Client() comm.Client {
+    return self.client
+}
+
+func (self *PeerHSM) EventHandler() func(ev.RaftEvent) {
+    return self.eventHandler
 }
 
 func (self *PeerHSM) Local() *Local {

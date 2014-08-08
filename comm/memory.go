@@ -302,8 +302,8 @@ type MemoryServer struct {
 }
 
 func NewMemoryServer(
-    eventHandler func(ev.RaftRequestEvent),
     bindAddr net.Addr,
+    eventHandler func(ev.RaftRequestEvent),
     register *MemoryTransportRegister) *MemoryServer {
 
     transport := NewMemoryServerTransport(bindAddr, register)

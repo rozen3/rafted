@@ -13,7 +13,7 @@ const (
     EventInstallSnapshotResponse
     EventRaftEnd
     EventTimeoutBegin
-    EventTimeoutHeartBeat
+    EventTimeoutHeartbeat
     EventTimeoutElection
     EventTimeoutEnd
     EventInternalBegin
@@ -211,7 +211,7 @@ func NewHeartbeatTimeoutEvent(
     message *HeartbeatTimeout) *HeartbeatTimeoutEvent {
 
     return &HeartbeatTimeoutEvent{
-        hsm.NewStdEvent(EventTimeoutHeartBeat),
+        hsm.NewStdEvent(EventTimeoutHeartbeat),
         message,
     }
 }

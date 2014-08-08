@@ -1,9 +1,9 @@
 package rafted
 
 import (
-    hsm "github.com/hhkbp2/go-hsm"
     "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
+    "github.com/hhkbp2/rafted/persist"
     "net"
     "time"
 )
@@ -18,13 +18,16 @@ type RaftNode struct {
 func NewRaftNode(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
+    maxAppendEntriesSize uint64,
+    maxSnapshotChunkSize uint64,
     poolSize int,
     localAddr net.Addr,
     bindAddr net.Addr,
+    otherPeerAddrs []net.Addr,
     configManager persist.ConfigManager,
     stateMachine persist.StateMachine,
     log persist.Log,
-    snapshotManager persist.snapshotManager) (*RaftNode, error) {
+    snapshotManager persist.SnapshotManager) (*RaftNode, error) {
 
     local := NewLocal(
         heartbeatTimeout,
@@ -41,15 +44,21 @@ func NewRaftNode(
     eventHandler2 := func(event ev.RaftRequestEvent) {
         local.Dispatch(event)
     }
-    peerManager := NewPeerManager(local, otherPeerAddrs, client, eventHandler1)
-    local.SetPeerManager(peerManager)
+    peerManager := NewPeerManager(
+        heartbeatTimeout,
+        maxAppendEntriesSize,
+        maxSnapshotChunkSize,
+        otherPeerAddrs,
+        client,
+        eventHandler1,
+        local)
     server, err := comm.NewSocketServer(bindAddr, eventHandler2)
     if err != nil {
         // TODO add cleanup
         return nil, err
     }
     go func() {
-        self.server.Serve()
+        server.Serve()
     }()
     return &RaftNode{
         local:       local,

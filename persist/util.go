@@ -2,9 +2,10 @@ package persist
 
 import (
     "bytes"
+    "container/list"
     "encoding/binary"
     "io"
-    "list"
+    "net"
     "time"
 )
 

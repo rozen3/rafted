@@ -7,6 +7,7 @@ import (
     "net"
     "sync"
     "sync/atomic"
+    "time"
 )
 
 const (
@@ -62,25 +63,28 @@ type LocalHSM struct {
     snapshotManager persist.SnapshotManager
 
     // peers
-    *PeerManager
+    peerManager *PeerManager
 
     // notifier
     *Notifier
 }
 
 func NewLocalHSM(
-    top, initial hsm.State,
+    top hsm.State,
+    initial hsm.State,
     localAddr net.Addr,
+    configManager persist.ConfigManager,
     stateMachine persist.StateMachine,
     log persist.Log,
-    snapshotManager persist.snapshotManager) *LocalHSM {
+    snapshotManager persist.SnapshotManager) *LocalHSM {
 
     return &LocalHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypeRaft, top, initial),
         dispatchChan:     make(chan hsm.Event, 1),
         selfDispatchChan: make(chan hsm.Event, 1),
-        Group:            sync.WaitGroup{},
+        group:            sync.WaitGroup{},
         localAddr:        localAddr,
+        configManager:    configManager,
         stateMachine:     stateMachine,
         log:              log,
         snapshotManager:  snapshotManager,
@@ -156,7 +160,7 @@ func (self *LocalHSM) GetLocalAddr() net.Addr {
 func (self *LocalHSM) SetLocalAddr(addr net.Addr) {
     self.localAddrLock.Lock()
     defer self.localAddrLock.Unlock()
-    return self.localAddr
+    self.localAddr = addr
 }
 
 func (self *LocalHSM) GetVotedFor() net.Addr {
@@ -184,7 +188,7 @@ func (self *LocalHSM) SetLeader(leader net.Addr) {
 }
 
 func (self *LocalHSM) ConfigManager() persist.ConfigManager {
-    return self.ConfigManager
+    return self.configManager
 }
 
 func (self *LocalHSM) Log() persist.Log {
@@ -195,24 +199,31 @@ func (self *LocalHSM) SnapshotManager() persist.SnapshotManager {
     return self.snapshotManager
 }
 
+func (self *LocalHSM) PeerManager() *PeerManager {
+    return self.peerManager
+}
+
 func (self *LocalHSM) SetPeerManager(peerManager *PeerManager) {
     self.peerManager = peerManager
 }
 
 func (self *LocalHSM) QuorumSize() uint32 {
-    return ((uint32(self.PeerManager.PeerNumber()) + 1) / 2) + 1
+    return ((uint32(self.peerManager.PeerNumber()) + 1) / 2) + 1
 }
 
 func (self *LocalHSM) ProcessLogsUpTo(index uint64) {
     // TODO add impl
-    lastApplied := self.GetLastApplied()
-    if index <= lastApplied {
+    lastAppliedIndex, err := self.log.LastAppliedIndex()
+    if err != nil {
+        // TODO error handing
+    }
+    if index <= lastAppliedIndex {
         // TODO add log
         return
     }
 
-    for i := lastApplied + 1; i <= index; i++ {
-        if ret, err := self.ProcessLogAt(i); err != nil {
+    for i := lastAppliedIndex + 1; i <= index; i++ {
+        if _, err := self.ProcessLogAt(i); err != nil {
             // TODO error handling
         }
     }
@@ -247,7 +258,7 @@ func (self *LocalHSM) processLog(logEntry *persist.LogEntry) []byte {
 
 func (self *LocalHSM) applyLog(logEntry *persist.LogEntry) []byte {
     result := self.stateMachine.Apply(logEntry.Data)
-    self.log.StoreAppliedIndex(logEntry.Index)
+    self.log.StoreLastAppliedIndex(logEntry.Index)
     return result
 }
 
@@ -262,7 +273,7 @@ func NewLocal(
     configManager persist.ConfigManager,
     stateMachine persist.StateMachine,
     log persist.Log,
-    snapshotManager persist.snapshotManager) *Local {
+    snapshotManager persist.SnapshotManager) *Local {
 
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StateLocalID)

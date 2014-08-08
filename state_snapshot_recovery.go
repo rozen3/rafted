@@ -103,14 +103,13 @@ func (self *SnapshotRecoveryState) Entry(
     servers := e.Request.Servers
     lastIncludedTerm := e.Request.LastIncludedTerm
     lastIncludedIndex := e.Request.LastIncludedIndex
-    snapshotWriter, err := localHSM.SnapshotManager.Create(
+    snapshotWriter, err := localHSM.SnapshotManager().Create(
         lastIncludedTerm, lastIncludedIndex, servers)
     if err != nil {
         // TODO add log
         self.writer = nil
         self.snapshot = nil
-        abort := &ev.AbortSnapshotRecovery{}
-        localHSM.SelfDispatch(ev.NewAbortSnapshotRecoveryEvent(abort))
+        localHSM.SelfDispatch(ev.NewAbortSnapshotRecoveryEvent())
     } else {
         self.writer = snapshotWriter
         self.snapshot = NewRemoteSnapshot(
@@ -141,13 +140,13 @@ func (self *SnapshotRecoveryState) Handle(
     fmt.Println(self.ID(), "-> Handle, event=", event)
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
-    switch {
+    switch event.Type() {
     // TODO add a breakout policy for this state
-    case event.Type() == ev.EventTimeoutHeartBeat:
+    case ev.EventTimeoutHeartbeat:
         // Ignore this event. Don't transfer to candidate state when
         // recovering from snapshot.
         return nil
-    case event.Type() == ev.EventInstallSnapshotRequest:
+    case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
         if bytes.Compare(e.Request.Leader, self.snapshot.Leader) != 0 {
@@ -213,7 +212,7 @@ func (self *SnapshotRecoveryState) Handle(
             }
         }
         return nil
-    case event.Type() == ev.EventAbortSnapshotRecovery:
+    case ev.EventAbortSnapshotRecovery:
         // TODO add log
         sm.QTran(StateFollowerID)
         return nil
