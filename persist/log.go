@@ -71,10 +71,17 @@ type Log interface {
     // Both term and index are 0 if there is no entry.
     LastEntryInfo() (term uint64, index uint64, err error)
 
-    // Returns the index of
-    CommitIndex()
+    // Returns the index of log entry latest committed
+    CommittedIndex() (uint64, error)
 
-    StoreCommitIndex()
+    // Store the index of log entry latest committed
+    StoreCommittedIndex(index uint64) error
+
+    // Returns the index of log entry latest applied to state machine
+    AppliedIndex() (uint64, error)
+
+    // Store the index of log entry latest applied to state machine
+    StoreAppliedIndex(index uint64) error
 
     // Gets a log entry at a given index
     GetLog(index uint64) (*LogEntry, error)

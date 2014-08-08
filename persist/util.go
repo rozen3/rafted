@@ -4,6 +4,7 @@ import (
     "bytes"
     "encoding/binary"
     "io"
+    "list"
     "time"
 )
 
@@ -95,4 +96,23 @@ func ConfigEqual(conf1 *Config, conf2 *Config) bool {
     }
     return (AddrsEqual(conf1.Servers, conf2.Servers) &&
         AddrsEqual(conf1.NewServers, conf2.NewServers))
+}
+
+// ListTruncate() removes elements from `e' to the last element in list `l'.
+// The range to be removed is [e, l.Back()]. It returns list `l'.
+func ListTruncate(l *list.List, e *list.Element) *list.List {
+    // remove `e' and all elements after `e'
+    var next *list.Element
+    for ; e != nil; e = next {
+        next = e.Next()
+        l.Remove(e)
+    }
+    return l
+}
+
+func ListTruncateHead(l *list.List, e *list.Element) *list.List {
+    for elem := l.Front(); elem != e; elem = elem.Next() {
+        l.Remove(e)
+    }
+    return l
 }

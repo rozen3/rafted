@@ -164,10 +164,10 @@ func (self *MemoryLog) TruncateAfter(index uint64) error {
         return errors.New("no such index")
     }
     // truncate the real storage
-    self.logEntries = self.logEntries[:storedIndex+1]
+    self.logEntries = self.logEntries[:storedIndex]
     // cleanup and update the indexes
     for k, _ := range self.indexMap {
-        if k > index {
+        if k >= index {
             delete(self.indexMap, k)
         }
     }
@@ -449,15 +449,90 @@ func (self *MemoryConfigManager) PushConfig(
     self.configs.PushBack(newMeta)
 }
 
-func (self *MemoryConfigManager) TruncateConfigAfter(
-    logIndex uint64) (*Config, error) {
-
+func (self *MemoryConfigManager) LastConfig() (*Config, error) {
+    self.lock.RLock()
+    defer self.lock.RUnlock()
     elem := self.configs.Back()
-    for ; elem != nil; e = e.Prev() {
+    meta, _ := elem.Value.(*ConfigMeta)
+    return meta.Conf, nil
+}
+
+func (self *MemoryConfigManager) GetConfig(logIndex uint64) (*Config, error) {
+    self.lock.RLock()
+    defer self.lock.RUnlock()
+    for elem := self.configs.Back(); elem != nil; elem = elem.Prev() {
         meta, _ := elem.Value.(*ConfigMeta)
         if logIndex < meta.FromLogIndex {
             continue
         }
+        return meta.Conf, nil
     }
-    // TODO add impl
+    return nil, erros.New("index out of bound")
+}
+
+func (self *MemoryConfigManager) List() ([]*ConfigMeta, error) {
+    self.lock.RLock()
+    defer self.lock.RUnlock()
+    metas := make([]*ConfigMeta, 0, self.configs.Len())
+    for e := self.configs.Front(); e != nil; e = e.Next() {
+        meta, _ := elem.Value.(*ConfigMeta)
+        metas = append(metas, meta)
+    }
+    return metas
+}
+
+func (self *MemoryConfigManager) TruncateBefore(logIndex uint64) error {
+    self.lock.Lock()
+    defer self.lock.Unlock()
+    for e := self.configs.Front(); e != nil; e = e.Next() {
+        meta, _ := elem.Value.(*ConfigMeta)
+        if logIndex > meta.ToLogIndex {
+            continue
+        }
+        if logIndex == meta.ToLogIndex {
+            if e == self.configs.Back() {
+                ListTruncateHead(self.configs, e)
+                meta.FromLogIndex = logIndex
+                meta.ToLogIndex = 0
+            } else {
+                ListTruncateHead(self.configs, e)
+                self.configs.Remove(e)
+            }
+        } else {
+            ListTruncateHead(self.configs, e)
+            meta.FromLogIndex = logIndex
+        }
+        return nil
+    }
+    return errors.New("index out of bound")
+}
+
+func (self *MemoryConfigManager) TruncateConfigAfter(
+    logIndex uint64) (*Config, error) {
+
+    self.lock.Lock()
+    defer self.lock.Unlock()
+    for elem := self.configs.Back(); elem != nil; e = e.Prev() {
+        meta, _ := elem.Value.(*ConfigMeta)
+        if logIndex < meta.FromLogIndex {
+            continue
+        }
+        if logIndex == meta.FromLogIndex {
+            if elem == self.configs.Front() {
+                ListTruncate(self.configs, elem.Next())
+                meta.ToLogIndex = 0
+                return meta.Conf, nil
+            } else {
+                prev := elem.Prev()
+                meta, _ := prev.Value.(*Config)
+                ListTruncate(self.configs, elem)
+                return meta.Conf, nil
+            }
+        } else {
+            ListTruncate(self.configs, elem.Next())
+            meta.ToLogIndex = 0
+            return meta.Conf, nil
+        }
+    }
+    return nil, errors.New("index out of bound")
 }
