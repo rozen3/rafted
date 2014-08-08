@@ -33,14 +33,10 @@ type LocalHSM struct {
     *hsm.StdHSM
     dispatchChan     chan hsm.Event
     selfDispatchChan chan hsm.Event
-    Group            sync.WaitGroup
+    group            sync.WaitGroup
 
     // the current term
     currentTerm uint64
-    // the index of highest log entry known to be committed
-    commitIndex uint64
-    // the index of highest log entry applied to state machine
-    lastApplied uint64
 
     // the local addr
     localAddr     net.Addr
@@ -98,12 +94,12 @@ func (self *LocalHSM) Init() {
 }
 
 func (self *LocalHSM) eventLoop() {
-    self.Group.Add(1)
+    self.group.Add(1)
     go self.loop()
 }
 
 func (self *LocalHSM) loop() {
-    defer self.Group.Done()
+    defer self.group.Done()
     // loop forever to process incoming event
     for {
         select {
@@ -140,7 +136,7 @@ func (self *LocalHSM) SelfDispatch(event hsm.Event) {
 
 func (self *LocalHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
-    self.Group.Wait()
+    self.group.Wait()
 }
 
 func (self *LocalHSM) GetCurrentTerm() uint64 {
@@ -149,22 +145,6 @@ func (self *LocalHSM) GetCurrentTerm() uint64 {
 
 func (self *LocalHSM) SetCurrentTerm(term uint64) {
     atomic.StoreUint64(&self.currentTerm, term)
-}
-
-func (self *LocalHSM) GetCommitIndex() uint64 {
-    return atomic.LoadUint64(&self.currentTerm)
-}
-
-func (self *LocalHSM) SetCommitIndex(index uint64) {
-    atomic.StoreUint64(&self.commitIndex, index)
-}
-
-func (self *LocalHSM) GetLastApplied() uint64 {
-    return atomic.LoadUint64(&self.currentTerm)
-}
-
-func (self *LocalHSM) SetLastApplied(index uint64) {
-    atomic.StoreUint64(&self.lastApplied, index)
 }
 
 func (self *LocalHSM) GetLocalAddr() net.Addr {
@@ -267,7 +247,7 @@ func (self *LocalHSM) processLog(logEntry *persist.LogEntry) []byte {
 
 func (self *LocalHSM) applyLog(logEntry *persist.LogEntry) []byte {
     result := self.stateMachine.Apply(logEntry.Data)
-    self.SetLastApplied(logEntry.Index)
+    self.log.StoreAppliedIndex(logEntry.Index)
     return result
 }
 

@@ -32,10 +32,10 @@ func (self *LeaderState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
-    raftHSM, ok := sm.(*RaftHSM)
+    localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
-    raftHSM.SetLeader(raftHSM.LocalAddr)
+    localHSM.SetLeader(localHSM.LocalAddr)
     // init status for this state
     // TODO init inflight
     self.Inflight.Init()
@@ -63,7 +63,7 @@ func (self *LeaderState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle, event=", event)
-    raftHSM, ok := sm.(*RaftHSM)
+    localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
     case ev.EventPeerReplicateLog:
@@ -77,7 +77,7 @@ func (self *LeaderState) Handle(
         }
         if goodToCommit {
             allCommitted := self.Inflight.GetCommitted()
-            self.CommitInflightEntries(raftHSM, allCommitted)
+            self.CommitInflightEntries(localHSM, allCommitted)
         }
         return nil
     case ev.EventStepDown:
@@ -86,52 +86,52 @@ func (self *LeaderState) Handle(
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
         peerUpdate := &ev.PeerReplicateLog{
-            Peer:       raftHSM.LocalAddr,
+            Peer:       localHSM.LocalAddr,
             MatchIndex: e.Response.LastLogIndex,
         }
-        raftHSM.SelfDispatch(ev.NewPeerReplicateLogEvent(peerUpdate))
+        localHSM.SelfDispatch(ev.NewPeerReplicateLogEvent(peerUpdate))
         return nil
     case ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesReqeustEvent)
         hsm.AssertTrue(ok)
         // step down to follower state if local term is not greater than
         // the remote one
-        if e.Request.Term >= raftHSM.GetCurrentTerm() {
-            Stepdown(raftHSM, event, e.Request.Leader)
+        if e.Request.Term >= localHSM.GetCurrentTerm() {
+            Stepdown(localHSM, event, e.Request.Leader)
         }
         return nil
     case ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
-        if e.Request.Term >= raftHSM.GetCurrentTerm() {
-            Stepdown(raftHSM, event, e.Request.Candidate)
+        if e.Request.Term >= localHSM.GetCurrentTerm() {
+            Stepdown(localHSM, event, e.Request.Candidate)
         }
         return nil
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
-        if e.Request.Term >= raftHSM.GetCurrentTerm() {
-            Stepdown(raftHSM, event, e.Request.Leader)
+        if e.Request.Term >= localHSM.GetCurrentTerm() {
+            Stepdown(localHSM, event, e.Request.Leader)
         }
         return nil
     case ev.EventClientReadOnlyRequest:
         e, ok := event.(*ev.ClientReadOnlyRequestEvent)
         hsm.AssertTrue(ok)
         self.HandleClientRequest(
-            raftHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
+            localHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
         return nil
     case ev.EventClientWriteRequest:
         e, ok := event.(*ev.ClientWriteRequestEvent)
         hsm.AssertTrue(ok)
         self.HandleClientRequest(
-            raftHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
+            localHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
         return nil
     }
     return self.Super()
 }
 
 func (self *LeaderState) HandleClientRequest(
-    raftHSM *RaftHSM, requestData []byte, resultChan chan ev.ClientEvent) {
+    localHSM *LocalHSM, requestData []byte, resultChan chan ev.ClientEvent) {
 
     requests := []*InflightRequest{
         &InflightRequest{
@@ -140,16 +140,16 @@ func (self *LeaderState) HandleClientRequest(
             ResultChan: resultChan,
         },
     }
-    if err := self.StartFlight(raftHSM, requests); err != nil {
+    if err := self.StartFlight(localHSM, requests); err != nil {
         // TODO error handling
     }
 }
 
 func (self *LeaderState) StartFlight(
-    raftHSM *RaftHSM, requests []*InflightRequest) error {
+    localHSM *LocalHSM, requests []*InflightRequest) error {
 
-    term := raftHSM.GetCurrentTerm()
-    lastLogIndex, err := raftHSM.GetLog().LastIndex()
+    term := localHSM.GetCurrentTerm()
+    lastLogIndex, err := localHSM.GetLog().LastIndex()
     if err != nil {
         // TODO add error handling
     }
@@ -172,7 +172,7 @@ func (self *LeaderState) StartFlight(
     }
 
     // persist these requests locally
-    if err := raftHSM.GetLog().StoreLogs(logEntries); err != nil {
+    if err := localHSM.GetLog().StoreLogs(logEntries); err != nil {
         // TODO error handling; add log
         response := &ev.ClientResponse{
             Success: false,
@@ -189,19 +189,19 @@ func (self *LeaderState) StartFlight(
     self.Inflight.AddAll(inflightEntries)
 
     // send AppendEntriesRequest to all peer
-    leader, err := EncodeAddr(raftHSM.LocalAddr)
+    leader, err := EncodeAddr(localHSM.LocalAddr)
     if err != nil {
         // TODO add error handling
         return err
     }
-    prevLogTerm, prevLogIndex := raftHSM.GetLastLogInfo()
+    prevLogTerm, prevLogIndex := localHSM.GetLastLogInfo()
     request := &ev.AppendEntriesRequest{
         Term:              term,
         Leader:            leader,
         PrevLogTerm:       prevLogTerm,
         PrevLogIndex:      prevLogIndex,
         Entries:           logEntries,
-        LeaderCommitIndex: raftHSM.GetCommitIndex(),
+        LeaderCommitIndex: localHSM.GetCommitIndex(),
     }
     event := ev.NewAppendEntriesRequestEvent(request)
 
@@ -210,16 +210,16 @@ func (self *LeaderState) StartFlight(
         LastLogIndex: prevLogIndex,
         Success:      true,
     }
-    raftHSM.SelfDispatch(ev.NewAppendEntriesResponseEvent(selfResponse))
-    raftHSM.PeerManager.Broadcast(event)
+    localHSM.SelfDispatch(ev.NewAppendEntriesResponseEvent(selfResponse))
+    localHSM.PeerManager.Broadcast(event)
     return nil
 }
 
 func (self *LeaderState) CommitInflightEntries(
-    raftHSM *RaftHSM, entries []*InflightEntry) {
+    localHSM *LocalHSM, entries []*InflightEntry) {
 
     for _, entry := range entries {
-        result := raftHSM.ProcessLogAt(entry.LogIndex)
+        result := localHSM.ProcessLogAt(entry.LogIndex)
         response := &ev.ClientResponse{
             Success: true,
             Data:    result,
@@ -258,17 +258,17 @@ func (self *UnsyncState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
-    raftHSM, ok := sm.(*RaftHSM)
+    localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     handleNoopResponse := func(event ev.ClientEvent) {
         if event.Type() != ev.EventClientResponse {
             // TODO add log
             return
         }
-        raftHSM.SelfDispatch(event)
+        localHSM.SelfDispatch(event)
     }
     self.listener.Start(handleNoopResponse)
-    self.StartSyncSafe(raftHSM)
+    self.StartSyncSafe(localHSM)
     return nil
 }
 
@@ -290,7 +290,7 @@ func (self *UnsyncState) Exit(
 func (self *UnsyncState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    raftHSM, ok := sm.(*RaftHSM)
+    localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
     case ev.IsClientEvent(event.Type()):
@@ -304,28 +304,28 @@ func (self *UnsyncState) Handle(
         hsm.AssertTrue(ok)
         // TODO add different policy for retry
         if e.Response.Success {
-            raftHSM.QTran(StateSyncID)
+            localHSM.QTran(StateSyncID)
         } else {
-            self.StartSyncSafe(raftHSM)
+            self.StartSyncSafe(localHSM)
         }
         return nil
     }
     return self.Super()
 }
 
-func (self *UnsyncState) StartSync(raftHSM *RaftHSM) error {
+func (self *UnsyncState) StartSync(localHSM *LocalHSM) error {
     // commit a blank no-op entry into the log at the start of leader's term
     requests := []*InflightRequest{self.noop}
     leaderState, ok := self.Super().(*LeaderState)
     hsm.AssertTrue(ok)
-    return leaderState.StartFlight(raftHSM, requests)
+    return leaderState.StartFlight(localHSM, requests)
 }
 
-func (self *UnsyncState) StartSyncSafe(raftHSM *RaftHSM) {
-    if err := self.StartSync(raftHSM); err != nil {
+func (self *UnsyncState) StartSyncSafe(localHSM *LocalHSM) {
+    if err := self.StartSync(localHSM); err != nil {
         // TODO add log
         stepdown := &ev.Stepdown{}
-        raftHSM.SelfDispatch(ev.NewStepdownEvent(stepdown))
+        localHSM.SelfDispatch(ev.NewStepdownEvent(stepdown))
     }
 }
 

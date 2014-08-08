@@ -78,10 +78,10 @@ type Log interface {
     StoreCommittedIndex(index uint64) error
 
     // Returns the index of log entry latest applied to state machine
-    AppliedIndex() (uint64, error)
+    LastAppliedIndex() (uint64, error)
 
     // Store the index of log entry latest applied to state machine
-    StoreAppliedIndex(index uint64) error
+    StoreLastAppliedIndex(index uint64) error
 
     // Gets a log entry at a given index
     GetLog(index uint64) (*LogEntry, error)
