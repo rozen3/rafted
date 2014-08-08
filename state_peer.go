@@ -253,13 +253,17 @@ func (self *LeaderPeerState) Entry(
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     // local initialization
-    self.term = peerHSM.GetRaftHSM().GetCurrentTerm()
+    self.term = peerHSM.Local().GetCurrentTerm()
     self.matchIndex = 0
-    self.nextIndex = peerHSM.GetRaftHSM().GetLog().LastIndex() + 1
-    // trigger a check on whether to start log replication
-    peerHSM.SelfDispatch(ev.NewPeerCheckLogReplicationEvent())
-    // init timer
+    self.nextIndex = peerHSM.Local().Log().LastIndex() + 1
     self.UpdateLastContactTime()
+    // trigger a check on whether to start log replication
+    timeout := &HeartbeatTimeout{
+        LastContactTime: self.LastContactTime(),
+        Timeout:         self.heartbeatTimeout,
+    }
+    peerHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
+    // init timer
     deliverHearbeatTimeout := func() {
         lastContactTime := self.LastContactTime()
         if TimeExpire(lastContactTime, self.heartbeatTimeout) {
@@ -291,33 +295,33 @@ func (self *LeaderPeerState) Handle(
     hsm.AssertTrue(ok)
     switch {
     case ev.EventHeartbeatTimeout:
-        fallthrough
-    case ev.EventPeerCheckLogReplication:
         // check whether the peer falls behind the leader
         matchIndex, nextIndex := self.GetIndexInfo()
-        if matchIndex < peerHSM.GetLog().LastIndex() {
+        if matchIndex < peerHSM.Local().Log().LastIndex() {
             sm.QTran(StatePeerStandardModeID)
             return nil
         }
         // the peer is up-to-date, then send a pure heartbeat AE
-        raftHSM := peerHSM.GetRaftHSM()
-        leader, err := EncodeAddr(raftHSM.LocalAddr)
+        local := peerHSM.Local()
+        leader, err := EncodeAddr(local.GetLocalAddr())
         if err != nil {
             // TODO error handling
         }
-        prevLogIndex := raftHSM.GetLog().LastIndex()
-        log, err := raftHSM.GetLog().GetLog(prevLogIndex)
+        prevLogTerm, prevLogIndex, err := local.Log().LastEntryInfo()
         if err != nil {
             // TODO error handling
         }
-        prevLogTerm := log.Term
+        committedIndex, err := local.Log().CommitIndex()
+        if err != nil {
+            // TODO error handling
+        }
         request := &ev.AppendEntriesRequest{
-            Term:              raftHSM.GetCurrentTerm(),
+            Term:              local.GetCurrentTerm(),
             Leader:            leader,
             PrevLogTerm:       prevLogIndex,
             PrevLogIndex:      prevLogTerm,
             Entries:           make([]*persist.LogEntry, 0),
-            LeaderCommitIndex: raftHSM.GetCommitIndex(),
+            LeaderCommitIndex: committedIndex,
         }
         event := ev.NewAppendEntriesRequestEvent(request)
         respEvent, err := peerHSM.Client.CallRPCTo(peerHSM.Addr, e)
@@ -328,14 +332,16 @@ func (self *LeaderPeerState) Handle(
         if !ok {
             // TODO error handling
         }
+        // update last contact timer
+        self.UpdateLastContact()
         peerHSM.SelfDispatch(e)
         return nil
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
-        raftHSM := peerHSM.GetRaftHSM()
-        if e.Response.Term > raftHSM.GetCurrentTerm() {
-            raftHSM.SelfDispatch(ev.NewStepdownEvent())
+        local := peerHSM.Local()
+        if e.Response.Term > local.GetCurrentTerm() {
+            local.SelfDispatch(ev.NewStepdownEvent())
         }
         if e.Response.LastLogIndex != self.GetMatchIndex() {
             // TODO add log
@@ -345,16 +351,9 @@ func (self *LeaderPeerState) Handle(
                     MatchIndex: self.GetMatchIndex(),
                 }
                 event := ev.NewPeerReplicateLogEvent(message)
-                raftHSM.SelfDispatch(event)
+                local.SelfDispatch(event)
             }
             self.SetMatchIndex(e.Response.LastLogIndex)
-        }
-        // don't care whether response is success
-        self.UpdateLastContactTime()
-        // check whether the peer is up-to-date
-        matchIndex, nextIndex := self.GetIndexInfo()
-        if matchIndex == peerHSM.GetLog().LastIndex() {
-            sm.QTran(StateLeaderPeerID)
         }
         return nil
     }
@@ -392,6 +391,11 @@ func (self *LeaderPeerState) UpdateLastContactTime() {
     self.lastContactTimeLock.Lock()
     defer self.lastContactTimeLock.Unlock()
     self.lastContactTime = time.Now()
+}
+
+func (self *LeaderPeerState) UpdateLastContact() {
+    self.UpdateLastContactTime()
+    self.ticker.Reset()
 }
 
 func (self *LeaderPeerState) GetMaxAppendEntriesSize() uint64 {
@@ -461,16 +465,24 @@ func (self *StandardModePeerState) Handle(
         if !ok {
             // TODO error handling
         }
+        // update last contact timer
+        leaderPeerState, ok := self.Super().(*LeaderPeerState)
+        hsm.AssertTrue(ok)
+        LeaderPeerState.UpdateLastContact()
+        // dispatch response to self, just jump to the next case block
         peerHSM.SelfDispatch(aeResponseEvent)
         return nil
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
-        raftHSM := peerHSM.GetRaftHSM()
-        if e.Response.LastLogIndex < raftHSM.GetLog().LastIndex() {
-            // not done replicating the peer log
+        local := peerHSM.Local()
+        if e.Response.LastLogIndex < local.Log().LastIndex() {
+            // peer log has not caught up with us leader yet
             event := self.SetupReplicating(peerHSM)
             peerHSM.SelfDispatch(event)
+        } else {
+            // peer log has caught up with us leader already
+            sm.QTran(StateLeaderPeerID)
         }
         return self.Super()
     case ev.EventEnterSnapshotMode:
@@ -487,51 +499,62 @@ func (self *StandardModePeerState) SetupReplicating(
     leaderPeerState, ok := self.Super().(*LeaderPeerState)
     hsm.AssertTrue(ok)
     matchIndex, nextIndex := leaderPeerState.GetIndexInfo()
-    raftHSM := peerHSM.GetRaftHSM()
-    lastSnapshotIndex := raftHSM.GetLastSnapshotIndex()
+    local := peerHSM.Local()
+    lastSnapshotTerm, lastSnapshotIndex, err :=
+        local.SnapshotManager().LastSnapshotInfo()
+    if err != nil {
+        // TODO error handling
+    }
     switch {
-    case nextIndex == 1:
-        leader, err := EncodeAddr(raftHSM.LocalAddr)
+    case matchIndex == 0:
+        leader, err := EncodeAddr(local.GetLocalAddr())
         if err != nil {
             // TODO add error handling
         }
-
+        committedIndex, err := local.Log().CommittedIndex()
+        if err != nil {
+            // TODO add error handling
+        }
         request := &ev.AppendEntriesRequest{
-            Term:              raftHSM.GetCurrentTerm(),
+            Term:              local.GetCurrentTerm(),
             Leader:            leader,
             PrevLogTerm:       0,
             PrevLogIndex:      0,
             Entries:           make([]*persist.LogEntry, 0),
-            LeaderCommitIndex: raftHSM.GetCommitIndex(),
+            LeaderCommitIndex: committedIndex,
         }
         event = ev.NewAppendEntriesRequestEvent(request)
     case matchIndex < lastSnapshotIndex:
         event = ev.NewPeerEnterSnapshotModeEvent()
     default:
-        log, err := raftHSM.GetLog().GetLog(nextIndex)
+        log, err := local.Log().GetLog(matchIndex)
         if err != nil {
             // TODO error handling
         }
         prevLogIndex := log.Index
         prevLogTerm := log.Term
 
-        logEntries := make([]*persist.LogEntry, 0, self.maxAppendEntriesSize)
-        maxIndex := Min(
-            nextIndex+uint64(self.maxAppendEntriesSize)-1,
-            raftHSM.GetLog().LastIndex())
+        entriesSize := Min(uint64(self.maxAppendEntriesSize),
+            (local.Log().LastIndex() - matchIndex))
+        maxIndex := nextIndex + entriesSize - 1
+        logEntries := make([]*persist.LogEntry, 0, entriesSize)
         for i := nextIndex; i <= maxIndex; i++ {
-            if log, err = raftHSM.GetLog().GetLog(i); err != nil {
+            if log, err = local.Log().GetLog(i); err != nil {
                 // TODO error handling
             }
             logEntries = append(logEntries, log)
         }
+        committedIndex, err := local.Log().CommittedIndex()
+        if err != nil {
+            // TODO add error handling
+        }
         request := &ev.AppendEntriesRequest{
-            Term:              raftHSM.GetCurrentTerm(),
+            Term:              local.GetCurrentTerm(),
             Leader:            leader,
             PrevLogTerm:       prevLogTerm,
             PrevLogIndex:      prevLogIndex,
             Entries:           logEntries,
-            LeaderCommitIndex: raftHSM.GetCommitIndex(),
+            LeaderCommitIndex: committedIndex,
         }
         event = ev.NewAppendEntriesRequestEvent(request)
     }
@@ -570,8 +593,8 @@ func (self *SnapshotModePeerState) Entry(
 
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
-    raftHSM := peerHSM.GetRaftHSM()
-    snapshotManager := raftHSM.GetSnapshotManager()
+    local := peerHSM.Local()
+    snapshotManager := local.GetSnapshotManager()
     snapshotMetas, err := snapshotManager.list()
     if err != nil {
         // TODO error handling
@@ -587,26 +610,14 @@ func (self *SnapshotModePeerState) Entry(
     }
     self.snapshotMeta = meta
     self.snapshotReadCloser = readCloser
-
     self.offset = 0
     self.lastChunk = make([]byte, 0)
-    data := make([]byte, self.maxSnapshotChunkSize)
-    n, err := self.snapshotReadCloser.Read(data)
-    if n > 0 {
-        self.lastChunk = data[:n]
 
-        leader, err := EncodeAddr(raftHSM.LocalAddr)
-        if err != nil {
-            // err handling
-        }
-        requestEvent := self.SetupRequest(raftHSM.GetCurrentTerm(), leader)
-        peerHSM.SelfDispatch(requestEvent)
-    } else {
-        if err == io.EOF || err == nil {
-            // TODO add log
-        } else {
-            // TODO add log
-        }
+    leader, err := EncodeAddr(local.GetLocalAddr())
+    if err != nil {
+        // err handling
+    }
+    if err := self.SendNextChunk(local.GetCurrentTerm(), leader); err != nil {
         peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
     }
     return nil
@@ -631,7 +642,7 @@ func (self *SnapshotModePeerState) Handle(
     fmt.Println(self.ID(), "-> Handle")
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
-    raftHSM := peerHSM.GetRaftHSM()
+    local := peerHSM.Local()
     switch event.Type() {
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(ev.RaftEvent)
@@ -648,20 +659,27 @@ func (self *SnapshotModePeerState) Handle(
         if !ok {
             // TODO error handling
         }
-        if snapshotResponseEvent.Response.Term > raftHSM.GetCurrentTerm() {
+
+        // update last contact timer
+        leaderPeerState, ok := self.Super().(*LeaderPeerState)
+        hsm.AssertTrue(ok)
+        LeaderPeerState.UpdateLastContact()
+
+        if snapshotResponseEvent.Response.Term > local.GetCurrentTerm() {
             event := ev.NewStepdownEvent()
-            raftHSM.SelfDispatch(event)
+            local.SelfDispatch(event)
             // Stop replicating snapshot to this peer since it already
             // connected to another more up-to-date leader.
             peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
             return nil
         }
 
-        leader, err := EncodeAddr(raftHSM.LocalAddr)
+        leader, err := EncodeAddr(local.GetLocalAddr())
         if err != nil {
             // err handling
         }
-        if isResponseEvent.Response.Success {
+
+        if snapshotResponseEvent.Response.Success {
             // last chunk replicated
             self.offset += len(self.lastChunk)
             if self.offset == self.snapshotMeta.Size {
@@ -672,22 +690,10 @@ func (self *SnapshotModePeerState) Handle(
             }
 
             // send next chunk
-            data := make([]byte, self.maxSnapshotChunkSize)
-            n, err := self.snapshotReadCloser.Read(data)
-            if n > 0 {
-                self.lastChunk = data[:n]
-                e := self.SetupRequest(raftHSM.GetCurrentTerm(), leader)
-                peerHSM.SelfDispatch(e)
-            } else {
-                if err == io.EOF || err == nil {
-                    // TODO error handling
-                } else {
-                    // TODO error handling
-                }
-            }
+            self.SendNextChunk(local.GetCurrentTerm(), leader)
         } else {
             // resend last chunk
-            e := self.SetupRequest(raftHSM.GetCurrentTerm(), leader)
+            e := self.SetupRequest(local.GetCurrentTerm(), leader)
             peerHSM.SelfDispatch(e)
         }
         return nil
@@ -703,7 +709,7 @@ func (self *SnapshotModePeerState) SetupRequest(
     term uint64, leader []byte) hsm.Event {
 
     request := &ev.InstallSnapshotRequest{
-        Term:              raftHSM.GetCurrentTerm(),
+        Term:              term,
         Leader:            leader,
         LastIncludedIndex: self.snapshotMeta.LastIncludedIndex,
         LastIncludedTerm:  self.snapshotMeta.LastIncludedTerm,
@@ -714,6 +720,25 @@ func (self *SnapshotModePeerState) SetupRequest(
     }
     event := ev.NewInstallSnapshotRequestEvent(request)
     return event
+}
+
+func (self *SnapshotModePeerState) SendNextChunk(term uint64, leader []byte) error {
+    data := make([]byte, self.maxSnapshotChunkSize)
+    n, err := self.snapshotReadCloser.Read(data)
+    if n > 0 {
+        self.lastChunk = data[:n]
+        requestEvent := self.SetupRequest(term, leader)
+        peerHSM.SelfDispatch(requestEvent)
+        return nil
+    } else {
+        if err == io.EOF || err == nil {
+            // TODO add log
+            return errors.New("fail to read next chunk")
+        } else {
+            // TODO add log
+            return err
+        }
+    }
 }
 
 type PipelineModePeerState struct {

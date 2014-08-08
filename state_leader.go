@@ -35,7 +35,9 @@ func (self *LeaderState) Entry(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
-    localHSM.SetLeader(localHSM.LocalAddr)
+    localHSM.SetLeader(localHSM.GetLocalAddr())
+    // coordinate peer into LeaderPeerState
+    localHSM.PeerManager().Broadcast(ev.NewPeerEnterLeaderEvent())
     // init status for this state
     // TODO init inflight
     self.Inflight.Init()
@@ -81,12 +83,14 @@ func (self *LeaderState) Handle(
         }
         return nil
     case ev.EventStepDown:
-        // TODO add impl
+        // TODO add log
+        sm.QTran(StateFollowerID)
+        return nil
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
         peerUpdate := &ev.PeerReplicateLog{
-            Peer:       localHSM.LocalAddr,
+            Peer:       localHSM.GetLocalAddr(),
             MatchIndex: e.Response.LastLogIndex,
         }
         localHSM.SelfDispatch(ev.NewPeerReplicateLogEvent(peerUpdate))
@@ -97,21 +101,21 @@ func (self *LeaderState) Handle(
         // step down to follower state if local term is not greater than
         // the remote one
         if e.Request.Term >= localHSM.GetCurrentTerm() {
-            Stepdown(localHSM, event, e.Request.Leader)
+            Stepdown(localHSM, event, e.Request.Term, e.Request.Leader)
         }
         return nil
     case ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
         if e.Request.Term >= localHSM.GetCurrentTerm() {
-            Stepdown(localHSM, event, e.Request.Candidate)
+            Stepdown(localHSM, event, e.Request.Term, e.Request.Candidate)
         }
         return nil
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
         if e.Request.Term >= localHSM.GetCurrentTerm() {
-            Stepdown(localHSM, event, e.Request.Leader)
+            Stepdown(localHSM, event, e.Request.Term, e.Request.Leader)
         }
         return nil
     case ev.EventClientReadOnlyRequest:
@@ -149,7 +153,7 @@ func (self *LeaderState) StartFlight(
     localHSM *LocalHSM, requests []*InflightRequest) error {
 
     term := localHSM.GetCurrentTerm()
-    lastLogIndex, err := localHSM.GetLog().LastIndex()
+    lastLogIndex, err := localHSM.Log().LastIndex()
     if err != nil {
         // TODO add error handling
     }
@@ -172,7 +176,7 @@ func (self *LeaderState) StartFlight(
     }
 
     // persist these requests locally
-    if err := localHSM.GetLog().StoreLogs(logEntries); err != nil {
+    if err := localHSM.Log().StoreLogs(logEntries); err != nil {
         // TODO error handling; add log
         response := &ev.ClientResponse{
             Success: false,
@@ -189,12 +193,12 @@ func (self *LeaderState) StartFlight(
     self.Inflight.AddAll(inflightEntries)
 
     // send AppendEntriesRequest to all peer
-    leader, err := EncodeAddr(localHSM.LocalAddr)
+    leader, err := EncodeAddr(localHSM.GetLocalAddr())
     if err != nil {
         // TODO add error handling
         return err
     }
-    prevLogTerm, prevLogIndex := localHSM.GetLastLogInfo()
+    prevLogTerm, prevLogIndex := localHSM.Log().LastEntryInfo()
     request := &ev.AppendEntriesRequest{
         Term:              term,
         Leader:            leader,
@@ -331,8 +335,6 @@ func (self *UnsyncState) StartSyncSafe(localHSM *LocalHSM) {
 
 type SyncState struct {
     *hsm.StateHead
-
-    // TODO add fields
 }
 
 func NewSyncState(super hsm.State) *SyncState {
@@ -351,7 +353,6 @@ func (self *SyncState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
-    // TODO add impl
     return nil
 }
 
@@ -359,14 +360,13 @@ func (self *SyncState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
-    // TODO add impl
     return nil
 }
 
 func (self *SyncState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    // TODO add impl
+    fmt.Println(self.ID(), "-> Handle")
     return self.Super()
 }
 

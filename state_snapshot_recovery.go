@@ -94,7 +94,7 @@ func (self *SnapshotRecoveryState) Entry(
 
     fmt.Println(self.ID(), "-> Entry")
 
-    raftHSM, ok := sm.(*RaftHSM)
+    localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     hsm.AssertEqual(event.Type(), ev.EventInstallSnapshotRequest)
     e, ok := event.(*ev.InstallSnapshotRequestEvent)
@@ -103,15 +103,15 @@ func (self *SnapshotRecoveryState) Entry(
     servers := e.Request.Servers
     lastIncludedTerm := e.Request.LastIncludedTerm
     lastIncludedIndex := e.Request.LastIncludedIndex
-    snapshotWriter, err := raftHSM.SnapshotManager.Create(
+    snapshotWriter, err := localHSM.SnapshotManager.Create(
         lastIncludedTerm, lastIncludedIndex, servers)
     if err != nil {
         // TODO add log
         self.writer = nil
+        self.snapshot = nil
         abort := &ev.AbortSnapshotRecovery{}
-        raftHSM.SelfDispatch(ev.NewAbortSnapshotRecoveryEvent(abort))
+        localHSM.SelfDispatch(ev.NewAbortSnapshotRecoveryEvent(abort))
     } else {
-        raftHSM.SelfDispatch(event)
         self.writer = snapshotWriter
         self.snapshot = NewRemoteSnapshot(
             e.Request.Leader,
@@ -120,6 +120,7 @@ func (self *SnapshotRecoveryState) Entry(
             e.Request.LastIncludedIndex,
             e.Request.Size,
             self.writer)
+        localHSM.SelfDispatch(event)
     }
     return self.Super()
 }
@@ -138,10 +139,10 @@ func (self *SnapshotRecoveryState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle, event=", event)
-    raftHSM, ok := sm.(*RaftHSM)
+    localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
-
+    // TODO add a breakout policy for this state
     case event.Type() == ev.EventTimeoutHeartBeat:
         // Ignore this event. Don't transfer to candidate state when
         // recovering from snapshot.
@@ -152,7 +153,7 @@ func (self *SnapshotRecoveryState) Handle(
         if bytes.Compare(e.Request.Leader, self.snapshot.Leader) != 0 {
             // Receive another leader install snapshot request.
             // This snapshot recovery procedure is interrupted.
-            // TODO log
+            // TODO add log
             if err := self.writer.Cancel(); err != nil {
                 // TODO add log
             }
@@ -162,13 +163,14 @@ func (self *SnapshotRecoveryState) Handle(
         if bytes.Compare(e.Request.Servers, self.snapshot.Servers) != 0 {
             // Receive inconsistant server configurations among
             // install snapshot requests.
+            // TODO add log
             if err := self.writer.Cancel(); err != nil {
                 // TODO add log
             }
             sm.QTran(StateFollowerID)
             return nil
         }
-        if e.Request.Term < raftHSM.GetCurrentTerm() {
+        if e.Request.Term < localHSM.GetCurrentTerm() {
             // The request is stale with a outdated term.
             if err := self.writer.Cancel(); err != nil {
                 // TODO add log
@@ -185,7 +187,7 @@ func (self *SnapshotRecoveryState) Handle(
             return nil
         }
         response := &ev.InstallSnapshotResponse{
-            Term:    raftHSM.GetCurrentTerm(),
+            Term:    localHSM.GetCurrentTerm(),
             Success: false,
         }
         err := self.snapshot.PersistChunk(e.Request.Offset, e.Request.Data)

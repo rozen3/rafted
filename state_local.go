@@ -2,12 +2,14 @@ package rafted
 
 import (
     hsm "github.com/hhkbp2/go-hsm"
+    ev "github.com/hhkbp2/rafted/event"
 )
 
 const (
     StateLocalID            = "local"
     StateFollowerID         = "follower"
     StateSnapshotRecoveryID = "snapshot_recovery"
+    StateNeedPeersID        = "need_peers"
     StateCandidateID        = "candidate"
     StateLeaderID           = "leader"
     StateUnsyncID           = "unsync"
@@ -59,4 +61,38 @@ func (self *LocalState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 func (self *LocalState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     // TODO add event handling if needed
     return nil
+}
+
+type NeedPeersState struct {
+    *hsm.StateHead
+}
+
+func NewNeedPeersState(super hsm.State) *LocalState {
+    object := &NeedPeersState{
+        hsm.NewStateHead(super),
+    }
+    super.AddChild(object)
+    return object
+}
+
+func (*NeedPeersState) ID() string {
+    return StateNeedPeersID
+}
+
+func (self *NeedPeersState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    localHSM, ok := sm.(*LocalHSM)
+    hsm.AssertTrue(ok)
+    // coordinate peer into ActivatedPeerState
+    localHSM.PeerManager().Broadcast(ev.NewPeerActivateEvent())
+}
+
+func (self *NeedPeersState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    localHSM, ok := sm.(*LocalHSM)
+    hsm.AssertTrue(ok)
+    // coordinate peer into DeactivatePeerState
+    localHSM.PeerManager().Broadcast(ev.NewPeerDeactivateEvent())
 }

@@ -269,8 +269,9 @@ func NewLocal(
     localState := NewLocalState(top)
     followerState := NewFollowerState(localState, heartbeatTimeout)
     NewSnapshotRecoveryState(followerState)
-    NewCandidateState(localState, electionTimeout)
-    leaderState := NewLeaderState(localState)
+    needPeersState := NewNeedPeersState(localState)
+    NewCandidateState(needPeersState, electionTimeout)
+    leaderState := NewLeaderState(needPeersState)
     NewUnsyncState(leaderState)
     NewSyncState(leaderState)
     localHSM := NewLocalHSM(

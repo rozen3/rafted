@@ -32,20 +32,23 @@ func TimeExpire(lastTime time.Time, timeout time.Duration) bool {
 
 type Ticker interface {
     Start(fn func())
+    Reset()
     Stop()
 }
 
 type SimpleTicker struct {
-    ticker   *time.Ticker
-    stopChan chan interface{}
-    group    *sync.WaitGroup
+    ticker    *time.Ticker
+    stopChan  chan interface{}
+    resetChan chan interface{}
+    group     *sync.WaitGroup
 }
 
 func NewSimpleTicker(timeout time.Duration) *SimpleTicker {
     return &SimpleTicker{
-        time.NewTicker(timeout),
-        make(chan interface{}),
-        &sync.WaitGroup{},
+        ticker:    time.NewTicker(timeout),
+        stopChan:  make(chan interface{}),
+        resetChan: make(chan interface{}),
+        group:     &sync.WaitGroup{},
     }
 }
 
@@ -60,10 +63,16 @@ func (self *SimpleTicker) start(fn func()) {
         select {
         case <-self.stopChan:
             return
+        case <-self.resetChan:
+            self.ticker = time.NewTicker(timeout)
         case <-self.ticker.C:
             fn()
         }
     }
+}
+
+func (self *SimpleTicker) Reset() {
+    self.resetChan <- self
 }
 
 func (self *SimpleTicker) Stop() {
@@ -72,16 +81,18 @@ func (self *SimpleTicker) Stop() {
 }
 
 type RandomTicker struct {
-    timeout  time.Duration
-    stopChan chan interface{}
-    group    *sync.WaitGroup
+    timeout   time.Duration
+    stopChan  chan interface{}
+    resetChan chan interface{}
+    group     *sync.WaitGroup
 }
 
 func NewRandomTicker(timeout time.Duration) *RandomTicker {
     return &RandomTicker{
-        timeout,
-        make(chan interface{}),
-        &sync.WaitGroup{},
+        timeout:   timeout,
+        stopChan:  make(chan interface{}),
+        resetChan: make(chan interface{}),
+        group:     &sync.WaitGroup{},
     }
 }
 
@@ -97,10 +108,15 @@ func (self *RandomTicker) start(fn func()) {
         select {
         case <-self.stopChan:
             return
+        case <-self.resetChan:
         case <-timeChan:
             fn()
         }
     }
+}
+
+func (self *RandomTicker) Reset() {
+    self.resetChan <- self
 }
 
 func (self *RandomTicker) Stop() {

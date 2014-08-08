@@ -40,11 +40,10 @@ func (self *FollowerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Entry")
-    hsm.AssertEqual(HSMTypeRaft, sm.Type())
-    raftHSM, ok := sm.(*RaftHSM)
+    localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
-    raftHSM.SetVotedFor(nil)
+    localHSM.SetVotedFor(nil)
     // init status for this status
     self.UpdateLastContactTime()
     // start heartbeat timeout ticker
@@ -55,30 +54,23 @@ func (self *FollowerState) Entry(
                 LastContactTime: lastContactTime,
                 Timeout:         self.heartbeatTimeout,
             }
-            raftHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
-            self.UpdateLastContactTime()
+            localHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
         }
     }
     self.ticker.Start(deliverHeartbeatTimeout)
     return nil
 }
 
-func (self *FollowerState) Init(
-    sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    return self.Super()
-}
-
 func (self *FollowerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Exit")
-    raftHSM, ok := sm.(*RaftHSM)
+    localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // stop heartbeat timeout ticker
     self.ticker.Stop()
     // cleanup global status
-    raftHSM.SetVotedFor(nil)
+    localHSM.SetVotedFor(nil)
     return nil
 }
 
@@ -86,39 +78,46 @@ func (self *FollowerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     fmt.Println(self.ID(), "-> Handle, event =", event)
-    raftHSM, ok := sm.(*RaftHSM)
+    localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
     case event.Type() == ev.EventTimeoutHeartBeat:
-        raftHSM.QTran(StateCandidateID)
+        localHSM.QTran(StateCandidateID)
         return nil
     case event.Type() == ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
-        response := self.ProcessRequestVote(raftHSM, e.Request)
-        e.SendResponse(ev.NewRequestVoteResponseEvent(response))
+        self.UpdateLastContact()
+        response, toSend := self.ProcessRequestVote(localHSM, e.Request)
+        if toSend {
+            e.SendResponse(ev.NewRequestVoteResponseEvent(response))
+        }
         return nil
     case event.Type() == ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesReqeustEvent)
         hsm.AssertTrue(ok)
-        response := self.ProcessAppendEntries(raftHSM, e.Request)
-        e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
+        self.UpdateLastContact()
+        response, toSend := self.ProcessAppendEntries(localHSM, e.Request)
+        if toSend {
+            e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
+        }
         return nil
     case event.Type() == ev.EventInstallSnapshotRequest:
         // transfer to snapshot recovery state and
         // replay this event on its entry/init/handle handlers.
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
-        if (e.Request.Term >= raftHSM.GetCurrentTerm()) &&
+        self.UpdateLastContact()
+        if (e.Request.Term >= localHSM.GetCurrentTerm()) &&
             (e.Request.Offset == 0) {
-            raftHSM.QTranOnEvent(StateSnapshotRecoveryID, event)
+            localHSM.QTranOnEvent(StateSnapshotRecoveryID, event)
         }
         return nil
     case ev.IsClientEvent(event.Type()):
         e, ok := event.(ev.ClientRequestEvent)
         hsm.AssertTrue(ok)
         // redirect client to current leader
-        leader := raftHSM.GetLeader().String()
+        leader := localHSM.GetLeader().String()
         response := &ev.LeaderRedirectResponse{leader}
         e.SendResponse(ev.NewLeaderRedirectResponseEvent(response))
         return nil
@@ -127,11 +126,11 @@ func (self *FollowerState) Handle(
 }
 
 func (self *FollowerState) ProcessRequestVote(
-    raftHSM *RaftHSM,
-    request *ev.RequestVoteRequest) *ev.RequestVoteResponse {
+    localHSM *LocalHSM,
+    request *ev.RequestVoteRequest) (*ev.RequestVoteResponse, bool) {
 
     // TODO initialize peers correctly
-    term := raftHSM.GetCurrentTerm()
+    term := localHSM.GetCurrentTerm()
     response := &ev.RequestVoteResponse{
         Term:    term,
         Granted: false,
@@ -139,97 +138,118 @@ func (self *FollowerState) ProcessRequestVote(
 
     // Ignore any older term
     if request.Term < term {
-        return response
+        return response, true
     }
 
     // Update to latest term if we see newer term
     if request.Term > term {
-        raftHSM.SetCurrentTerm(request.Term)
-        response.Term = request.Term
-        // No need to transfer to follwer state
-        // since we are already in it
+        localHSM.SetCurrentTerm(request.Term)
+        // the old leader is now invalidated
+        localHSM.SetLeader(nil)
+        // transfer to follwer state for a new term
+        localHSM.SelfDispatch(event)
+        localHSM.QTran(StateFollowerID)
+        return nil, false
     }
 
-    votedFor := raftHSM.GetVotedFor()
-    votedForBin, err := EncodeAddr(votedFor)
-    hsm.AssertNil(err)
+    votedFor := localHSM.GetVotedFor()
     if votedFor != nil {
+        // already voted once before
+        votedForBin, err := EncodeAddr(votedFor)
+        hsm.AssertNil(err)
         if bytes.Compare(votedForBin, request.Candidate) == 0 {
             // TODO add log
             response.Granted = true
         }
         // TODO add log
-        return response
+        return response, true
     }
 
     // Reject if the candiate's logs are not at least as up-to-date as ours.
-    lastTerm, lastIndex := raftHSM.GetLastLogInfo()
+    lastTerm, lastIndex, err := localHSM.Log().LastEntryInfo()
+    if err != nil {
+        // TODO error handling
+    }
     if lastTerm > request.LastLogTerm {
         // TODO add log
-        return response
+        return response, true
     }
     if lastIndex > request.LastLogIndex {
         // TODO add log
-        return response
+        return response, true
     }
 
     candidate, err := DecodeAddr(request.Candidate)
-    // TODO add err checking
-    raftHSM.SetVotedFor(candidate)
+    if err != nil {
+        // TODO add err checking
+    }
+    localHSM.SetVotedFor(candidate)
     response.Granted = true
-    return response
+    return response, true
 }
 
 func (self *FollowerState) ProcessAppendEntries(
-    raftHSM *RaftHSM,
-    request *ev.AppendEntriesRequest) *ev.AppendEntriesResponse {
+    localHSM *LocalHSM,
+    request *ev.AppendEntriesRequest) (*ev.AppendEntriesResponse, bool) {
 
-    term := raftHSM.GetCurrentTerm()
+    term := localHSM.GetCurrentTerm()
     response := &ev.AppendEntriesResponse{
         Term:         term,
-        LastLogIndex: raftHSM.GetLastIndex(),
+        LastLogIndex: localHSM.Log().LastIndex(),
         Success:      false,
     }
 
     // Ignore any older term
     if request.Term < term {
-        return response
+        return response, true
+    }
+
+    // decode leader from request
+    leader, err := DecodeAddr(request.Leader)
+    if err != nil {
+        // TODO error handling
     }
 
     // Update to latest term if we see newer term
     if request.Term > term {
-        raftHSM.SetCurrentTerm(request.Term)
-        response.Term = request.Term
-        // No need to transfer to follower state
-        // since we are already in it
+        localHSM.SetCurrentTerm(request.Term)
+        // update leader in new term
+        localHSM.SetLeader(leader)
+        // transfer to follower state for a new term
+        localHSM.SelfDispatch(event)
+        localHSM.QTran(StateFollowerID)
+        return nil, false
     }
 
-    // update current leader on every request
-    leader, err := DecodeAddr(request.Leader)
-    if err != nil {
-        // TODO add err checking
+    if localHSM.GetLeader() == nil {
+        localHSM.SetLeader(leader)
+        self.UpdateLastContact()
+    } else if persist.AddrEqual(localHSM.GetLeader(), leader) {
+        self.UpdateLastContact()
+    } else {
+        // TODO error handling
+        // fatal error two leader in the same term sending AE to us
     }
-    raftHSM.SetLeader(leader)
 
     if request.PrevLogIndex > 0 {
-        lastTerm, lastIndex := raftHSM.GetLastLogInfo()
+        lastTerm, lastIndex := localHSM.Log().LastEntryInfo()
 
         var prevLogTerm uint64
         if request.PrevLogIndex == lastIndex {
             prevLogTerm = lastTerm
         } else {
-            prevLog, err := raftHSM.GetLog().GetLog(request.PrevLogIndex)
+            prevLog, err := localHSM.Log().GetLog(request.PrevLogIndex)
             if err != nil {
-                // TODO add log
-                return response
+                // TODO error handling
+                return response, true
             } else {
                 prevLogTerm = prevLog.Term
             }
         }
 
         if request.PrevLogTerm != prevLogTerm {
-            // TODO add log
-            return response
+            // TODO error handling
+            return response, true
         }
     }
 
@@ -238,33 +258,32 @@ func (self *FollowerState) ProcessAppendEntries(
         first := request.Entries[0]
 
         // Delete any conflicting entries
-        lastLogIndex := raftHSM.GetLastIndex()
+        lastLogIndex := localHSM.Log().LastIndex()
         if first.Index <= lastLogIndex {
             // TODO add log
-            if err := raftHSM.GetLog().TruncateAfter(first.Index); err != nil {
+            if err := localHSM.Log().TruncateAfter(first.Index); err != nil {
                 // TODO add log
-                return response
+                return response, true
             }
         }
 
         // Append the entry
-        if err := raftHSM.GetLog().StoreLogs(request.Entries); err != nil {
+        if err := localHSM.Log().StoreLogs(request.Entries); err != nil {
             // TODO add log
-            return response
+            return response, true
         }
     }
 
     // Update the commit index
     if (request.LeaderCommitIndex > 0) &&
-        (request.LeaderCommitIndex > raftHSM.GetCommitIndex()) {
-        index := min(request.LeaderCommitIndex, raftHSM.GetLastIndex())
-        raftHSM.SetCommitIndex(index)
-        raftHSM.ProcessLogsUpTo(index)
+        (request.LeaderCommitIndex > localHSM.Log().CommitIndex()) {
+        index := min(request.LeaderCommitIndex, localHSM.Log().LastIndex())
+        localHSM.Log().SetCommitIndex(index)
+        localHSM.ProcessLogsUpTo(index)
     }
 
     response.Success = true
-    self.UpdateLastContactTime()
-    return response
+    return response, true
 }
 
 func (self *FollowerState) LastContactTime() time.Time {
@@ -277,4 +296,9 @@ func (self *FollowerState) UpdateLastContactTime() {
     self.lastContactTimeLock.Lock()
     defer self.lastContactTimeLock.Unlock()
     self.lastContactTime = time.Now()
+}
+
+func (self *FollowerState) UpdateLastContact() {
+    self.UpdateLastContactTime()
+    self.ticker.Reset()
 }

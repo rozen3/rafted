@@ -23,7 +23,6 @@ const (
     EventPeerActivate
     EventPeerDeactivate
     EventPeerEnterLeader
-    EventPeerCheckLogReplication
     EventPeerEnterSnapshotMode
     EventPeerAbortSnapshotMode
     EventInternalEnd
@@ -395,13 +394,13 @@ func NewPeerDeactivateEvent() *PeerDeactivateEvent {
     }
 }
 
-type PeerCheckLogReplicationEvent struct {
+type PeerEnterLeaderEvent struct {
     *hsm.StdEvent
 }
 
-func NewPeerCheckLogReplicationEvent() *PeerCheckLogReplicationEvent {
-    return &PeerCheckLogReplicationEvent{
-        hsm.NewStdEvent(EventPeerCheckLogReplication),
+func NewPeerEnterLeaderEvent() *PeerEnterLeaderEvent {
+    return &PeerEnterLeaderEvent{
+        hsm.NewStdEvent(EventPeerEnterLeader),
     }
 }
 

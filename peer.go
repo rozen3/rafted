@@ -154,6 +154,6 @@ func (self *PeerHSM) Terminate() {
     self.group.Wait()
 }
 
-func (self *PeerHSM) GetLocal() *Local {
+func (self *PeerHSM) Local() *Local {
     return self.local
 }
