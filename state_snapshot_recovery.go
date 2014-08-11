@@ -3,9 +3,9 @@ package rafted
 import (
     "bytes"
     "errors"
-    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     persist "github.com/hhkbp2/rafted/persist"
 )
 
@@ -69,17 +69,19 @@ func (self *RemoteSnapshot) Release() {
 }
 
 type SnapshotRecoveryState struct {
-    *hsm.StateHead
+    *LogStateHead
 
     writer   persist.SnapshotWriter
     snapshot *RemoteSnapshot
 }
 
-func NewSnapshotRecoveryState(super hsm.State) *SnapshotRecoveryState {
+func NewSnapshotRecoveryState(
+    super hsm.State, logger logging.Logger) *SnapshotRecoveryState {
+
     object := &SnapshotRecoveryState{
-        StateHead: hsm.NewStateHead(super),
-        writer:    nil,
-        snapshot:  nil,
+        LogStateHead: NewLogStateHead(super, logger),
+        writer:       nil,
+        snapshot:     nil,
     }
     super.AddChild(object)
     return object
@@ -92,8 +94,7 @@ func (*SnapshotRecoveryState) ID() string {
 func (self *SnapshotRecoveryState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
-
+    self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     hsm.AssertEqual(event.Type(), ev.EventInstallSnapshotRequest)
@@ -127,7 +128,7 @@ func (self *SnapshotRecoveryState) Entry(
 func (self *SnapshotRecoveryState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     // clean up state status
     self.writer = nil
     self.snapshot = nil
@@ -137,7 +138,8 @@ func (self *SnapshotRecoveryState) Exit(
 func (self *SnapshotRecoveryState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle, event=", event)
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {

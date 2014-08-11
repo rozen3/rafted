@@ -3,37 +3,16 @@ package rafted
 import (
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
-)
-
-const (
-    StateLocalID            = "local"
-    StateFollowerID         = "follower"
-    StateSnapshotRecoveryID = "snapshot_recovery"
-    StateNeedPeersID        = "need_peers"
-    StateCandidateID        = "candidate"
-    StateLeaderID           = "leader"
-    StateUnsyncID           = "unsync"
-    StateSyncID             = "sync"
-)
-
-const (
-    StatePeerID             = "peer"
-    StateDeactivatedPeerID  = "deactivated_peer"
-    StateActivatedPeerID    = "activated_peer"
-    StateCandidatePeerID    = "candidate_peer"
-    StateLeaderPeerID       = "leader_peer"
-    StateStandardModePeerID = "standard_mode_peer"
-    StateSnapshotModePeerID = "snapshot_mode_peer"
-    StatePipelineModePeerID = "pipeline_mode_peer"
+    logging "github.com/hhkbp2/rafted/logging"
 )
 
 type LocalState struct {
-    *hsm.StateHead
+    *LogStateHead
 }
 
-func NewLocalState(super hsm.State) *LocalState {
+func NewLocalState(super hsm.State, logger logging.Logger) *LocalState {
     object := &LocalState{
-        hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
     return object
@@ -44,32 +23,37 @@ func (*LocalState) ID() string {
 }
 
 func (self *LocalState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+    self.Debug("STATE: %s, -> Entry", self.ID())
     // ignore events
     return nil
 }
 
 func (self *LocalState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+    self.Debug("STATE: %s, -> Init", self.ID())
     sm.QInit(StateFollowerID)
     return nil
 }
 
 func (self *LocalState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+    self.Debug("STATE: %s, -> Exit", self.ID())
     // ignore events
     return nil
 }
 
 func (self *LocalState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     // TODO add event handling if needed
     return nil
 }
 
 type NeedPeersState struct {
-    *hsm.StateHead
+    *LogStateHead
 }
 
-func NewNeedPeersState(super hsm.State) *NeedPeersState {
+func NewNeedPeersState(super hsm.State, logger logging.Logger) *NeedPeersState {
     object := &NeedPeersState{
-        hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
     return object
@@ -82,6 +66,7 @@ func (*NeedPeersState) ID() string {
 func (self *NeedPeersState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
+    self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // coordinate peer into ActivatedPeerState
@@ -92,6 +77,7 @@ func (self *NeedPeersState) Entry(
 func (self *NeedPeersState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
+    self.Debug("STATE: %s, -> Exit", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // coordinate peer into DeactivatePeerState
@@ -102,6 +88,8 @@ func (self *NeedPeersState) Exit(
 func (self *NeedPeersState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     // TODO add log
     return self.Super()
 }

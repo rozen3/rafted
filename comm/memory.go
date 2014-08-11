@@ -5,6 +5,7 @@ import (
     "errors"
     "fmt"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "github.com/ugorji/go/codec"
     "io"
     "net"
@@ -299,18 +300,21 @@ type MemoryServer struct {
 
     eventHandler func(ev.RaftRequestEvent)
     register     *MemoryTransportRegister
+    logger       logging.Logger
 }
 
 func NewMemoryServer(
     bindAddr net.Addr,
     eventHandler func(ev.RaftRequestEvent),
-    register *MemoryTransportRegister) *MemoryServer {
+    register *MemoryTransportRegister,
+    logger logging.Logger) *MemoryServer {
 
     transport := NewMemoryServerTransport(bindAddr, register)
     return &MemoryServer{
         transport:    transport,
         eventHandler: eventHandler,
         register:     register,
+        logger:       logger,
     }
 }
 

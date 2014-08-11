@@ -3,6 +3,7 @@ package rafted
 import (
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "github.com/hhkbp2/rafted/persist"
     "net"
     "sync"
@@ -67,6 +68,8 @@ type LocalHSM struct {
 
     // notifier
     *Notifier
+
+    logging.Logger
 }
 
 func NewLocalHSM(
@@ -76,7 +79,8 @@ func NewLocalHSM(
     configManager persist.ConfigManager,
     stateMachine persist.StateMachine,
     log persist.Log,
-    snapshotManager persist.SnapshotManager) *LocalHSM {
+    snapshotManager persist.SnapshotManager,
+    logger logging.Logger) *LocalHSM {
 
     return &LocalHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypeRaft, top, initial),
@@ -89,6 +93,7 @@ func NewLocalHSM(
         log:              log,
         snapshotManager:  snapshotManager,
         Notifier:         NewNotifier(),
+        Logger:           logger,
     }
 }
 
@@ -273,18 +278,19 @@ func NewLocal(
     configManager persist.ConfigManager,
     stateMachine persist.StateMachine,
     log persist.Log,
-    snapshotManager persist.SnapshotManager) *Local {
+    snapshotManager persist.SnapshotManager,
+    logger logging.Logger) *Local {
 
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StateLocalID)
-    localState := NewLocalState(top)
-    followerState := NewFollowerState(localState, heartbeatTimeout)
-    NewSnapshotRecoveryState(followerState)
-    needPeersState := NewNeedPeersState(localState)
-    NewCandidateState(needPeersState, electionTimeout)
-    leaderState := NewLeaderState(needPeersState)
-    NewUnsyncState(leaderState)
-    NewSyncState(leaderState)
+    localState := NewLocalState(top, logger)
+    followerState := NewFollowerState(localState, heartbeatTimeout, logger)
+    NewSnapshotRecoveryState(followerState, logger)
+    needPeersState := NewNeedPeersState(localState, logger)
+    NewCandidateState(needPeersState, electionTimeout, logger)
+    leaderState := NewLeaderState(needPeersState, logger)
+    NewUnsyncState(leaderState, logger)
+    NewSyncState(leaderState, logger)
     localHSM := NewLocalHSM(
         top,
         initial,
@@ -292,7 +298,8 @@ func NewLocal(
         configManager,
         stateMachine,
         log,
-        snapshotManager)
+        snapshotManager,
+        logger)
     localHSM.Init()
     return &Local{localHSM}
 }

@@ -5,20 +5,21 @@ import (
     "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "github.com/hhkbp2/rafted/persist"
     "net"
     "sync"
 )
 
 type LeaderState struct {
-    *hsm.StateHead
+    *LogStateHead
 
     Inflight *Inflight
 }
 
-func NewLeaderState(super hsm.State) *LeaderState {
+func NewLeaderState(super hsm.State, logger logging.Logger) *LeaderState {
     object := &LeaderState{
-        StateHead: hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
     return object
@@ -31,7 +32,7 @@ func (*LeaderState) ID() string {
 func (self *LeaderState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
@@ -47,7 +48,7 @@ func (self *LeaderState) Entry(
 func (self *LeaderState) Init(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Init")
+    self.Debug("STATE: %s, -> Init", self.ID())
     sm.QInit(StateSyncID)
     return nil
 }
@@ -55,7 +56,7 @@ func (self *LeaderState) Init(
 func (self *LeaderState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     // cleanup status for this state
     self.Inflight.Init()
     return nil
@@ -64,7 +65,8 @@ func (self *LeaderState) Exit(
 func (self *LeaderState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle, event=", event)
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
@@ -243,16 +245,16 @@ func (self *LeaderState) CommitInflightEntries(
 }
 
 type UnsyncState struct {
-    *hsm.StateHead
+    *LogStateHead
 
     noop     *InflightRequest
     listener *ClientEventListener
 }
 
-func NewUnsyncState(super hsm.State) *UnsyncState {
+func NewUnsyncState(super hsm.State, logger logging.Logger) *UnsyncState {
     ch := make(chan ev.ClientEvent, 1)
     object := &UnsyncState{
-        StateHead: hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
         noop: &InflightRequest{
             LogType:    persist.LogNoop,
             Data:       make([]byte, 0),
@@ -271,7 +273,7 @@ func (*UnsyncState) ID() string {
 func (self *UnsyncState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     handleNoopResponse := func(event ev.ClientEvent) {
@@ -289,14 +291,14 @@ func (self *UnsyncState) Entry(
 func (self *UnsyncState) Init(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Init")
+    self.Debug("STATE: %s, -> Init", self.ID())
     return self.Super()
 }
 
 func (self *UnsyncState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     self.listener.Stop()
     return nil
 }
@@ -304,6 +306,8 @@ func (self *UnsyncState) Exit(
 func (self *UnsyncState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
@@ -343,12 +347,12 @@ func (self *UnsyncState) StartSyncSafe(localHSM *LocalHSM) {
 }
 
 type SyncState struct {
-    *hsm.StateHead
+    *LogStateHead
 }
 
-func NewSyncState(super hsm.State) *SyncState {
+func NewSyncState(super hsm.State, logger logging.Logger) *SyncState {
     object := &SyncState{
-        hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
     return object
@@ -361,21 +365,22 @@ func (*SyncState) ID() string {
 func (self *SyncState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     return nil
 }
 
 func (self *SyncState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     return nil
 }
 
 func (self *SyncState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle")
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     return self.Super()
 }
 

@@ -1,15 +1,15 @@
 package rafted
 
 import (
-    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "sync"
     "time"
 )
 
 type CandidateState struct {
-    *hsm.StateHead
+    *LogStateHead
 
     // election timeout and its time ticker
     electionTimeout time.Duration
@@ -22,10 +22,12 @@ type CandidateState struct {
 }
 
 func NewCandidateState(
-    super hsm.State, electionTimeout time.Duration) *CandidateState {
+    super hsm.State,
+    electionTimeout time.Duration,
+    logger logging.Logger) *CandidateState {
 
     object := &CandidateState{
-        StateHead:       hsm.NewStateHead(super),
+        LogStateHead:    NewLogStateHead(super, logger),
         electionTimeout: electionTimeout,
         ticker:          NewRandomTicker(electionTimeout),
     }
@@ -40,7 +42,7 @@ func (*CandidateState) ID() string {
 func (self *CandidateState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
@@ -63,7 +65,7 @@ func (self *CandidateState) Entry(
 func (self *CandidateState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     // stop election timeout ticker
     self.ticker.Stop()
     // cleanup status for this state
@@ -74,7 +76,8 @@ func (self *CandidateState) Exit(
 func (self *CandidateState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle, event=", event)
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {

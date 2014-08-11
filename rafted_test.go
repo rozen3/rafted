@@ -3,6 +3,7 @@ package rafted
 import (
     "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "github.com/hhkbp2/rafted/persist"
     "net"
     "testing"
@@ -25,6 +26,8 @@ func NewTestRaftNode(
     log persist.Log,
     snapshotManager persist.SnapshotManager) *RaftNode {
 
+    localLogger := logging.GetLogger(
+        "leader" + "#" + localAddr.Network() + "://" + localAddr.String())
     local := NewLocal(
         HeartbeatTimeout,
         ElectionTimeout,
@@ -32,7 +35,8 @@ func NewTestRaftNode(
         configManager,
         stateMachine,
         log,
-        snapshotManager)
+        snapshotManager,
+        localLogger)
     register := comm.NewMemoryTransportRegister()
     client := comm.NewMemoryClient(DefaultPoolSize, register)
     eventHandler1 := func(event ev.RaftEvent) {
@@ -41,6 +45,10 @@ func NewTestRaftNode(
     eventHandler2 := func(event ev.RaftRequestEvent) {
         local.Dispatch(event)
     }
+    getLoggerForPeer := func(peerAddr net.Addr) logging.Logger {
+        return logging.GetLogger(
+            "peer" + "#" + peerAddr.Network() + "://" + peerAddr.String())
+    }
     peerManager := NewPeerManager(
         HeartbeatTimeout,
         MaxAppendEntriesSize,
@@ -48,8 +56,12 @@ func NewTestRaftNode(
         otherPeerAddrs,
         client,
         eventHandler1,
-        local)
-    server := comm.NewMemoryServer(localAddr, eventHandler2, register)
+        local,
+        getLoggerForPeer)
+    serverLogger := logging.GetLogger(
+        "Server" + "#" + localAddr.Network() + "://" + localAddr.String())
+    server := comm.NewMemoryServer(
+        localAddr, eventHandler2, register, serverLogger)
     go func() {
         server.Serve()
     }()

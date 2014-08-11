@@ -99,6 +99,13 @@ func ConfigEqual(conf1 *Config, conf2 *Config) bool {
         AddrsEqual(conf1.NewServers, conf2.NewServers))
 }
 
+func CopyConfig(conf *Config) *Config {
+    return &Config{
+        Servers:    conf.Servers[:],
+        NewServers: conf.NewServers[:],
+    }
+}
+
 // ListTruncate() removes elements from `e' to the last element in list `l'.
 // The range to be removed is [e, l.Back()]. It returns list `l'.
 func ListTruncate(l *list.List, e *list.Element) *list.List {

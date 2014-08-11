@@ -4,6 +4,7 @@ import (
     hsm "github.com/hhkbp2/go-hsm"
     "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "net"
     "sync"
     "time"
@@ -22,10 +23,12 @@ func NewPeerManager(
     peerAddrs []net.Addr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
-    local *Local) *PeerManager {
+    local *Local,
+    getLoggerForPeer func(net.Addr) logging.Logger) *PeerManager {
 
     peerMap := make(map[net.Addr]*Peer)
     for _, addr := range peerAddrs {
+        logger := getLoggerForPeer(addr)
         peerMap[addr] = NewPeer(
             heartbeatTimeout,
             maxAppendEntriesSize,
@@ -33,7 +36,8 @@ func NewPeerManager(
             addr,
             client,
             eventHandler,
-            local)
+            local,
+            logger)
     }
     object := &PeerManager{
         peerAddrs: peerAddrs,
@@ -68,19 +72,21 @@ func NewPeer(
     addr net.Addr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
-    local *Local) *Peer {
+    local *Local,
+    logger logging.Logger) *Peer {
 
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StatePeerID)
-    peerState := NewPeerState(top)
-    NewDeactivatedPeerState(peerState)
-    activatedPeerState := NewActivatedPeerState(peerState)
-    NewCandidatePeerState(activatedPeerState)
-    leaderPeerState := NewLeaderPeerState(activatedPeerState, heartbeatTimeout)
-    NewStandardModePeerState(leaderPeerState, maxAppendEntriesSize)
-    NewSnapshotModePeerState(leaderPeerState, maxSnapshotChunkSize)
-    NewPipelineModePeerState(leaderPeerState)
+    peerState := NewPeerState(top, logger)
+    NewDeactivatedPeerState(peerState, logger)
+    activatedPeerState := NewActivatedPeerState(peerState, logger)
+    NewCandidatePeerState(activatedPeerState, logger)
+    leaderPeerState := NewLeaderPeerState(activatedPeerState, heartbeatTimeout, logger)
+    NewStandardModePeerState(leaderPeerState, maxAppendEntriesSize, logger)
+    NewSnapshotModePeerState(leaderPeerState, maxSnapshotChunkSize, logger)
+    NewPipelineModePeerState(leaderPeerState, logger)
     peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler, local)
+    peerHSM.Init()
     return &Peer{peerHSM}
 }
 

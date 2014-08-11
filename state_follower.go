@@ -2,16 +2,16 @@ package rafted
 
 import (
     "bytes"
-    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "github.com/hhkbp2/rafted/persist"
     "sync"
     "time"
 )
 
 type FollowerState struct {
-    *hsm.StateHead
+    *LogStateHead
 
     // heartbeat timeout and its time ticker
     heartbeatTimeout time.Duration
@@ -22,10 +22,12 @@ type FollowerState struct {
 }
 
 func NewFollowerState(
-    super hsm.State, heartbeatTimeout time.Duration) *FollowerState {
+    super hsm.State,
+    heartbeatTimeout time.Duration,
+    logger logging.Logger) *FollowerState {
 
     object := &FollowerState{
-        StateHead:        hsm.NewStateHead(super),
+        LogStateHead:     NewLogStateHead(super, logger),
         heartbeatTimeout: heartbeatTimeout,
         ticker:           NewRandomTicker(heartbeatTimeout),
     }
@@ -40,7 +42,7 @@ func (*FollowerState) ID() string {
 func (self *FollowerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
@@ -65,7 +67,7 @@ func (self *FollowerState) Entry(
 func (self *FollowerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // stop heartbeat timeout ticker
@@ -78,7 +80,8 @@ func (self *FollowerState) Exit(
 func (self *FollowerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle, event =", event)
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {

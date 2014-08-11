@@ -2,9 +2,9 @@ package rafted
 
 import (
     "errors"
-    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "github.com/hhkbp2/rafted/persist"
     "io"
     "sync"
@@ -13,12 +13,12 @@ import (
 )
 
 type PeerState struct {
-    *hsm.StateHead
+    *LogStateHead
 }
 
-func NewPeerState(super hsm.State) *PeerState {
+func NewPeerState(super hsm.State, logger logging.Logger) *PeerState {
     object := &PeerState{
-        StateHead: hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
     return object
@@ -29,34 +29,35 @@ func (*PeerState) ID() string {
 }
 
 func (self *PeerState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
-
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     return nil
 }
 
 func (self *PeerState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
-    fmt.Println(self.ID(), "-> Init")
+    self.Debug("STATE: %s, -> Init", self.ID())
     sm.QInit(StateDeactivatedPeerID)
     return nil
 }
 
 func (self *PeerState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     return nil
 }
 
 func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
-    fmt.Println(self.ID(), "-> Handle, event =", event)
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(), ev.PrintEvent(event))
     return self.Super()
 }
 
 type DeactivatedPeerState struct {
-    *hsm.StateHead
+    *LogStateHead
 }
 
-func NewDeactivatedPeerState(super hsm.State) *DeactivatedPeerState {
+func NewDeactivatedPeerState(
+    super hsm.State, logger logging.Logger) *DeactivatedPeerState {
+
     object := &DeactivatedPeerState{
-        StateHead: hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
     return object
@@ -69,21 +70,22 @@ func (*DeactivatedPeerState) ID() string {
 func (self *DeactivatedPeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     return nil
 }
 
 func (self *DeactivatedPeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     return nil
 }
 
 func (self *DeactivatedPeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle, event =", event)
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     switch event.Type() {
     case ev.EventPeerActivate:
         // TODO add log
@@ -94,12 +96,12 @@ func (self *DeactivatedPeerState) Handle(
 }
 
 type ActivatedPeerState struct {
-    *hsm.StateHead
+    *LogStateHead
 }
 
-func NewActivatedPeerState(super hsm.State) *ActivatedPeerState {
+func NewActivatedPeerState(super hsm.State, logger logging.Logger) *ActivatedPeerState {
     object := &ActivatedPeerState{
-        StateHead: hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
     return object
@@ -112,14 +114,14 @@ func (*ActivatedPeerState) ID() string {
 func (self *ActivatedPeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     return nil
 }
 
 func (self *ActivatedPeerState) Init(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Init")
+    self.Debug("STATE: %s, -> Init", self.ID())
     sm.QInit(StateActivatedPeerID)
     return nil
 }
@@ -127,14 +129,15 @@ func (self *ActivatedPeerState) Init(
 func (self *ActivatedPeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     return nil
 }
 
 func (self *ActivatedPeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle, event =", event)
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
@@ -162,12 +165,12 @@ func (self *ActivatedPeerState) Handle(
 }
 
 type CandidatePeerState struct {
-    *hsm.StateHead
+    *LogStateHead
 }
 
-func NewCandidatePeerState(super hsm.State) *CandidatePeerState {
+func NewCandidatePeerState(super hsm.State, logger logging.Logger) *CandidatePeerState {
     object := &CandidatePeerState{
-        StateHead: hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
     return object
@@ -180,21 +183,22 @@ func (*CandidatePeerState) ID() string {
 func (self *CandidatePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     return nil
 }
 
 func (self *CandidatePeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     return nil
 }
 
 func (self *CandidatePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle")
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     switch event.Type() {
     case ev.EventAppendEntriesRequest:
         peerHSM, ok := sm.(*PeerHSM)
@@ -210,7 +214,7 @@ func (self *CandidatePeerState) Handle(
 }
 
 type LeaderPeerState struct {
-    *hsm.StateHead
+    *LogStateHead
 
     // term of highest log entry known to be replicated on the peer
     term uint64
@@ -230,10 +234,11 @@ type LeaderPeerState struct {
 
 func NewLeaderPeerState(
     super hsm.State,
-    heartbeatTimeout time.Duration) *LeaderPeerState {
+    heartbeatTimeout time.Duration,
+    logger logging.Logger) *LeaderPeerState {
 
     object := &LeaderPeerState{
-        StateHead:        hsm.NewStateHead(super),
+        LogStateHead:     NewLogStateHead(super, logger),
         heartbeatTimeout: heartbeatTimeout,
         ticker:           NewRandomTicker(heartbeatTimeout),
     }
@@ -248,7 +253,7 @@ func (*LeaderPeerState) ID() string {
 func (self *LeaderPeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     // local initialization
@@ -284,7 +289,7 @@ func (self *LeaderPeerState) Entry(
 func (self *LeaderPeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     // local cleanup
     self.ticker.Stop()
     return nil
@@ -293,7 +298,8 @@ func (self *LeaderPeerState) Exit(
 func (self *LeaderPeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle")
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     local := peerHSM.Local()
@@ -407,17 +413,18 @@ func (self *LeaderPeerState) UpdateLastContact() {
 }
 
 type StandardModePeerState struct {
-    *hsm.StateHead
+    *LogStateHead
 
     maxAppendEntriesSize uint64
 }
 
 func NewStandardModePeerState(
     super hsm.State,
-    maxAppendEntriesSize uint64) *StandardModePeerState {
+    maxAppendEntriesSize uint64,
+    logger logging.Logger) *StandardModePeerState {
 
     object := &StandardModePeerState{
-        StateHead:            hsm.NewStateHead(super),
+        LogStateHead:         NewLogStateHead(super, logger),
         maxAppendEntriesSize: maxAppendEntriesSize,
     }
     super.AddChild(object)
@@ -431,8 +438,7 @@ func (*StandardModePeerState) ID() string {
 func (self *StandardModePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
-
+    self.Debug("STATE: %s, -> Entry")
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     peerHSM.SelfDispatch(self.SetupReplicating(peerHSM))
@@ -442,14 +448,15 @@ func (self *StandardModePeerState) Entry(
 func (self *StandardModePeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit")
     return nil
 }
 
 func (self *StandardModePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle, event =", event)
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
@@ -575,7 +582,7 @@ func (self *StandardModePeerState) SetupReplicating(
 }
 
 type SnapshotModePeerState struct {
-    *hsm.StateHead
+    *LogStateHead
 
     maxSnapshotChunkSize uint64
     offset               uint64
@@ -586,10 +593,11 @@ type SnapshotModePeerState struct {
 
 func NewSnapshotModePeerState(
     super hsm.State,
-    maxSnapshotChunkSize uint64) *SnapshotModePeerState {
+    maxSnapshotChunkSize uint64,
+    logger logging.Logger) *SnapshotModePeerState {
 
     object := &SnapshotModePeerState{
-        StateHead:            hsm.NewStateHead(super),
+        LogStateHead:         NewLogStateHead(super, logger),
         maxSnapshotChunkSize: maxSnapshotChunkSize,
     }
     super.AddChild(object)
@@ -603,8 +611,7 @@ func (*SnapshotModePeerState) ID() string {
 func (self *SnapshotModePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
-
+    self.Debug("STATE: %s, -> Entry")
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     local := peerHSM.Local()
@@ -641,7 +648,7 @@ func (self *SnapshotModePeerState) Entry(
 func (self *SnapshotModePeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     if err := self.snapshotReadCloser.Close(); err != nil {
         // TODO error handling
     }
@@ -654,7 +661,8 @@ func (self *SnapshotModePeerState) Exit(
 func (self *SnapshotModePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle")
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     local := peerHSM.Local()
@@ -763,12 +771,14 @@ func (self *SnapshotModePeerState) SendNextChunk(
 }
 
 type PipelineModePeerState struct {
-    *hsm.StateHead
+    *LogStateHead
 }
 
-func NewPipelineModePeerState(super hsm.State) *PipelineModePeerState {
+func NewPipelineModePeerState(
+    super hsm.State, logger logging.Logger) *PipelineModePeerState {
+
     object := &PipelineModePeerState{
-        StateHead: hsm.NewStateHead(super),
+        LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
     return object
@@ -781,21 +791,22 @@ func (*PipelineModePeerState) ID() string {
 func (self *PipelineModePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     return nil
 }
 
 func (self *PipelineModePeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     return nil
 }
 
 func (self *PipelineModePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    fmt.Println(self.ID(), "-> Handle")
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
     // TODO add impl
     return self.Super()
 }

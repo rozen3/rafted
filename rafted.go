@@ -3,6 +3,7 @@ package rafted
 import (
     "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "github.com/hhkbp2/rafted/persist"
     "net"
     "time"
@@ -15,6 +16,7 @@ type RaftNode struct {
     server      comm.Server
 }
 
+// TODO add logger
 func NewRaftNode(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
@@ -27,7 +29,8 @@ func NewRaftNode(
     configManager persist.ConfigManager,
     stateMachine persist.StateMachine,
     log persist.Log,
-    snapshotManager persist.SnapshotManager) (*RaftNode, error) {
+    snapshotManager persist.SnapshotManager,
+    logger logging.Logger) (*RaftNode, error) {
 
     local := NewLocal(
         heartbeatTimeout,
@@ -36,13 +39,18 @@ func NewRaftNode(
         configManager,
         stateMachine,
         log,
-        snapshotManager)
+        snapshotManager,
+        logger)
     client := comm.NewSocketClient(poolSize)
     eventHandler1 := func(event ev.RaftEvent) {
         local.Dispatch(event)
     }
     eventHandler2 := func(event ev.RaftRequestEvent) {
         local.Dispatch(event)
+    }
+
+    getLoggerForPeer := func(net.Addr) logging.Logger {
+        return logger
     }
     peerManager := NewPeerManager(
         heartbeatTimeout,
@@ -51,7 +59,8 @@ func NewRaftNode(
         otherPeerAddrs,
         client,
         eventHandler1,
-        local)
+        local,
+        getLoggerForPeer)
     server, err := comm.NewSocketServer(bindAddr, eventHandler2)
     if err != nil {
         // TODO add cleanup

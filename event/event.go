@@ -35,6 +35,53 @@ const (
     EventClientReadOnlyRequest
 )
 
+func PrintEvent(event hsm.Event) string {
+    switch event.Type() {
+    case hsm.EventInit:
+        return "InitEvent"
+    case hsm.EventEntry:
+        return "EntryEvent"
+    case hsm.EventExit:
+        return "ExitEvent"
+    case EventTerm:
+        return "TermEvent"
+    case EventAppendEntriesRequest:
+        return "AppendEntriesRequestEvent"
+    case EventAppendEntriesResponse:
+        return "AppendEntriesResponseEvent"
+    case EventRequestVoteRequest:
+        return "RequestVoteRequestEvent"
+    case EventRequestVoteResponse:
+        return "RequestVoteResponseEvent"
+    case EventInstallSnapshotRequest:
+        return "InstallSnapshotRequestEvent"
+    case EventInstallSnapshotResponse:
+        return "InstallSnapshotResponseEvent"
+    case EventTimeoutHeartbeat:
+        return "HearbeatTiemoutEvent"
+    case EventTimeoutElection:
+        return "ElectionTimeoutEvent"
+    case EventAbortSnapshotRecovery:
+        return "AbortSnapshotRecoveryEvent"
+    case EventStepdown:
+        return "StepdownEvent"
+    case EventPeerReplicateLog:
+        return "PeerReplicateLogEvent"
+    case EventPeerActivate:
+        return "ActivatePeerEvent"
+    case EventPeerDeactivate:
+        return "DeactivatePeerEvent"
+    case EventPeerAbortSnapshotMode:
+        return "PeerAbortSnapshotModeEvent"
+    case EventClientWriteRequest:
+        return "ClientWriteRequestEvent"
+    case EventClientReadOnlyRequest:
+        return "ClientReadOnlyRequest"
+    default:
+        return "Unknown Event"
+    }
+}
+
 func IsEventBetween(eventType, beginEvent, endEvent hsm.EventType) bool {
     if (eventType > beginEvent) && (eventType < endEvent) {
         return true
