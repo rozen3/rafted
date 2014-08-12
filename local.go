@@ -1,6 +1,8 @@
 package rafted
 
 import (
+    "errors"
+    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -96,29 +98,29 @@ func NewLocalHSM(
     snapshotManager persist.SnapshotManager,
     logger logging.Logger) (*LocalHSM, error) {
 
-    if conf, err := configManager.LastConfig(); err != nil {
+    // TODO check the integrety between log and configManager
+    // try to fix the inconsistant base on log status.
+    // Return error if fail to do that
+
+    memberChangeStatus, err := GetMemberChangeStatus(configManager, log)
+    if err != nil {
+        // TODO add log
         return nil, err
     }
-    if !persist.IsInMemeberChange(conf) {
-
-    }
-    // TODO check the integrety between log and configManager
-
-    // memberChangeStatus
 
     return &LocalHSM{
-        StdHSM:           hsm.NewStdHSM(HSMTypeRaft, top, initial),
-        dispatchChan:     make(chan hsm.Event, 1),
-        selfDispatchChan: make(chan hsm.Event, 1),
-        group:            sync.WaitGroup{},
-        localAddr:        localAddr,
-        configManager:    configManager,
-        stateMachine:     stateMachine,
-        log:              log,
-        snapshotManager:  snapshotManager,
-        Notifier:         NewNotifier(),
-        Logger:           logger,
-        //    memberChangeStatus:
+        StdHSM:             hsm.NewStdHSM(HSMTypeRaft, top, initial),
+        dispatchChan:       make(chan hsm.Event, 1),
+        selfDispatchChan:   make(chan hsm.Event, 1),
+        group:              sync.WaitGroup{},
+        localAddr:          localAddr,
+        configManager:      configManager,
+        stateMachine:       stateMachine,
+        log:                log,
+        snapshotManager:    snapshotManager,
+        Notifier:           NewNotifier(),
+        Logger:             logger,
+        memberChangeStatus: memberChangeStatus,
     }
 }
 
@@ -290,6 +292,54 @@ func (self *LocalHSM) applyLog(logEntry *persist.LogEntry) []byte {
     result := self.stateMachine.Apply(logEntry.Data)
     self.log.StoreLastAppliedIndex(logEntry.Index)
     return result
+}
+
+func GetMemberChangeStatus(
+    configManager persist.ConfigManager,
+    log persist.Log) (MemberChangeStatusType, error) {
+
+    // setup member change status according to the recent config
+    if conf, err := configManager.LastConfig(); err != nil {
+        return MemberChangeStatusNotSet, err
+    }
+
+    committedIndex, err := log.CommittedIndex()
+    if err != nil {
+        return MemberChangeStatusNotSet, err
+    }
+    metas, err := ListAfter(committedIndex)
+    if err != nil {
+        return MemberChangeStatusNotSet, err
+    }
+    if len(metas) == 0 {
+        return MemberChangeStatusNotSet, errors.New(fmt.Sprintf(
+            "no config after committed index %d", committedIndex))
+    }
+    length := len(metas)
+    if length > 2 {
+        return MemberChangeStatusNotSet, errors.New(fmt.Sprintf(
+            "%d configs after committed index %d", length, committedIndex))
+    }
+    if length == 1 {
+        conf := metas[0].Conf
+        if IsNormalConfig(conf) {
+            return NotInMemeberChange, nil
+        } else if IsOldNewConfig(conf) {
+            return OldNewConfigCommitted, nil
+        }
+    } else { // length == 2
+        prevConf = metas[0].Conf
+        nextConf = metas[1].Conf
+        if IsNormalConfig(prevConf) && IsOldNewConfig(nextConf) {
+            return OldNewConfigSeen, nil
+        } else if IsOldNewConfig(prevConf) && IsNewConfig(nextConf) {
+            return NewConfigSeen, nil
+        } else if IsNewConfig(prevConf) && IsNormalConfig(nextConf) {
+            return NotInMemeberChange, nil
+        }
+    }
+    return MemberChangeStatusNotSet, errors.New(fmt.Sprintf(
+        "corrupted config after committed index %d", committedIndex))
 }
 
 type Local struct {

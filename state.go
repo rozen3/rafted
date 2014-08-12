@@ -6,14 +6,21 @@ import (
 )
 
 const (
-    StateLocalID            = "local"
-    StateFollowerID         = "follower"
-    StateSnapshotRecoveryID = "snapshot_recovery"
-    StateNeedPeersID        = "need_peers"
-    StateCandidateID        = "candidate"
-    StateLeaderID           = "leader"
-    StateUnsyncID           = "unsync"
-    StateSyncID             = "sync"
+    StateLocalID                         = "local"
+    StateFollowerID                      = "follower"
+    StateSnapshotRecoveryID              = "snapshot_recovery"
+    StateFollowerMemberChangeID          = "follower_member_change"
+    StateFollowerOldNewConfigSeenID      = "follower_old_new_config_seen"
+    StateFollowerOldNewConfigCommittedID = "follower_old_new_config_committed"
+    StateFollowerNewConfigSeenID         = "follower_new_config_seen"
+    StateNeedPeersID                     = "need_peers"
+    StateCandidateID                     = "candidate"
+    StateLeaderID                        = "leader"
+    StateUnsyncID                        = "unsync"
+    StateSyncID                          = "sync"
+    StateLeaderMemberChangeID            = "leader_member_change"
+    StateLeaderMemberChangePhase1ID      = "leader_member_change_phase1"
+    StateLeaderMemberChangePhase2ID      = "leader_member_change_phase2"
 )
 
 const (

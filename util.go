@@ -2,6 +2,7 @@ package rafted
 
 import (
     ev "github.com/hhkbp2/rafted/event"
+    "github.com/hhkbp2/rafted/persist"
     "net"
     "sync"
 )
@@ -95,4 +96,16 @@ func Max(a, b uint64) uint64 {
         return a
     }
     return b
+}
+
+func IsNormalConfig(conf *persist.Config) bool {
+    return (conf.Servers != nil) && (conf.NewServers == nil)
+}
+
+func IsOldNewConfig(conf *persist.Config) bool {
+    return (conf.Servers != nil) && (conf.NewServers != nil)
+}
+
+func IsNewConfig(conf *persist.Config) bool {
+    return (conf.Server == nil) && (conf.NewServers != nil)
 }
