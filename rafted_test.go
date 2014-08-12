@@ -28,7 +28,7 @@ func NewTestRaftNode(
 
     localLogger := logging.GetLogger(
         "leader" + "#" + localAddr.Network() + "://" + localAddr.String())
-    local := NewLocal(
+    local, err := NewLocal(
         HeartbeatTimeout,
         ElectionTimeout,
         localAddr,
@@ -37,6 +37,9 @@ func NewTestRaftNode(
         log,
         snapshotManager,
         localLogger)
+    if err != nil {
+        // TODO error handling
+    }
     register := comm.NewMemoryTransportRegister()
     client := comm.NewMemoryClient(DefaultPoolSize, register)
     eventHandler1 := func(event ev.RaftEvent) {

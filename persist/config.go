@@ -34,6 +34,10 @@ type ConfigManager interface {
     // Returns the config at log entry with specified index
     GetConfig(logIndex uint64) (*Config, error)
 
+    // Lists all durable config metadatas after the given index,
+    // including the given index.
+    ListAfter(logIndex uint64) ([]*ConfigMeta, error)
+
     // Lists all durable config metadatas.
     // Metadatas should be returned in ascending log index order,
     // with smallest index first.

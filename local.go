@@ -16,6 +16,17 @@ const (
     HSMTypePeer
 )
 
+type MemberChangeStatusType uint8
+
+const (
+    MemberChangeStatusNotSet MemberChangeStateType = iota
+    NotInMemeberChange
+    OldNewConfigSeen
+    OldNewConfigCommitted
+    NewConfigSeen
+    NewConfigCommitted
+)
+
 type SelfDispatchHSM interface {
     hsm.HSM
     SelfDispatch(event hsm.Event)
@@ -51,6 +62,9 @@ type LocalHSM struct {
     leader     net.Addr
     leaderLock sync.RWMutex
 
+    // member change infos
+    memberChangeStatus MemberChangeStatusType
+
     // configuration
     configManager persist.ConfigManager
 
@@ -80,7 +94,17 @@ func NewLocalHSM(
     stateMachine persist.StateMachine,
     log persist.Log,
     snapshotManager persist.SnapshotManager,
-    logger logging.Logger) *LocalHSM {
+    logger logging.Logger) (*LocalHSM, error) {
+
+    if conf, err := configManager.LastConfig(); err != nil {
+        return nil, err
+    }
+    if !persist.IsInMemeberChange(conf) {
+
+    }
+    // TODO check the integrety between log and configManager
+
+    // memberChangeStatus
 
     return &LocalHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypeRaft, top, initial),
@@ -94,6 +118,7 @@ func NewLocalHSM(
         snapshotManager:  snapshotManager,
         Notifier:         NewNotifier(),
         Logger:           logger,
+        //    memberChangeStatus:
     }
 }
 

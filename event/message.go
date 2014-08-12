@@ -107,6 +107,12 @@ type ClientReadOnlyRequest struct {
     Data []byte
 }
 
+// ClientMemberChangeRequest is a request for member change
+type ClientMemberChangeRequest struct {
+    OldServers []net.Addr
+    NewServers []net.Addr
+}
+
 // ClientResponse is a general response of raft module answer to client.
 type ClientResponse struct {
     // whether the request handling is a success or failure.

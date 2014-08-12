@@ -26,13 +26,16 @@ const (
     EventPeerEnterSnapshotMode
     EventPeerAbortSnapshotMode
     EventInternalEnd
+    EventClientRequestBegin
+    EventClientWriteRequest
+    EventClientReadOnlyRequest
+    EventClientMemberChangeRequest
+    EventClientRequestEnd
     EventClientResponse
     EventLeaderRedirectResponse
     EventLeaderUnknownResponse
     EventLeaderUnsyncResponse
     EventClientUser = hsm.EventUser + 1000 + iota
-    EventClientWriteRequest
-    EventClientReadOnlyRequest
 )
 
 func PrintEvent(event hsm.Event) string {
@@ -96,12 +99,14 @@ func IsRaftEvent(eventType hsm.EventType) bool {
 func IsRaftRequest(eventType hsm.EventType) bool {
     switch eventType {
     case EventAppendEntriesRequest:
+        fallthrough
     case EventRequestVoteRequest:
+        fallthrough
     case EventInstallSnapshotRequest:
+        return true
     default:
         return false
     }
-    return true
 }
 
 func IsTimeoutEvent(eventType hsm.EventType) bool {
@@ -109,7 +114,8 @@ func IsTimeoutEvent(eventType hsm.EventType) bool {
 }
 
 func IsClientEvent(eventType hsm.EventType) bool {
-    return (eventType >= EventClientUser)
+    return IsEventBetween(
+        eventType, EventClientRequestBegin, EventClientRequestEnd)
 }
 
 type RaftEvent interface {
@@ -328,6 +334,20 @@ func NewClientReadOnlyRequestEvent(
 
     return &ClientReadOnlyRequestEvent{
         NewClientRequestEventHead(EventClientReadOnlyRequest),
+        request,
+    }
+}
+
+type ClientMemberChangeRequestEvent struct {
+    *ClientRequestEventHead
+    Request *ClientMemberChangeRequest
+}
+
+func NewClientMemberChangeRequestEvent(
+    request *ClientMemberChangeRequest) *ClientMemberChangeRequestEvent {
+
+    return &ClientMemberChangeRequestEvent{
+        NewClientRequestEventHead(EventClientMemberChangeRequest),
         request,
     }
 }

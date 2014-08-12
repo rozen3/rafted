@@ -106,6 +106,10 @@ func CopyConfig(conf *Config) *Config {
     }
 }
 
+func IsInMemeberChange(conf *Config) bool {
+    return (conf.NewServers != nil)
+}
+
 // ListTruncate() removes elements from `e' to the last element in list `l'.
 // The range to be removed is [e, l.Back()]. It returns list `l'.
 func ListTruncate(l *list.List, e *list.Element) *list.List {
