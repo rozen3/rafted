@@ -66,6 +66,10 @@ func AddrEqual(addr1 net.Addr, addr2 net.Addr) bool {
         (addr1.String() == addr2.String()))
 }
 
+func AddrNotEqual(addr1 net.Addr, addr2 net.Addr) bool {
+    return !AddrEqual(addr1, addr2)
+}
+
 func AddrsEqual(addrs1 []net.Addr, addrs2 []net.Addr) bool {
     if len(addrs1) != len(addrs2) {
         return false

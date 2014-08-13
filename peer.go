@@ -55,10 +55,18 @@ func (self *PeerManager) Broadcast(event hsm.Event) {
     }
 }
 
-func (self *PeerManager) PeerNumber() int {
-    self.peerLock.RLock()
-    defer self.peerLock.RUnlock()
-    return len(self.peerAddrs)
+func (self *PeerManager) ChangeMember(localAddr net.Addr, conf *persist.Config) {
+    self.peerLock.Lock()
+    defer self.peerLock.Unlock()
+    if conf.Servers != nil {
+        for _, addr := range conf.Servers {
+            if persist.AddrNotEqual(addr, localAddr) {
+                // TODO add impl
+            }
+        }
+    }
+    if conf.NewServers != nil {
+    }
 }
 
 type Peer struct {

@@ -5,17 +5,16 @@ type LogType uint8
 
 // Differents types of log entries.
 const (
+    LogUnknown LogType = iota
+
     // LogCommand is applied to the FSM.
-    LogCommand LogType = iota
+    LogCommand
 
     // LogNoop is used to ensure the leadership for leader.
     LogNoop
 
-    // LogAddrPeer is used to add a new node for the cluster.
-    LogAddrPeer
-
-    // LogRemovePeer is used to remove a node for the cluster.
-    LogRemovePeer
+    // LogMemberChange is used for member change in the cluster.
+    LogMemberChange
 
     // LogBarrier is used to ensure all preceeding operations have heen
     // applied to the FSM. A loan from hashicorp-raft.
@@ -85,6 +84,9 @@ type Log interface {
 
     // Gets a log entry at a given index
     GetLog(index uint64) (*LogEntry, error)
+
+    // Gets all log entris in range
+    GetLogInRange(fromIndex uint64, toIndex uint64) ([]*LogEntry, error)
 
     // Store a single log entry
     StoreLog(log *LogEntry) error

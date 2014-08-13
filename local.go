@@ -65,7 +65,8 @@ type LocalHSM struct {
     leaderLock sync.RWMutex
 
     // member change infos
-    memberChangeStatus MemberChangeStatusType
+    memberChangeStatus     MemberChangeStatusType
+    memberChangeStatusLock sync.RWMutex
 
     // configuration
     configManager persist.ConfigManager
@@ -102,7 +103,7 @@ func NewLocalHSM(
     // try to fix the inconsistant base on log status.
     // Return error if fail to do that
 
-    memberChangeStatus, err := GetMemberChangeStatus(configManager, log)
+    memberChangeStatus, err := InitMemberChangeStatus(configManager, log)
     if err != nil {
         // TODO add log
         return nil, err
@@ -219,6 +220,18 @@ func (self *LocalHSM) SetLeader(leader net.Addr) {
     self.leader = leader
 }
 
+func (self *LocalHSM) GetMemberChangeStatus() MemberChangeStatusType {
+    self.memberChangeStatusLock.RLock()
+    defer self.memberChangeStatusLock.RUnlock()
+    return self.memberChangeStatus
+}
+
+func (self *LocalHSM) SetMemberChangeStatus(status MemberChangeStatusType) {
+    self.memberChangeStatusLock.Lock()
+    defer self.memberChangeStatusLock.Unlock()
+    self.memberChangeStatus = status
+}
+
 func (self *LocalHSM) ConfigManager() persist.ConfigManager {
     return self.configManager
 }
@@ -239,11 +252,7 @@ func (self *LocalHSM) SetPeerManager(peerManager *PeerManager) {
     self.peerManager = peerManager
 }
 
-func (self *LocalHSM) QuorumSize() uint32 {
-    return ((uint32(self.peerManager.PeerNumber()) + 1) / 2) + 1
-}
-
-func (self *LocalHSM) ProcessLogsUpTo(index uint64) {
+func (self *LocalHSM) CommitLogsUpTo(index uint64) {
     // TODO add impl
     lastAppliedIndex, err := self.log.LastAppliedIndex()
     if err != nil {
@@ -255,23 +264,23 @@ func (self *LocalHSM) ProcessLogsUpTo(index uint64) {
     }
 
     for i := lastAppliedIndex + 1; i <= index; i++ {
-        if _, err := self.ProcessLogAt(i); err != nil {
+        if _, err := self.CommitLogAt(i); err != nil {
             // TODO error handling
         }
     }
 }
 
-func (self *LocalHSM) ProcessLogAt(index uint64) ([]byte, error) {
+func (self *LocalHSM) CommitLogAt(index uint64) ([]byte, error) {
     logEntry, err := self.log.GetLog(index)
     if err != nil {
         // TODO add log
         // TODO change panic?
         return nil, err
     }
-    return self.processLog(logEntry), nil
+    return self.CommitLog(logEntry), nil
 }
 
-func (self *LocalHSM) processLog(logEntry *persist.LogEntry) []byte {
+func (self *LocalHSM) CommitLog(logEntry *persist.LogEntry) []byte {
     switch logEntry.Type {
     case persist.LogCommand:
         // TODO add impl
@@ -280,7 +289,8 @@ func (self *LocalHSM) processLog(logEntry *persist.LogEntry) []byte {
         // just ignore
 
         /* TODO add other types */
-
+    case persist.LogMemberChange:
+        // TODO add impl
     default:
         // unknown log entry type
         // TODO add log
@@ -294,7 +304,7 @@ func (self *LocalHSM) applyLog(logEntry *persist.LogEntry) []byte {
     return result
 }
 
-func GetMemberChangeStatus(
+func InitMemberChangeStatus(
     configManager persist.ConfigManager,
     log persist.Log) (MemberChangeStatusType, error) {
 
@@ -366,6 +376,9 @@ func NewLocal(
     leaderState := NewLeaderState(needPeersState, logger)
     NewUnsyncState(leaderState, logger)
     NewSyncState(leaderState, logger)
+    memberChangeState := NewLeaderMemberChangeState(leaderState, logger)
+    NewLeaderMemberChangePhase1State(memberChangeState, logger)
+    NewLeaderMemberChangePhase2State(memberChangeState, logger)
     localHSM := NewLocalHSM(
         top,
         initial,

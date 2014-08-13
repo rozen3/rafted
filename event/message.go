@@ -138,6 +138,12 @@ type LeaderUnknownResponse struct {
 type LeaderUnsyncResponse struct {
 }
 
+// LeaderInMemberChangeResponse is to tell client the leader is already
+// in a member change procedure and doesn't accept another member change
+// request before finish the previous.
+type LeaderInMemberChangeResponse struct {
+}
+
 // PeerReplicateLog is a internal message for a peer(which represents
 // a follower) to notify leader it makes some progress on replicate logs.
 type PeerReplicateLog struct {

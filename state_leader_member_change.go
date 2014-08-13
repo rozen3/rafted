@@ -30,6 +30,29 @@ func (self *LeaderMemberChangeState) Entry(
     return nil
 }
 
+func (self *LeaderMemberChangeState) Init(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Init", self.ID())
+    switch localHSM.GetMemberChangeStatus() {
+    case NotInMemeberChange:
+        // transfer from sync state
+        // update member change status
+        localHSM.SetMemberChangeStatus(OldNewConfigSeen)
+        sm.QInit(StateLeaderMemberChangePhase1ID)
+    case OldNewConfigSeen:
+        localHSM.SelfDispatch(ev.NewReenterMemberChangeStateEvent())
+        sm.QInit(StateLeaderMemberChangePhase1ID)
+    case OldNewConfigCommitted:
+        localHSM.SelfDispatch(ev.NewForwardMemberChangePhaseEvent())
+        sm.QInit(StateLeaderMemberChangePhase1ID)
+    case NewConfigSeen:
+        localHSM.SelfDispatch(ev.NewReenterMemberChangeStateEvent())
+        sm.QInit(StateLeaderMemberChangePhase2ID)
+    }
+    return nil
+}
+
 func (self *LeaderMemberChangeState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
@@ -42,7 +65,14 @@ func (self *LeaderMemberChangeState) Handle(
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.PrintEvent(event))
-    // TODO add impl
+    switch event.Type() {
+    case ev.EventClientMemberChangeRequest:
+        e, ok := event.(*ClientMemberChangeRequestEvent)
+        hsm.AssertTrue(ok)
+        response := &ev.LeaderInMemberChangeResponse{}
+        e.Response(ev.NewLeaderInMemberChangeResponseEvent(response))
+        return nil
+    }
     return self.Super()
 }
 
@@ -83,7 +113,14 @@ func (self *LeaderMemberChangePhase1State) Handle(
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.PrintEvent(event))
-    // TODO add impl
+    switch event.Type() {
+    case ev.EventReenterMemberChangeState:
+        // TODO add impl
+        return nil
+    case ev.EventForwardMemberChangePhase:
+        // TODO add impl
+        return nil
+    }
     return self.Super()
 }
 
@@ -124,6 +161,10 @@ func (self *LeaderMemberChangePhase2State) Handle(
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.PrintEvent(event))
-    // TODO add impl
+    switch event.Type() {
+    case ev.EventReenterMemberChangeState:
+        // TODO add impl
+        return nil
+    }
     return self.Super()
 }

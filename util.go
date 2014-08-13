@@ -1,6 +1,8 @@
 package rafted
 
 import (
+    "errors"
+    "fmt"
     ev "github.com/hhkbp2/rafted/event"
     "github.com/hhkbp2/rafted/persist"
     "net"
@@ -80,6 +82,43 @@ func EncodeAddr(addr net.Addr) ([]byte, error) {
 
 func DecodeAddr(addr []byte) (net.Addr, error) {
     return net.ResolveTCPAddr("", string(addr))
+}
+
+func EncodeAddrs(addrs []net.Addr) ([]byte, error) {
+    if addrs == nil {
+        return nil, nil
+    }
+    var result bytes.Buffer
+    for _, addr := range addrs {
+        addrBin, err := EncodeAddr(addr)
+        if err != nil {
+            return nil, errors.New(
+                fmt.Sprintf("fail to encode addr: %s", addr.String()))
+        }
+        if _, err := result.Write(addrBin); err != nil {
+            return nil, err
+        }
+    }
+    return result.Bytes(), nil
+}
+
+func EncodeConfig(conf *persist.Config) (*persist.Configuration, error) {
+    if conf == nil {
+        return nil, nil
+    }
+    ServersBin, err := EncodeAddrs(conf.Servers)
+    if err != nil {
+        return nil, err
+    }
+    NewServersBin, err := EncodeAddrs(conf.NewServers)
+    if err != nil {
+        return nil, err
+    }
+    conf := &persist.Configuration{
+        Servers:    ServersBin,
+        NewServers: NewServersBin,
+    }
+    return conf, nil
 }
 
 // Min returns the minimum.

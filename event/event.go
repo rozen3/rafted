@@ -19,6 +19,8 @@ const (
     EventInternalBegin
     EventAbortSnapshotRecovery
     EventStepdown
+    EventReenterMemberChangeState
+    EventForwardMemberChangePhase
     EventPeerReplicateLog
     EventPeerActivate
     EventPeerDeactivate
@@ -35,6 +37,7 @@ const (
     EventLeaderRedirectResponse
     EventLeaderUnknownResponse
     EventLeaderUnsyncResponse
+    EventLeaderInMemberChangeResponse
     EventClientUser = hsm.EventUser + 1000 + iota
 )
 
@@ -68,6 +71,10 @@ func PrintEvent(event hsm.Event) string {
         return "AbortSnapshotRecoveryEvent"
     case EventStepdown:
         return "StepdownEvent"
+    case EventReenterMemberChangeState:
+        return "ReenterMemberChangeStateEvent"
+    case EventForwardMemberChangePhase:
+        return "ForwardMemberChangePhaseEvent"
     case EventPeerReplicateLog:
         return "PeerReplicateLogEvent"
     case EventPeerActivate:
@@ -79,7 +86,9 @@ func PrintEvent(event hsm.Event) string {
     case EventClientWriteRequest:
         return "ClientWriteRequestEvent"
     case EventClientReadOnlyRequest:
-        return "ClientReadOnlyRequest"
+        return "ClientReadOnlyRequestEvent"
+    case EventClientMemberChangeRequest:
+        return "ClientMemberChangeRequestEvent"
     default:
         return "Unknown Event"
     }
@@ -407,6 +416,20 @@ func NewLeaderUnsyncResponseEvent(
     }
 }
 
+type LeaderInMemberChangeResponseEvent struct {
+    *hsm.StdEvent
+    Response *LeaderInMemberChangeResponse
+}
+
+func NewLeaderInMemberChangeResponseEvent(
+    response *LeaderInMemberChangeResponse) *LeaderInMemberChangeResponseEvent {
+
+    return &LeaderInMemberChangeResponseEvent{
+        hsm.NewStdEvent(EventLeaderInMemberChangeResponse),
+        response,
+    }
+}
+
 type AbortSnapshotRecoveryEvent struct {
     *hsm.StdEvent
 }
@@ -488,5 +511,25 @@ type PeerAbortSnapshotModeEvent struct {
 func NewPeerAbortSnapshotModeEvent() *PeerAbortSnapshotModeEvent {
     return &PeerAbortSnapshotModeEvent{
         hsm.NewStdEvent(EventPeerAbortSnapshotMode),
+    }
+}
+
+type ReenterMemberChangeStateEvent struct {
+    *hsm.StdEvent
+}
+
+func NewReenterMemberChangeStateEvent() *ReenterMemberChangeStateEvent {
+    return &ReenterMemberChangeStateEvent{
+        hsm.NewStdEvent(EventReenterMemberChangeState),
+    }
+}
+
+type ForwardMemberChangePhaseEvent struct {
+    *hsm.StdEvent
+}
+
+func NewForwardMemberChangePhaseEvent() *ForwardMemberChangePhaseEvent {
+    return &ForwardMemberChangePhaseEvent{
+        hsm.NewStdEvent(EventForwardMemberChangePhase),
     }
 }

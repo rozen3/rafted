@@ -290,7 +290,7 @@ func (self *FollowerState) ProcessAppendEntries(
         (request.LeaderCommitIndex > committedIndex) {
         index := Min(request.LeaderCommitIndex, lastLogIndex)
         localHSM.Log().StoreCommittedIndex(index)
-        localHSM.ProcessLogsUpTo(index)
+        localHSM.CommitLogsUpTo(index)
     }
 
     response.Success = true
