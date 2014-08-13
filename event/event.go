@@ -526,10 +526,14 @@ func NewReenterMemberChangeStateEvent() *ReenterMemberChangeStateEvent {
 
 type ForwardMemberChangePhaseEvent struct {
     *hsm.StdEvent
+
+    Message *ForwardMemberChangePhase
 }
 
-func NewForwardMemberChangePhaseEvent() *ForwardMemberChangePhaseEvent {
+func NewForwardMemberChangePhaseEvent(
+    message *ForwardMemberChangePhase) *ForwardMemberChangePhaseEvent {
     return &ForwardMemberChangePhaseEvent{
         hsm.NewStdEvent(EventForwardMemberChangePhase),
+        message,
     }
 }

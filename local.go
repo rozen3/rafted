@@ -290,12 +290,13 @@ func (self *LocalHSM) CommitLog(logEntry *persist.LogEntry) []byte {
 
         /* TODO add other types */
     case persist.LogMemberChange:
-        // TODO add impl
+        // nothing to do for member change
+        return nil
     default:
         // unknown log entry type
         // TODO add log
     }
-    return make([]byte, 0)
+    return nil
 }
 
 func (self *LocalHSM) applyLog(logEntry *persist.LogEntry) []byte {

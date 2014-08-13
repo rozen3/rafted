@@ -11,9 +11,15 @@ import (
 )
 
 type PeerManager struct {
-    peerAddrs []net.Addr
-    peerMap   map[net.Addr]*Peer
-    peerLock  sync.RWMutex
+    peerMap  map[net.Addr]*Peer
+    peerLock sync.RWMutex
+
+    heartbeatTimeout     time.Duration
+    maxAppendEntriesSize uint64
+    maxSnapshotChunkSize uint64
+    client               comm.Client
+    eventHandler         func(ev.RaftEvent)
+    local                *Local
 }
 
 func NewPeerManager(
@@ -40,8 +46,13 @@ func NewPeerManager(
             logger)
     }
     object := &PeerManager{
-        peerAddrs: peerAddrs,
-        peerMap:   peerMap,
+        peerMap:              peerMap,
+        heartbeatTimeout:     heartbeatTimeout,
+        maxAppendEntriesSize: maxAppendEntriesSize,
+        maxSnapshotChunkSize: maxSnapshotChunkSize,
+        client:               client,
+        eventHandler:         eventHandler,
+        local:                local,
     }
     local.SetPeerManager(object)
     return object
@@ -58,14 +69,40 @@ func (self *PeerManager) Broadcast(event hsm.Event) {
 func (self *PeerManager) ChangeMember(localAddr net.Addr, conf *persist.Config) {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
+    newPeerMap := make(map[net.Addr]*Peer, 0)
     if conf.Servers != nil {
         for _, addr := range conf.Servers {
             if persist.AddrNotEqual(addr, localAddr) {
-                // TODO add impl
+                newPeerMap[addr] = nil
             }
         }
     }
     if conf.NewServers != nil {
+        for _, addr := range conf.NewServers {
+            if persist.AddrNotEqual(addr, localAddr) {
+                newPeerMap[addr] = nil
+            }
+        }
+    }
+    peersToRemove := MapSetMinus(self.peerMap, newPeerMap)
+    peersToAdd := MapSetMinus(newPeerMap, self.peerMap)
+    for _, addr := range peersToRemove {
+        delete(self.peerMap, addr)
+        if err := self.client.CloseAll(addr); err != nil {
+            // TODO add log
+        }
+    }
+    for _, addr := range peersToAdd {
+        logger := getLoggerForPeer(addr)
+        self.peerMap[addr] = NewPeer(
+            self.heartbeatTimeout,
+            self.maxAppendEntriesSize,
+            self.maxSnapshotChunkSize,
+            addr,
+            self.client,
+            self.eventHandler,
+            self.local,
+            logger)
     }
 }
 

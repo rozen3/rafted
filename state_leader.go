@@ -178,9 +178,13 @@ func (self *LeaderState) StartFlight(
 
     // construct durable log entry
     logIndex := lastLogIndex + 1 + uint64(index)
-    conf, err := EncodeConfig(request.Conf)
-    if err != nil {
-        // TODO error handling
+    // bundled config with log entry if in member change procedure
+    var conf *persist.Configuration
+    if persist.IsMemeberChange(request.Conf) {
+        conf, err := EncodeConfig(request.Conf)
+        if err != nil {
+            // TODO error handling
+        }
     }
     logEntry := &persist.LogEntry{
         Term:  term,
@@ -252,18 +256,29 @@ func (self *LeaderState) CommitInflightEntries(
     localHSM *LocalHSM, entries []*InflightEntry) {
 
     for _, entry := range entries {
-
-        // TODO XXX handling member change inflight entry
-
-        result, err := localHSM.CommitLogAt(entry.LogIndex)
-        if err != nil {
-            // TODO error handling
+        if entry.Request.LogType == persist.LogMemberChange {
+            _, err := localHSM.CommitLogAt(entry.LogIndex)
+            if err != nil {
+                // TODO error handling
+            }
+            // don't response client here
+            message := &ev.ForwardMemberChangePhase{
+                Conf:       entry.Request.Conf,
+                ResultChan: entry.Request.ResultChan,
+            }
+            localHSM.SelfDispatch(ev.NewForwardMemberChangePhaseEvent(message))
+        } else {
+            result, err := localHSM.CommitLogAt(entry.LogIndex)
+            if err != nil {
+                // TODO error handling
+            }
+            // response client immediately
+            response := &ev.ClientResponse{
+                Success: true,
+                Data:    result,
+            }
+            entry.Request.SendResponse(ev.NewClientResponseEvent(response))
         }
-        response := &ev.ClientResponse{
-            Success: true,
-            Data:    result,
-        }
-        entry.Request.SendResponse(ev.NewClientResponseEvent(response))
     }
 }
 
@@ -421,13 +436,18 @@ func (self *SyncState) Handle(
             // TODO error handling
         }
 
-        conf := &persist.Config{
+        newConf := &persist.Config{
             Servers:    e.Request.OldServers[:],
             NewServers: e.Request.NewServers[:],
         }
+
+        if err = localHSM.ConfigManager().PushConfig(newConf); err != nil {
+            // TODO error handling
+        }
+
         request := &InflightRequest{
             LogType:    persist.LogMemberChange,
-            Conf:       conf,
+            Conf:       newConf,
             ResultChan: e.ClientRequestEventHead.ResultChan,
         }
         leaderState, ok := self.Super().(*LeaderState)
@@ -435,6 +455,7 @@ func (self *SyncState) Handle(
         if err := leaderState.StartFlight(localHSM, request); err != nil {
             // TODO error handling
         }
+
         sm.QTran(StateLeaderMemberChangeID)
         return nil
     }

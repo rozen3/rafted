@@ -148,3 +148,13 @@ func IsOldNewConfig(conf *persist.Config) bool {
 func IsNewConfig(conf *persist.Config) bool {
     return (conf.Server == nil) && (conf.NewServers != nil)
 }
+
+func MapSetMinus(s1 map[net.Addr]*Peer, s2 map[net.Addr]*Peer) []net.Addr {
+    diff := make([]net.Addr, 0)
+    for addr, _ := range s1 {
+        if _, ok := s2[addr]; !ok {
+            diff = append(diff, addr)
+        }
+    }
+    return diff
+}

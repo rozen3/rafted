@@ -44,6 +44,7 @@ type Client interface {
     CallRPCTo(
         target net.Addr,
         request event.RaftEvent) (response event.RaftEvent, err error)
+    CloseAll(target net.Addr) error
 }
 
 type Server interface {

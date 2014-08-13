@@ -168,6 +168,22 @@ func (self *SocketClient) getConnection(
     return connection, nil
 }
 
+func (self *SocketClient) CloseAll(target net.Addr) error {
+    self.connectionPoolLock.Lock()
+    defer self.connectionPoolLock.Unlock()
+
+    key := target.String()
+    connections, ok := self.connectionPool[key]
+    if ok {
+        var err error
+        for _, connection := range connections {
+            err = connection.Close()
+        }
+        return err
+    }
+    return nil
+}
+
 type SocketServer struct {
     bindAddr     net.Addr
     listener     net.Listener
