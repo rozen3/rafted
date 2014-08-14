@@ -4,11 +4,17 @@ import (
     "net"
 )
 
+type ServerAddr interface {
+    net.Addr
+    Encode() ([]byte, error)
+    Decode([]byte) error
+}
+
 // Config is the in-memory representation of membership of the cluster.
 // Configuration is the serialization representation of Config.
 type Config struct {
-    Servers    []net.Addr
-    NewServers []net.Addr
+    Servers    []ServerAddr
+    NewServers []ServerAddr
 }
 
 // ConfigMeta is metadata for a Config.
