@@ -33,8 +33,8 @@ type Configuration struct {
     // 3. Servers == nil, NewServers != nil
     //     It's in member change procedure phase 2. NewServers contains
     //     all the new members of the cluster.
-    Servers    []byte
-    NewServers []byte
+    Servers    [][]byte
+    NewServers [][]byte
 }
 
 // LogEntry is the element of replicated log in raft.

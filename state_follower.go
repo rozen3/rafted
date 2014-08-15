@@ -129,6 +129,20 @@ func (self *FollowerState) Handle(
         response := &ev.LeaderRedirectResponse{leader}
         e.SendResponse(ev.NewLeaderRedirectResponseEvent(response))
         return nil
+    case event.Type() == ev.EventMemberChangeNextStep:
+        e, ok := event.(*MemberChangeNextStepEvent)
+        hsm.AssertTrue(ok)
+        if !(IsOldNewConfig(e.Message.Conf) &&
+            localHSM.GetMemberChangeStatus() == NotInMemeberChange) {
+            // TODO error handling
+        }
+
+        if err := localHSM.ConfigManager().PushConfig(conf); err != nil {
+            // TODO error handling
+        }
+        localHSM.SetMemberChangeStatus(OldNewConfigSeen)
+        sm.QTran(StateFollowerOldNewConfigSeenID)
+        return nil
     }
     return self.Super()
 }
@@ -279,6 +293,7 @@ func (self *FollowerState) ProcessAppendEntries(
             // TODO add log
             return response, true
         }
+
     }
 
     // Update the commit index
@@ -291,6 +306,29 @@ func (self *FollowerState) ProcessAppendEntries(
         index := Min(request.LeaderCommitIndex, lastLogIndex)
         localHSM.Log().StoreCommittedIndex(index)
         localHSM.CommitLogsUpTo(index)
+    }
+
+    // TODO if there is any member change entries
+    // from old CommittedIndex to first log index in request, if any member change entry commit
+    // send MemberChangeLogEntryCommitEvent
+    // from first log index in request, to new committted index, if any member change entry commit
+    // send MemberChangeNextStepEvent and MemberChangeLogEntryCommitEvent
+    // from new committed index to lastLogIndex, if any member change entry commit
+    // send MemberChangeNextStepEvent
+
+    for _, entry := range request.Entries {
+        if entry.LogType == persist.LogMemberChange {
+            conf, err := DecodeConfig(entry.Conf)
+            if err != nil {
+                // TODO error handling
+            }
+            message := &MemberChangeNextStep{conf}
+            localHSM.SelfDispatch(ev.NewMemberChangeNextStepEvent(message))
+            if entry.Index <= newCommittedIndex {
+                message := &MemberChangeNextStep{conf}
+                localHSM.SelfDispatch(ev.NewMemberChangeLogEntryCommitEvent(message))
+            }
+        }
     }
 
     response.Success = true

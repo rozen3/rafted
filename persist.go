@@ -17,7 +17,7 @@ func (self *TCPServerAddr) Decode([]byte) error {
     return net.ResolveTCPAddr("", string(addr))
 }
 
-func EncodeServerAddrs(addrs []persist.ServerAddr) ([]byte, error) {
+func EncodeServerAddrs(addrs []persist.ServerAddr) ([][]byte, error) {
     if addrs == nil {
         return nil, nil
     }
@@ -52,6 +52,16 @@ func EncodeConfig(conf *persist.Config) (*persist.Configuration, error) {
         NewServers: NewServersBin,
     }
     return conf, nil
+}
+
+func DecodeServerAddrs(bin [][]byte) ([]persist.ServerAddr, error) {
+    // TODO add impl
+    return make([]persist.ServerAddr, 0), nil
+}
+
+func DecodeConfig(conf *persist.Configuration) (*persist.Config, error) {
+    // TODO add impl
+    return &persist.Config{}, nil
 }
 
 func IsNormalConfig(conf *persist.Config) bool {

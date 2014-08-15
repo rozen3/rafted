@@ -144,6 +144,11 @@ type LeaderUnsyncResponse struct {
 type LeaderInMemberChangeResponse struct {
 }
 
+type HeartbeatTimeout struct {
+    LastContactTime time.Time
+    Timeout         time.Duration
+}
+
 // PeerReplicateLog is a internal message for a peer(which represents
 // a follower) to notify leader it makes some progress on replicate logs.
 type PeerReplicateLog struct {
@@ -153,9 +158,8 @@ type PeerReplicateLog struct {
     MatchIndex uint64
 }
 
-type HeartbeatTimeout struct {
-    LastContactTime time.Time
-    Timeout         time.Duration
+type MemberChangeNextStep struct {
+    conf *Config
 }
 
 type LeaderForwardMemberChangePhase struct {
