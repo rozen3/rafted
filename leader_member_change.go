@@ -8,6 +8,9 @@ import (
 
 type LeaderMemberChangeHSM struct {
     *hsm.StdHSM
+
+    LeaderState *LeaderState
+    LocalHSM    *LocalHSM
 }
 
 func NewLeaderMemberChangeHSM(
@@ -36,6 +39,14 @@ func (self *LeaderMemberChangeHSM) QTranOnEvent(
 
     target := self.StdHSM.LookupState(targetStateID)
     self.StdHSM.QTranHSMOnEvents(self, target, event, event, event)
+}
+
+func (self *LeaderMemberChangeHSM) SetLeaderState(leaderState *LeaderState) {
+    self.LeaderState = leaderState
+}
+
+func (self *LeadeMemberChangeHSM) SetLocalHSM(localHSM *LocalHSM) {
+    self.LocalHSM = localHSM
 }
 
 type LeaderMemberChangeState struct {
@@ -67,21 +78,7 @@ func (self *LeaderMemberChangeState) Init(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Init", self.ID())
-    switch localHSM.GetMemberChangeStatus() {
-    case NotInMemeberChange:
-        // must transfer from sync state, update member change status
-        localHSM.SetMemberChangeStatus(OldNewConfigSeen)
-        sm.QInit(StateLeaderMemberChangePhase1ID)
-    case OldNewConfigSeen:
-        localHSM.SelfDispatch(ev.NewReenterMemberChangeStateEvent())
-        sm.QInit(StateLeaderMemberChangePhase1ID)
-    case OldNewConfigCommitted:
-        localHSM.SelfDispatch(ev.NewForwardMemberChangePhaseEvent())
-        sm.QInit(StateLeaderMemberChangePhase1ID)
-    case NewConfigSeen:
-        localHSM.SelfDispatch(ev.NewReenterMemberChangeStateEvent())
-        sm.QInit(StateLeaderMemberChangePhase2ID)
-    }
+    self.QInit(StateLeaderMemberChangeDeactivatedID)
     return nil
 }
 
@@ -97,14 +94,6 @@ func (self *LeaderMemberChangeState) Handle(
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.PrintEvent(event))
-    switch event.Type() {
-    case ev.EventClientMemberChangeRequest:
-        e, ok := event.(*ClientMemberChangeRequestEvent)
-        hsm.AssertTrue(ok)
-        response := &ev.LeaderInMemberChangeResponse{}
-        e.Response(ev.NewLeaderInMemberChangeResponseEvent(response))
-        return nil
-    }
     return self.Super()
 }
 
@@ -147,7 +136,71 @@ func (self *LeaderMemberChangeDeactivatedState) Handle(
         ev.PrintEvent(event))
     switch event.Type() {
     case ev.EventLeaderMemberChangeActivate:
-        sm.QTran(StateLeaderMemberChangeNotIn)
+        sm.QTran(StateLeaderMemberChangeActivatedID)
+        return nil
+    }
+    return self.Super()
+}
+
+type LeaderMemberChangeActivatedState struct {
+    *LogStateHead
+}
+
+func NewLeaderMemberChangeActivatedState(
+    super hsm.State, logger logging.Logger) *LeaderMemberChangeActivatedState {
+
+    object := &LeaderMemberChangeActivatedState{
+        LogStateHead: NewLogStateHead(super, logger),
+    }
+    super.AddChild(object)
+    return object
+}
+
+func (*LeaderMemberChangeActivatedState) ID() string {
+    return StateLeaderMemberChangeActivatedID
+}
+
+func (self *LeaderMemberChangeActivatedState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Entry", self.ID())
+    return nil
+}
+
+func (self *LeaderMemberChangeActivatedState) Init(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Init", self.ID())
+    memberChangeHSM, ok := sm.(*MemberChangeHSM)
+    hsm.AssertTrue(ok)
+    switch memberChangeHSM.LocalHSM.GetMemberChangeStatus() {
+    case OldNewConfigSeen:
+    case OldNewConfigCommitted:
+    case NewConfigSeen:
+        sm.QInit(StateLeaderInMemberChangeID)
+    case NotInMemeberChange:
+        fallthrough
+    default:
+        sm.QInit(StateLeaderNotInMemberChangeID)
+    }
+    return nil
+}
+
+func (self *LeaderMemberChangeActivatedState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Exit", self.ID())
+    return nil
+}
+
+func (self *LeaderMemberChangeActivatedState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
+    switch event.Type() {
+    case ev.EventLeaderMemberChangeDeactivate:
+        sm.QTran(StateLeaderMemberChangeDeactivatedID)
         return nil
     }
     return self.Super()
@@ -160,7 +213,148 @@ type LeaderNotInMemberChangeState struct {
 func NewLeaderNotInMemberChangeState(
     super hsm.State, logger logging.Logger) *LeaderNotInMemberChangeState {
 
-    // TODO
+    object := &LeaderNotInMemberChangeState{
+        LogStateHead: NewLogStateHead(super, logger),
+    }
+    super.AddChild(object)
+    return object
+}
+
+func (*LeaderNotInMemberChangeState) ID() string {
+    return StateLeaderNotInMemberChangeID
+}
+
+func (self *LeaderNotInMemberChangeState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Entry", self.ID())
+    return nil
+}
+
+func (self *LeaderNotInMemberChangeState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Exit", self.ID())
+    return nil
+}
+
+func (self *LeaderNotInMemberChangeState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
+    memberChangeHSM, ok := sm.(*MemberChangeHSM)
+    hsm.AssertTrue(ok)
+    localHSM := memberChangeHSM.LocalHSM
+    leaderState := memberChangeHSM.LeaderState
+    switch event.Type() {
+    case ev.EventClientMemberChangeRequest:
+        e, ok := event.(*ClientMemberChangeRequestEvent)
+        hsm.AssertTrue(ok)
+        configManager := localHSM.ConfigManager()
+        conf, err := configManager.LastConfig()
+        if err != nil {
+            // TODO error handling
+        }
+        if !(IsNormalConfig(conf) &&
+            persist.AddrsEqual(conf.Servers, e.Request.OldServers)) {
+
+            // TODO error handling
+        }
+
+        newConf := &persist.Config{
+            Servers:    e.Request.OldServers[:],
+            NewServers: e.Request.NewServers[:],
+        }
+
+        if err = configManager.PushConfig(newConf); err != nil {
+            // TODO error handling
+        }
+
+        request := &InflightRequest{
+            LogType:    persist.LogMemberChange,
+            Conf:       newConf,
+            ResultChan: e.ClientRequestEventHead.ResultChan,
+        }
+        if err := leaderState.StartFlight(localHSM, request); err != nil {
+            // TODO error handling
+        }
+
+        localHSM.SetMemberChangeStatus(OldNewConfigSeen)
+        sm.QTran(StateLeaderMemberChangePhase1ID)
+        return nil
+    }
+    return self.Super()
+}
+
+type LeaderInMemberChangeState struct {
+    *LogStateHead
+}
+
+func NewLeaderInMemberChangeState(
+    super hsm.State, logger logging.Logger) *LeaderInMemberChangeState {
+
+    object := &LeaderInMemberChangeState{
+        LogStateHead: NewLogStateHead(super, logger),
+    }
+    super.AddChild(object)
+    return object
+}
+
+func (*LeaderInMemberChangeState) ID() string {
+    return StateLeaderInMemberChangeID
+}
+
+func (self *LeaderInMemberChangeState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Entry", self.ID())
+    return nil
+}
+
+func (self *LeaderInMemberChangeState) Init(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Init", self.ID())
+    memberChangeHSM, ok := sm.(*MemberChangeHSM)
+    hsm.AssertTrue(ok)
+    localHSM := memberChangeHSM.LocalHSM
+    switch memberChangeHSM.LocalHSM.GetMemberChangeStatus() {
+    case OldNewConfigSeen:
+        localHSM.SelfDispatch(ev.NewLeaderReenterMemberChangeStateEvent())
+        sm.QInit(StateLeaderMemberChangePhase1ID)
+    case OldNewConfigCommitted:
+        localHSM.SelfDispatch(ev.NewLeaderForwardMemberChangePhaseEvent())
+        sm.QInit(StateLeaderMemberChangePhase1ID)
+    case NewConfigSeen:
+        localHSM.SelfDispatch(ev.NewLeaderReenterMemberChangeStateEvent())
+        sm.QInit(StateLeaderMemberChangePhase2ID)
+    }
+    return nil
+}
+
+func (self *LeaderInMemberChangeState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Exit", self.ID())
+    return nil
+}
+
+func (self *LeaderInMemberChangeState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
+    switch event.Type() {
+    case ev.EventClientMemberChangeRequest:
+        e, ok := event.(*ClientMemberChangeRequestEvent)
+        hsm.AssertTrue(ok)
+        response := &ev.LeaderInMemberChangeResponse{}
+        e.Response(ev.NewLeaderInMemberChangeResponseEvent(response))
+        return nil
+    }
+
+    return self.Super()
 }
 
 type LeaderMemberChangePhase1State struct {
@@ -200,22 +394,21 @@ func (self *LeaderMemberChangePhase1State) Handle(
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.PrintEvent(event))
-    localHSM, ok := sm.(*LocalHSM)
+    memberChangeHSM, ok := sm.(*LeaderMemberChangeHSM)
     hsm.AssertTrue(ok)
+    localHSM := memberChangeHSM.LocalHSM
+    leaderState := memberChangeHSM.LeaderState
     switch event.Type() {
     case ev.EventReenterMemberChangeState:
-        // scan the log, find member change entry and replicate it
-        committedIndex, err := localHSM.Log().CommittedIndex()
-        if err != nil {
-            // TODO error handling
-        }
-
-        // TODO add impl
+        // Re-replicate the logs update util now, which include
+        // these member change ones.
+        // Since peers would automatically start replicating when
+        // it enters leader peer state, do nothing here.
         return nil
     case ev.EventForwardMemberChangePhase:
         e, ok := event.(*ForwardMemberChangePhaseEvent)
         hsm.AssertTrue(ok)
-        configManager := local.ConfigManager()
+        configManager := localHSM.ConfigManager()
         conf, err := configManager.LastConfig()
         if err != nil {
             // TODO error handling
@@ -233,7 +426,7 @@ func (self *LeaderMemberChangePhase1State) Handle(
             Servers:    nil,
             NewServers: e.Message.Conf.NewServers[:],
         }
-        if err = localHSM.ConfigManager().PushConfig(newConf); err != nil {
+        if err = configManager.PushConfig(newConf); err != nil {
             // TODO error handling
         }
         request := &InflightRequest{
@@ -241,8 +434,6 @@ func (self *LeaderMemberChangePhase1State) Handle(
             Conf:       newConf,
             ResultChan: e.Message.ResultChan,
         }
-        leaderState, ok := self.Super().Super().(*LeaderState)
-        hsm.AssertTrue(ok)
         if err := leaderState.StartFlight(localHSM, request); err != nil {
             // TODO error handling
         }
@@ -297,9 +488,12 @@ func (self *LeaderMemberChangePhase2State) Handle(
     hsm.AssertTrue(ok)
     switch event.Type() {
     case ev.EventReenterMemberChangeState:
-        // TODO add impl
+        // Re-replicate the logs update util now, which include
+        // these member change ones.
+        // Since peers would automatically start replicating when
+        // it enters leader peer state, do nothing here.
+        return nil
     case ev.EventForwardMemberChangePhase:
-        // TODO add impl
         e, ok := event.(*ForwardMemberChangePhaseEvent)
         hsm.AssertTrue(ok)
         configManager := local.ConfigManager()
@@ -310,6 +504,14 @@ func (self *LeaderMemberChangePhase2State) Handle(
         if !(IsNewConfig(conf) &&
             persist.ConfigEqual(e.Message.Conf, conf)) {
 
+            // TODO error handling
+        }
+
+        newConf := &persist.Config{
+            Servers:    e.Message.Conf.NewServers[:],
+            NewServers: nil,
+        }
+        if err != configManager.PushConfig(newConf); err != nil {
             // TODO error handling
         }
 
@@ -324,21 +526,24 @@ func (self *LeaderMemberChangePhase2State) Handle(
 
         // TODO stepdown if we are not part of the new cluster
 
-        sm.QTran(StateSyncID)
+        sm.QTran(StateLeaderNotInMemberChangeID)
         return nil
     }
     return self.Super()
 }
 
-type LeaderMemberChange struct {
-    *LeaderMemberChangeHSM
-}
-
-func NewLeaderMemberChange() *LeaderMemberChange {
-    // TODO add impl
+func SetupLeaderMemberChangeHSM(logger logging.Logger) *LeaderMemberChangeHSM {
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StateLeaderMemberChangeID)
     leaderMemberChangeState := NewLeaderMemberChangeState(
         top, StateLeaderMemberChangeID)
-    // TODO
+    NewLeaderMemberChangeDeactivatedState(leaderMemberChangeState, logger)
+    activatedState := NewLeaderMemberChangeActivatedState(
+        leaderMemberChangeState, logger)
+    NewLeaderNotInMemberChangeState(activatedState, logger)
+    inMemberChangeState := NewLeaderInMemberChangeState(activatedState, logger)
+    NewLeaderMemberChangePhase1State(inMemberChangeState, logger)
+    NewLeaderMemberChangePhase2State(inMemberChangeState, logger)
+    leaderMemberChangeHSM := LeaderMemberChangeHSM(top, initial)
+    return leaderMemberChangeHSM
 }

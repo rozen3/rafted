@@ -14,13 +14,16 @@ import (
 type LeaderState struct {
     *LogStateHead
 
-    Inflight *Inflight
+    MemberChangeHSM *LeaderMemberChangeHSM
+    Inflight        *Inflight
 }
 
 func NewLeaderState(super hsm.State, logger logging.Logger) *LeaderState {
     object := &LeaderState{
-        LogStateHead: NewLogStateHead(super, logger),
+        LogStateHead:    NewLogStateHead(super, logger),
+        memberChangeHSM: SetupLeaderMemberChangeHSM(logger),
     }
+    object.MemberChangeHSM.SetLeaderState(object)
     super.AddChild(object)
     return object
 }
@@ -40,8 +43,13 @@ func (self *LeaderState) Entry(
     // coordinate peer into LeaderPeerState
     localHSM.PeerManager().Broadcast(ev.NewPeerEnterLeaderEvent())
     // init status for this state
-    // TODO init inflight
-    self.Inflight.Init()
+    if conf, err := localHSM.configManager.LastConfig(); err != nil {
+        // TODO error handling
+    }
+    self.Inflight = NewInflight(conf)
+    // activate member change hsm
+    self.MemberChangeHSM.SetLocalHSM(localHSM)
+    self.MemberChangeHSM.Dispatch(ev.NewLeaderMemberChangeActivateEvent())
     return nil
 }
 
@@ -51,18 +59,7 @@ func (self *LeaderState) Init(
     self.Debug("STATE: %s, -> Init", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
-    switch localHSM.GetMemberChangeStatus() {
-    case NotInMemeberChange:
-        self.Debug("Not in member change, tranfers to unsync state")
-        sm.QInit(StateUnsyncID)
-    case OldNewConfigSeen:
-    case OldNewConfigCommitted:
-    case NewConfigSeen:
-        sm.QInit(sm.QInit(StateLeaderMemberChangeID))
-    default:
-        // TODO add log
-        sm.QInit(StateUnsyncID)
-    }
+    sm.QInit(StateUnsyncID)
     return nil
 }
 
@@ -72,6 +69,8 @@ func (self *LeaderState) Exit(
     self.Debug("STATE: %s, -> Exit", self.ID())
     // cleanup status for this state
     self.Inflight.Init()
+    // deactivate member change hsm
+    self.MemberChangeHSM.Dispatch(ev.NewLeaderMemberChangeDeactivateEvent())
     return nil
 }
 
@@ -144,6 +143,15 @@ func (self *LeaderState) Handle(
         hsm.AssertTrue(ok)
         self.HandleClientRequest(
             localHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
+        return nil
+    case ev.EventClientMemberChangeRequest:
+        fallthrough
+    case ev.EventLeaderEnterMemberChange:
+        fallthrough
+    case ev.EventLeaderReenterMemberChangeState:
+        fallthrough
+    case ev.EventForwardMemberChangePhase:
+        self.MemberChangeHSM.Dispatch(event)
         return nil
     }
     return self.Super()
@@ -419,45 +427,5 @@ func (self *SyncState) Handle(
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.PrintEvent(event))
-    localHSM, ok := sm.(*LocalHSM)
-    hsm.AssertTrue(ok)
-    switch event.Type() {
-    case ev.EventClientMemberChangeRequest:
-        e, ok := event.(*ClientMemberChangeRequestEvent)
-        hsm.AssertTrue(ok)
-        configManager := localHSM.ConfigManager()
-        conf, err := configManager.LastConfig()
-        if err != nil {
-            // TODO error handling
-        }
-        if !(IsNormalConfig(conf) &&
-            persist.AddrsEqual(conf.Servers, e.Request.OldServers)) {
-
-            // TODO error handling
-        }
-
-        newConf := &persist.Config{
-            Servers:    e.Request.OldServers[:],
-            NewServers: e.Request.NewServers[:],
-        }
-
-        if err = localHSM.ConfigManager().PushConfig(newConf); err != nil {
-            // TODO error handling
-        }
-
-        request := &InflightRequest{
-            LogType:    persist.LogMemberChange,
-            Conf:       newConf,
-            ResultChan: e.ClientRequestEventHead.ResultChan,
-        }
-        leaderState, ok := self.Super().(*LeaderState)
-        hsm.AssertTrue(ok)
-        if err := leaderState.StartFlight(localHSM, request); err != nil {
-            // TODO error handling
-        }
-
-        sm.QTran(StateLeaderMemberChangeID)
-        return nil
-    }
     return self.Super()
 }

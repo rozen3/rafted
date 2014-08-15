@@ -374,9 +374,6 @@ func NewLocal(
     leaderState := NewLeaderState(needPeersState, logger)
     NewUnsyncState(leaderState, logger)
     NewSyncState(leaderState, logger)
-    memberChangeState := NewLeaderMemberChangeState(leaderState, logger)
-    NewLeaderMemberChangePhase1State(memberChangeState, logger)
-    NewLeaderMemberChangePhase2State(memberChangeState, logger)
     localHSM := NewLocalHSM(
         top,
         initial,

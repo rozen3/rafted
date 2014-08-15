@@ -158,7 +158,7 @@ type HeartbeatTimeout struct {
     Timeout         time.Duration
 }
 
-type ForwardMemberChangePhase struct {
+type LeaderForwardMemberChangePhase struct {
     Conf       *Config
     ResultChan chan ClientEvent
 }

@@ -34,6 +34,7 @@ const (
 const (
     StateLeaderMemberChangeID            = "leader_member_change"
     StateLeaderMemberChangeDeactivatedID = "leader_member_change_deactivated"
+    StateLeaderMemberChangeActivatedID   = "leader_member_change_activated"
     StateLeaderNotInMemberChangeID       = "leader_not_in_member_change"
     StateLeaderInMemberChangeID          = "leader_in_member_change"
     StateLeaderMemberChangePhase1ID      = "leader_member_change_phase1"
