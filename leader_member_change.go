@@ -3,7 +3,40 @@ package rafted
 import (
     hsm "github.com/hhkbp2/go-hsm"
     logging "github.com/hhkbp2/rafted/logging"
+    "sync"
 )
+
+type LeaderMemberChangeHSM struct {
+    *hsm.StdHSM
+}
+
+func NewLeaderMemberChangeHSM(
+    top hsm.State, initial hsm.State) *LeaderMemberChangeHSM {
+
+    return &LeaderMemberChangeHSM{
+        StdHSM: hsm.NewStdHSM(HSMType),
+    }
+}
+
+func (self *LeaderMemberChangeHSM) Init() {
+    self.StdHSM.Init2(self, hsm.NewStdEvent(hsm.EventInit))
+}
+
+func (self *LeaderMemberChangeHSM) Dispatch(event hsm.Event) {
+    self.StdHSM.Dispatch2(self, event)
+}
+
+func (self *LeaderMemberChangeHSM) QTran(targetStateID string) {
+    target := self.StdHSM.LookupState(targetStateID)
+    self.StdHSM.QTranHSM(self, target)
+}
+
+func (self *LeaderMemberChangeHSM) QTranOnEvent(
+    targetStateID string, event hsm.Event) {
+
+    target := self.StdHSM.LookupState(targetStateID)
+    self.StdHSM.QTranHSMOnEvents(self, target, event, event, event)
+}
 
 type LeaderMemberChangeState struct {
     *LogStateHead
@@ -36,8 +69,7 @@ func (self *LeaderMemberChangeState) Init(
     self.Debug("STATE: %s, -> Init", self.ID())
     switch localHSM.GetMemberChangeStatus() {
     case NotInMemeberChange:
-        // transfer from sync state
-        // update member change status
+        // must transfer from sync state, update member change status
         localHSM.SetMemberChangeStatus(OldNewConfigSeen)
         sm.QInit(StateLeaderMemberChangePhase1ID)
     case OldNewConfigSeen:
@@ -74,6 +106,61 @@ func (self *LeaderMemberChangeState) Handle(
         return nil
     }
     return self.Super()
+}
+
+type LeaderMemberChangeDeactivatedState struct {
+    *LogStateHead
+}
+
+func NewLeaderMemberChangeDeactivatedState(
+    super hsm.State, logger logging.Logger) *LeaderMemberChangeDeactivatedState {
+
+    object := &LeaderMemberChangeDeactivatedState{
+        LogStateHead: NewLogStateHead(super, logger),
+    }
+    super.AddChild(object)
+    return object
+}
+
+func (*LeaderMemberChangeDeactivatedState) ID() string {
+    return StateLeaderMemberChangeDeactivatedID
+}
+
+func (self *LeaderMemberChangeDeactivatedState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Entry", self.ID())
+    return nil
+}
+
+func (self *LedaerMemberChangeDeactivatedState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Exit", self.ID())
+    return nil
+}
+
+func (self *LeaderMemberChangeDeactivatedState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.PrintEvent(event))
+    switch event.Type() {
+    case ev.EventLeaderMemberChangeActivate:
+        sm.QTran(StateLeaderMemberChangeNotIn)
+        return nil
+    }
+    return self.Super()
+}
+
+type LeaderNotInMemberChangeState struct {
+    *LogStateHead
+}
+
+func NewLeaderNotInMemberChangeState(
+    super hsm.State, logger logging.Logger) *LeaderNotInMemberChangeState {
+
+    // TODO
 }
 
 type LeaderMemberChangePhase1State struct {
@@ -117,6 +204,12 @@ func (self *LeaderMemberChangePhase1State) Handle(
     hsm.AssertTrue(ok)
     switch event.Type() {
     case ev.EventReenterMemberChangeState:
+        // scan the log, find member change entry and replicate it
+        committedIndex, err := localHSM.Log().CommittedIndex()
+        if err != nil {
+            // TODO error handling
+        }
+
         // TODO add impl
         return nil
     case ev.EventForwardMemberChangePhase:
@@ -235,4 +328,17 @@ func (self *LeaderMemberChangePhase2State) Handle(
         return nil
     }
     return self.Super()
+}
+
+type LeaderMemberChange struct {
+    *LeaderMemberChangeHSM
+}
+
+func NewLeaderMemberChange() *LeaderMemberChange {
+    // TODO add impl
+    top := hsm.NewTop()
+    initial := hsm.NewInitial(top, StateLeaderMemberChangeID)
+    leaderMemberChangeState := NewLeaderMemberChangeState(
+        top, StateLeaderMemberChangeID)
+    // TODO
 }

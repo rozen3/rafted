@@ -348,8 +348,8 @@ func (self *UnsyncState) Handle(
         ev.PrintEvent(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
-    switch {
-    case ev.IsClientEvent(event.Type()):
+    switch event.Type() {
+    case ev.EventClientReadOnlyRequest:
         e, ok := event.(ev.ClientRequestEvent)
         hsm.AssertTrue(ok)
         response := &ev.LeaderUnsyncResponse{}

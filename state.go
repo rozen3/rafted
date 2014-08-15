@@ -18,9 +18,6 @@ const (
     StateLeaderID                        = "leader"
     StateUnsyncID                        = "unsync"
     StateSyncID                          = "sync"
-    StateLeaderMemberChangeID            = "leader_member_change"
-    StateLeaderMemberChangePhase1ID      = "leader_member_change_phase1"
-    StateLeaderMemberChangePhase2ID      = "leader_member_change_phase2"
 )
 
 const (
@@ -32,6 +29,15 @@ const (
     StateStandardModePeerID = "standard_mode_peer"
     StateSnapshotModePeerID = "snapshot_mode_peer"
     StatePipelineModePeerID = "pipeline_mode_peer"
+)
+
+const (
+    StateLeaderMemberChangeID            = "leader_member_change"
+    StateLeaderMemberChangeDeactivatedID = "leader_member_change_deactivated"
+    StateLeaderNotInMemberChangeID       = "leader_not_in_member_change"
+    StateLeaderInMemberChangeID          = "leader_in_member_change"
+    StateLeaderMemberChangePhase1ID      = "leader_member_change_phase1"
+    StateLeaderMemberChangePhase2ID      = "leader_member_change_phase2"
 )
 
 type LogState interface {

@@ -14,8 +14,9 @@ import (
 )
 
 const (
-    HSMTypeRaft hsm.HSMType = hsm.HSMTypeStd + 1 + iota
+    HSMTypeLocal hsm.HSMType = hsm.HSMTypeStd + 1 + iota
     HSMTypePeer
+    HSMTypeLeaderMemberChange
 )
 
 type MemberChangeStatusType uint8
@@ -110,7 +111,7 @@ func NewLocalHSM(
     }
 
     return &LocalHSM{
-        StdHSM:             hsm.NewStdHSM(HSMTypeRaft, top, initial),
+        StdHSM:             hsm.NewStdHSM(HSMTypeLocal, top, initial),
         dispatchChan:       make(chan hsm.Event, 1),
         selfDispatchChan:   make(chan hsm.Event, 1),
         group:              sync.WaitGroup{},
@@ -310,15 +311,11 @@ func InitMemberChangeStatus(
     log persist.Log) (MemberChangeStatusType, error) {
 
     // setup member change status according to the recent config
-    if conf, err := configManager.LastConfig(); err != nil {
-        return MemberChangeStatusNotSet, err
-    }
-
     committedIndex, err := log.CommittedIndex()
     if err != nil {
         return MemberChangeStatusNotSet, err
     }
-    metas, err := ListAfter(committedIndex)
+    metas, err := configManager.ListAfter(committedIndex)
     if err != nil {
         return MemberChangeStatusNotSet, err
     }

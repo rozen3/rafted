@@ -13,9 +13,9 @@ const (
     EventNotifyStateChange
     EventNotifyLeaderChange
     EventNotifyTermChange
-    EventNotifyAddPeer
-    EventNotifyRemovePeer
     EventNotifyCommit
+    EventNotifyMemberChange
+    EventNotifyPersistError
     EventNotifyEnd
 )
 

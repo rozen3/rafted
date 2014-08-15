@@ -4,10 +4,10 @@ import (
     "net"
 )
 
-type ServerAddr interface {
-    net.Addr
-    Encode() ([]byte, error)
-    Decode([]byte) error
+type ServerAddr struct {
+    Network string
+    IP      string
+    Port    uint16
 }
 
 // Config is the in-memory representation of membership of the cluster.
