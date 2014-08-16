@@ -1,9 +1,5 @@
 package persist
 
-import (
-    "net"
-)
-
 type ServerAddr struct {
     Network string
     IP      string

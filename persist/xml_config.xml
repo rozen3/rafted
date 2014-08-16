@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ConfigMetas>
+  <!-- C old -->
+  <ConfigMeta>
+    <FromLogIndex>1</FromLogIndex>
+    <ToLogIndex>3</ToLogIndex>
+    <Conf>
+      <Servers>
+        <ServerAddr>
+          <Network>tcp</Network>
+          <IP>127.0.0.1</IP>
+          <Port>6531</Port>
+        </ServerAddr>
+        <ServerAddr>
+          <Network>tcp</Network>
+          <IP>127.0.0.2</IP>
+          <Port>6531</Port>
+        </ServerAddr>
+      </Servers>
+    </Conf>
+  </ConfigMeta>
+  <!-- C old, new -->
+  <ConfigMeta>
+    <FromLogIndex>4</FromLogIndex>
+    <ToLogIndex>27</ToLogIndex>
+    <Conf>
+      <Servers>
+        <ServerAddr>
+          <Network>tcp</Network>
+          <IP>127.0.0.1</IP>
+          <Port>6531</Port>
+        </ServerAddr>
+        <ServerAddr>
+          <Network>tcp</Network>
+          <IP>127.0.0.2</IP>
+          <Port>6531</Port>
+        </ServerAddr>
+      </Servers>
+      <NewServers>
+        <ServerAddr>
+          <Network>tcp</Network>
+          <IP>127.0.0.1</IP>
+          <Port>6531</Port>
+        </ServerAddr>
+        <ServerAddr>
+          <Network>tcp</Network>
+          <IP>127.0.0.3</IP>
+          <Port>6531</Port>
+        </ServerAddr>
+      </NewServers>
+    </Conf>
+  </ConfigMeta>
+  <!-- C new -->
+  <ConfigMeta>
+    <FromLogIndex>28</FromLogIndex>
+    <ToLogIndex>56</ToLogIndex>
+    <Conf>
+      <NewServers>
+        <ServerAddr>
+          <Network>tcp</Network>
+          <IP>127.0.0.1</IP>
+          <Port>6531</Port>
+        </ServerAddr>
+        <ServerAddr>
+          <Network>tcp</Network>
+          <IP>127.0.0.3</IP>
+          <Port>6531</Port>
+        </ServerAddr>
+      </NewServers>
+    </Conf>
+  </ConfigMeta>
+</ConfigMetas>
