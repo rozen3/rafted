@@ -2,10 +2,14 @@ package rafted
 
 import (
     "errors"
+    "fmt"
+    ev "github.com/hhkbp2/rafted/event"
+    ps "github.com/hhkbp2/rafted/persist"
+    "sync"
 )
 
 type CommitCondition interface {
-    AddVote(net.Addr) error
+    AddVote(ps.ServerAddr) error
     IsCommitted() bool
 }
 
@@ -16,16 +20,17 @@ type MajorityCommitCondition struct {
 }
 
 func NewMajorityCommitCondition(
-    clusterSize uint32) *MajorityCommitCondition {
+    clusterSize int) *MajorityCommitCondition {
 
+    size := uint32(clusterSize)
     return &MajorityCommitCondition{
         VoteCount:    0,
-        ClusterSize:  clusterSize,
-        MajoritySize: (clusterSize / 2) + 1,
+        ClusterSize:  size,
+        MajoritySize: (size / 2) + 1,
     }
 }
 
-func (self *MajorityCommitCondition) AddVote(_ net.Addr) error {
+func (self *MajorityCommitCondition) AddVote(_ ps.ServerAddr) error {
     if self.VoteCount < self.ClusterSize {
         self.VoteCount++
         return nil
@@ -38,31 +43,33 @@ func (self *MajorityCommitCondition) IsCommitted() bool {
 }
 
 type MemberChangeCommitCondition struct {
-    OldServersVoteStatus      map[net.Addr]bool
+    OldServersVoteStatus      map[ps.ServerAddr]bool
     OldServersCommitCondition *MajorityCommitCondition
-    NewServersVoteStatus      map[net.Addr]bool
+    NewServersVoteStatus      map[ps.ServerAddr]bool
     NewServersCommitCondition *MajorityCommitCondition
 }
 
-func NewMemberChangeCommitCondition(conf *Config) *MemoryChangeCommitCondition {
-    genVoteStatus := func(servers []net.Addr) map[net.Addr]bool {
-        voteStatus := make(map[net.Addr]bool)
-        for _, server := range conf.Servers {
+func NewMemberChangeCommitCondition(
+    conf *ps.Config) *MemberChangeCommitCondition {
+
+    genVoteStatus := func(servers []ps.ServerAddr) map[ps.ServerAddr]bool {
+        voteStatus := make(map[ps.ServerAddr]bool)
+        for _, server := range servers {
             voteStatus[server] = false
         }
         return voteStatus
     }
     oldServersLen := len(conf.Servers)
     newServersLen := len(conf.NewServers)
-    return &MemoryChangeCommitCondition{
+    return &MemberChangeCommitCondition{
         OldServersVoteStatus:      genVoteStatus(conf.Servers),
         OldServersCommitCondition: NewMajorityCommitCondition(oldServersLen),
         NewServersVoteStatus:      genVoteStatus(conf.NewServers),
-        NewServersCommitCondition: NewMajorityCommitCondition(NewServersLen),
+        NewServersCommitCondition: NewMajorityCommitCondition(newServersLen),
     }
 }
 
-func (self *MemberChangeCommitCondition) AddVote(addr net.Addr) error {
+func (self *MemberChangeCommitCondition) AddVote(addr ps.ServerAddr) error {
     voteSuccess := false
     if _, ok := self.OldServersVoteStatus[addr]; ok {
         if err := self.OldServersCommitCondition.AddVote(addr); err != nil {
@@ -82,7 +89,7 @@ func (self *MemberChangeCommitCondition) AddVote(addr net.Addr) error {
         return nil
     }
     return errors.New(
-        fmt.Sprintf("unknown server with addr: %s", addr.String()))
+        fmt.Sprintf("unknown server with addr: %s:%d", addr.IP, addr.Port))
 }
 
 func (self *MemberChangeCommitCondition) IsCommitted() bool {
@@ -91,9 +98,9 @@ func (self *MemberChangeCommitCondition) IsCommitted() bool {
 }
 
 type InflightRequest struct {
-    LogType    persist.LogType
+    LogType    ps.LogType
     Data       []byte
-    Conf       *persist.Config
+    Conf       *ps.Config
     ResultChan chan ev.ClientEvent
 }
 
@@ -111,8 +118,8 @@ func NewInflightEntry(
     logIndex uint64,
     request *InflightRequest) *InflightEntry {
 
-    if request.LogType == persist.LogMemberChange {
-        return &InfligthEntry{
+    if request.LogType == ps.LogMemberChange {
+        return &InflightEntry{
             LogIndex:  logIndex,
             Request:   request,
             Condition: NewMemberChangeCommitCondition(request.Conf),
@@ -130,16 +137,16 @@ type Inflight struct {
     MaxIndex           uint64
     ToCommitEntries    []*InflightEntry
     CommittedEntries   []*InflightEntry
-    ServerMatchIndexes map[net.Addr]uint64
+    ServerMatchIndexes map[ps.ServerAddr]uint64
 
     sync.Mutex
 }
 
 func setupServerMatchIndexes(
-    conf *persist.Config, prev map[net.Addr]uint64) map[net.Addr]uint64 {
+    conf *ps.Config, prev map[ps.ServerAddr]uint64) map[ps.ServerAddr]uint64 {
 
-    serverMatchIndexes := make(map[net.Addr]uint64)
-    initIndex := func(m map[net.Addr]uint64, addrs []net.Addr) {
+    serverMatchIndexes := make(map[ps.ServerAddr]uint64)
+    initIndex := func(m map[ps.ServerAddr]uint64, addrs []ps.ServerAddr) {
         for _, addr := range addrs {
             serverMatchIndexes[addr] = 0
         }
@@ -159,8 +166,8 @@ func setupServerMatchIndexes(
     return serverMatchIndexes
 }
 
-func NewInflight(conf *persist.Config) *Inflight {
-    matchIndexes := setupServerMatchIndexes(conf, make(map[net.Addr]uint64))
+func NewInflight(conf *ps.Config) *Inflight {
+    matchIndexes := setupServerMatchIndexes(conf, make(map[ps.ServerAddr]uint64))
     return &Inflight{
         MinIndex:           0,
         MaxIndex:           0,
@@ -183,7 +190,7 @@ func (self *Inflight) Init() {
     }
 }
 
-func (self *Inflight) ChangeMember(conf *persist.Config) {
+func (self *Inflight) ChangeMember(conf *ps.Config) {
     self.Lock()
     defer self.Unlock()
 
@@ -204,7 +211,7 @@ func (self *Inflight) Add(logIndex uint64, request *InflightRequest) error {
         self.MinIndex = logIndex
     }
 
-    toCommit := NewInflightEntry(logIndex, request, self.ClusterSize)
+    toCommit := NewInflightEntry(logIndex, request)
     self.ToCommitEntries = append(self.ToCommitEntries, toCommit)
     return nil
 }
@@ -235,7 +242,7 @@ func (self *Inflight) AddAll(toCommits []*InflightEntry) error {
 }
 
 func (self *Inflight) Replicate(
-    addr net.Addr, newMatchIndex uint64) (bool, error) {
+    addr ps.ServerAddr, newMatchIndex uint64) (bool, error) {
 
     self.Lock()
     defer self.Unlock()

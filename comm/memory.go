@@ -6,6 +6,7 @@ import (
     "fmt"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
+    ps "github.com/hhkbp2/rafted/persist"
     "github.com/ugorji/go/codec"
     "io"
     "net"
@@ -15,22 +16,6 @@ import (
 const (
     DefaultTransportBufferSize = 16
 )
-
-type MemoryAddr struct {
-    ID string
-}
-
-func NewMemoryAddr() *MemoryAddr {
-    return &MemoryAddr{GenerateRandomUUID()}
-}
-
-func (_ *MemoryAddr) Network() string {
-    return "memory"
-}
-
-func (self *MemoryAddr) String() string {
-    return self.ID
-}
 
 type TransportChunk struct {
     Data     []byte
@@ -83,6 +68,10 @@ func (self *MemoryServerTransport) Write(p []byte) (int, error) {
 
 func (self *MemoryServerTransport) Close() error {
     return self.register.Unregister(self.addr.String())
+}
+
+func (self *MemoryServerTransport) Addr() net.Addr {
+    return self.addr
 }
 
 type MemoryTransportRegister struct {
@@ -240,6 +229,24 @@ func (self *MemoryClient) CallRPCTo(
     return response, err
 }
 
+func (self *MemoryClient) CloseAll(target net.Addr) error {
+
+    self.connectionPoolLock.Lock()
+    defer self.connectionPoolLock.Unlock()
+
+    key := target.String()
+    connections, ok := self.connectionPool[key]
+    if ok {
+        var err error
+        for _, connection := range connections {
+            err = connection.Close()
+        }
+        delete(self.connectionPool, key)
+        return err
+    }
+    return nil
+}
+
 func (self *MemoryClient) getConnectionFromPool(
     target net.Addr) (*MemoryConnection, error) {
 
@@ -331,8 +338,12 @@ func (self *MemoryServer) Serve() {
 
             continue
         } else {
-            addr := NewMemoryAddr()
-            transport := NewMemoryServerTransport(addr, self.register)
+            addr := ps.ServerAddr{
+                Protocol: self.transport.Addr().Network(),
+                IP: fmt.Sprintf(
+                    "%s.%#v", self.transport.Addr().String(), chunk.SourceCh),
+            }
+            transport := NewMemoryServerTransport(&addr, self.register)
             transport.ResponseCh = chunk.SourceCh
             self.acceptedConnections[chunk.SourceCh] = transport
             go self.handleConn(transport)

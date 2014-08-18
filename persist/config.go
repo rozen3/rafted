@@ -1,18 +1,5 @@
 package persist
 
-type ServerAddr struct {
-    Network string
-    IP      string
-    Port    uint16
-}
-
-// Config is the in-memory representation of membership of the cluster.
-// Configuration is the serialization representation of Config.
-type Config struct {
-    Servers    []ServerAddr
-    NewServers []ServerAddr
-}
-
 // ConfigMeta is metadata for a Config.
 type ConfigMeta struct {
     // the index of log entry at which this config starts to take effect.

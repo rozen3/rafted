@@ -5,7 +5,7 @@ import (
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
-    "github.com/hhkbp2/rafted/persist"
+    ps "github.com/hhkbp2/rafted/persist"
     "io"
     "sync"
     "sync/atomic"
@@ -144,7 +144,8 @@ func (self *ActivatedPeerState) Handle(
     case ev.EventRequestVoteRequest:
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
-        response, err := peerHSM.Client().CallRPCTo(peerHSM.Addr(), e)
+        peerAddr := peerHSM.Addr()
+        response, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
             // TODO add log
             return nil
@@ -316,11 +317,6 @@ func (self *LeaderPeerState) Handle(
             return nil
         }
         // the peer is up-to-date, then send a pure heartbeat AE
-
-        leader, err := EncodeAddr(local.GetLocalAddr())
-        if err != nil {
-            // TODO error handling
-        }
         prevLogTerm, prevLogIndex, err := local.Log().LastEntryInfo()
         if err != nil {
             // TODO error handling
@@ -331,14 +327,15 @@ func (self *LeaderPeerState) Handle(
         }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
-            Leader:            leader,
+            Leader:            local.GetLocalAddr(),
             PrevLogTerm:       prevLogIndex,
             PrevLogIndex:      prevLogTerm,
-            Entries:           make([]*persist.LogEntry, 0),
+            Entries:           make([]*ps.LogEntry, 0),
             LeaderCommitIndex: committedIndex,
         }
         e := ev.NewAppendEntriesRequestEvent(request)
-        respEvent, err := peerHSM.Client().CallRPCTo(peerHSM.Addr(), e)
+        peerAddr := peerHSM.Addr()
+        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
             // TODO error handling
         }
@@ -466,7 +463,8 @@ func (self *StandardModePeerState) Handle(
     case ev.EventAppendEntriesRequest:
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
-        responseEvent, err := peerHSM.Client().CallRPCTo(peerHSM.Addr(), e)
+        peerAddr := peerHSM.Addr()
+        responseEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
             // TODO error handling
         }
@@ -519,20 +517,16 @@ func (self *StandardModePeerState) SetupReplicating(
     }
     switch {
     case matchIndex == 0:
-        leader, err := EncodeAddr(local.GetLocalAddr())
-        if err != nil {
-            // TODO add error handling
-        }
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
             // TODO add error handling
         }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
-            Leader:            leader,
+            Leader:            local.GetLocalAddr(),
             PrevLogTerm:       0,
             PrevLogIndex:      0,
-            Entries:           make([]*persist.LogEntry, 0),
+            Entries:           make([]*ps.LogEntry, 0),
             LeaderCommitIndex: committedIndex,
         }
         event = ev.NewAppendEntriesRequestEvent(request)
@@ -553,7 +547,7 @@ func (self *StandardModePeerState) SetupReplicating(
         entriesSize := Min(uint64(self.maxAppendEntriesSize),
             (lastLogIndex - matchIndex))
         maxIndex := nextIndex + entriesSize - 1
-        logEntries := make([]*persist.LogEntry, 0, entriesSize)
+        logEntries := make([]*ps.LogEntry, 0, entriesSize)
         for i := nextIndex; i <= maxIndex; i++ {
             if log, err = local.Log().GetLog(i); err != nil {
                 // TODO error handling
@@ -564,13 +558,9 @@ func (self *StandardModePeerState) SetupReplicating(
         if err != nil {
             // TODO add error handling
         }
-        leader, err := EncodeAddr(local.GetLocalAddr())
-        if err != nil {
-            // err handling
-        }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
-            Leader:            leader,
+            Leader:            local.GetLocalAddr(),
             PrevLogTerm:       prevLogTerm,
             PrevLogIndex:      prevLogIndex,
             Entries:           logEntries,
@@ -587,7 +577,7 @@ type SnapshotModePeerState struct {
     maxSnapshotChunkSize uint64
     offset               uint64
     lastChunk            []byte
-    snapshotMeta         *persist.SnapshotMeta
+    snapshotMeta         *ps.SnapshotMeta
     snapshotReadCloser   io.ReadCloser
 }
 
@@ -633,12 +623,8 @@ func (self *SnapshotModePeerState) Entry(
     self.offset = 0
     self.lastChunk = make([]byte, 0)
 
-    leader, err := EncodeAddr(local.GetLocalAddr())
-    if err != nil {
-        // err handling
-    }
     if err := self.SendNextChunk(
-        peerHSM, local.GetCurrentTerm(), leader); err != nil {
+        peerHSM, local.GetCurrentTerm(), local.GetLocalAddr()); err != nil {
 
         peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
     }
@@ -670,14 +656,15 @@ func (self *SnapshotModePeerState) Handle(
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
-        responseEvent, err := peerHSM.Client().CallRPCTo(peerHSM.Addr(), e)
+        peerAddr := peerHSM.Addr()
+        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
             // TODO add log
         }
-        if responseEvent.Type() != ev.EventInstallSnapshotResponse {
+        if respEvent.Type() != ev.EventInstallSnapshotResponse {
             // TODO error handling
         }
-        snapshotResponseEvent, ok := responseEvent.(*ev.InstallSnapshotResponseEvent)
+        snapshotRespEvent, ok := respEvent.(*ev.InstallSnapshotResponseEvent)
         if !ok {
             // TODO error handling
         }
@@ -687,7 +674,7 @@ func (self *SnapshotModePeerState) Handle(
         hsm.AssertTrue(ok)
         leaderPeerState.UpdateLastContact()
 
-        if snapshotResponseEvent.Response.Term > local.GetCurrentTerm() {
+        if snapshotRespEvent.Response.Term > local.GetCurrentTerm() {
             event := ev.NewStepdownEvent()
             local.SelfDispatch(event)
             // Stop replicating snapshot to this peer since it already
@@ -696,12 +683,7 @@ func (self *SnapshotModePeerState) Handle(
             return nil
         }
 
-        leader, err := EncodeAddr(local.GetLocalAddr())
-        if err != nil {
-            // err handling
-        }
-
-        if snapshotResponseEvent.Response.Success {
+        if snapshotRespEvent.Response.Success {
             // last chunk replicated
             self.offset += uint64(len(self.lastChunk))
             if self.offset == self.snapshotMeta.Size {
@@ -713,14 +695,14 @@ func (self *SnapshotModePeerState) Handle(
 
             // send next chunk
             if err := self.SendNextChunk(
-                peerHSM, local.GetCurrentTerm(), leader); err != nil {
+                peerHSM, local.GetCurrentTerm(), local.GetLocalAddr()); err != nil {
 
                 // TODO add log
                 peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
             }
         } else {
             // resend last chunk
-            e := self.SetupRequest(local.GetCurrentTerm(), leader)
+            e := self.SetupRequest(local.GetCurrentTerm(), local.GetLocalAddr())
             peerHSM.SelfDispatch(e)
         }
         return nil
@@ -733,7 +715,7 @@ func (self *SnapshotModePeerState) Handle(
 }
 
 func (self *SnapshotModePeerState) SetupRequest(
-    term uint64, leader []byte) hsm.Event {
+    term uint64, leader ps.ServerAddr) hsm.Event {
 
     request := &ev.InstallSnapshotRequest{
         Term:              term,
@@ -750,7 +732,7 @@ func (self *SnapshotModePeerState) SetupRequest(
 }
 
 func (self *SnapshotModePeerState) SendNextChunk(
-    peerHSM *PeerHSM, term uint64, leader []byte) error {
+    peerHSM *PeerHSM, term uint64, leader ps.ServerAddr) error {
 
     data := make([]byte, self.maxSnapshotChunkSize)
     n, err := self.snapshotReadCloser.Read(data)

@@ -179,6 +179,7 @@ func (self *SocketClient) CloseAll(target net.Addr) error {
         for _, connection := range connections {
             err = connection.Close()
         }
+        delete(self.connectionPool, key)
         return err
     }
     return nil

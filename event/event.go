@@ -111,7 +111,7 @@ func PrintEvent(event hsm.Event) string {
         return "LeaderRedirectResponseEvent"
     case EventLeaderUnknownResponse:
         return "LeaderUnknownResponseEvent"
-    case EventLeaderUnsycResponse:
+    case EventLeaderUnsyncResponse:
         return "LeaderUnsyncResponseEvent"
     case EventLeaderInMemberChangeResponse:
         return "LeaderInMemberChangeResponseEvent"
@@ -334,11 +334,11 @@ func NewStepdownEvent() *StepdownEvent {
 
 type MemberChangeNextStepEvent struct {
     *hsm.StdEvent
-    Message *MemberChangeNextStep
+    Message *MemberChangeNewConf
 }
 
 func NewMemberChangeNextStepEvent(
-    message *MemberChangeNextStep) *MemberChangeNextStepEvent {
+    message *MemberChangeNewConf) *MemberChangeNextStepEvent {
 
     return &MemberChangeNextStepEvent{
         hsm.NewStdEvent(EventMemberChangeNextStep),
@@ -348,13 +348,13 @@ func NewMemberChangeNextStepEvent(
 
 type MemberChangeLogEntryCommitEvent struct {
     *hsm.StdEvent
-    Message *MemberChangeNextStep
+    Message *MemberChangeNewConf
 }
 
 func NewMemberChangeLogEntryCommitEvent(
-    message *MemberChangeNextStep) *MemberChangeLogEntryCommitEvent {
+    message *MemberChangeNewConf) *MemberChangeLogEntryCommitEvent {
 
-    reutrn & MemberChangeLogEntryCommitEvent{
+    return &MemberChangeLogEntryCommitEvent{
         hsm.NewStdEvent(EventMemberChangeLogEntryCommit),
         message,
     }
@@ -374,7 +374,7 @@ type LeaderMemberChangeDeactivateEvent struct {
     *hsm.StdEvent
 }
 
-func NewLeaderMemberChangeDeactivatedEvent() *LeaderMemberChangeDeactivateEvent {
+func NewLeaderMemberChangeDeactivateEvent() *LeaderMemberChangeDeactivateEvent {
     return &LeaderMemberChangeDeactivateEvent{
         hsm.NewStdEvent(EventLeaderMemberChangeDeactivate),
     }

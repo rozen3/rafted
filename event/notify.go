@@ -2,6 +2,7 @@ package event
 
 import (
     hsm "github.com/hhkbp2/go-hsm"
+    ps "github.com/hhkbp2/rafted/persist"
     "net"
     "time"
 )
@@ -103,34 +104,6 @@ func NewNotifyTermChangeEvent(
     }
 }
 
-type NotifyAddPeerEvent struct {
-    *hsm.StdEvent
-    PeerAdded net.Addr
-}
-
-func NewNotifyAddPeerEvent(
-    peerAdded net.Addr) *NotifyAddPeerEvent {
-
-    return &NotifyAddPeerEvent{
-        StdEvent:  hsm.NewStdEvent(EventNotifyAddPeer),
-        PeerAdded: peerAdded,
-    }
-}
-
-type NotifyRemovePeerEvent struct {
-    *hsm.StdEvent
-    PeerRemoved net.Addr
-}
-
-func NewNotifyRemovePeerEvent(
-    peerRemoved net.Addr) *NotifyRemovePeerEvent {
-
-    return &NotifyRemovePeerEvent{
-        StdEvent:    hsm.NewStdEvent(EventNotifyRemovePeer),
-        PeerRemoved: peerRemoved,
-    }
-}
-
 type NotifyCommitEvent struct {
     *hsm.StdEvent
     Term     uint64
@@ -144,5 +117,35 @@ func NewNotifyCommitEvent(
         StdEvent: hsm.NewStdEvent(EventNotifyCommit),
         Term:     term,
         LogIndex: logIndex,
+    }
+}
+
+type NotifyMemberChangeEvent struct {
+    *hsm.StdEvent
+
+    OldServers []ps.ServerAddr
+    NewServers []ps.ServerAddr
+}
+
+func NewNotifyMemberChangeEvent(
+    oldServers, newServers []ps.ServerAddr) *NotifyMemberChangeEvent {
+
+    return &NotifyMemberChangeEvent{
+        StdEvent:   hsm.NewStdEvent(EventNotifyMemberChange),
+        OldServers: oldServers,
+        NewServers: newServers,
+    }
+}
+
+type NotifyPersistErrorEvent struct {
+    *hsm.StdEvent
+
+    Error error
+}
+
+func NewNotifyPersistErrorEvent(err error) *NotifyPersistErrorEvent {
+    return &NotifyPersistErrorEvent{
+        StdEvent: hsm.NewStdEvent(EventNotifyPersistError),
+        Error:    err,
     }
 }

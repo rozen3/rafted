@@ -1,32 +1,31 @@
 package rafted
 
 import (
-    "bytes"
     "errors"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
-    persist "github.com/hhkbp2/rafted/persist"
+    ps "github.com/hhkbp2/rafted/persist"
 )
 
 type RemoteSnapshot struct {
-    Leader            []byte
-    Servers           []byte
+    Leader            ps.ServerAddr
+    Servers           []ps.ServerAddr
     LastIncludedTerm  uint64
     LastIncludedIndex uint64
     Size              uint64
     Offset            uint64
     Chunk             []byte
-    writer            persist.SnapshotWriter
+    writer            ps.SnapshotWriter
 }
 
 func NewRemoteSnapshot(
-    leader []byte,
-    servers []byte,
+    leader ps.ServerAddr,
+    servers []ps.ServerAddr,
     lastIncludedTerm uint64,
     lastIncludedIndex uint64,
     size uint64,
-    writer persist.SnapshotWriter) *RemoteSnapshot {
+    writer ps.SnapshotWriter) *RemoteSnapshot {
     return &RemoteSnapshot{
         Leader:            leader,
         Servers:           servers,
@@ -53,7 +52,7 @@ func (self *RemoteSnapshot) PersistChunk(offset uint64, chunk []byte) error {
     return nil
 }
 
-func (self *RemoteSnapshot) Persist(writer persist.SnapshotWriter) error {
+func (self *RemoteSnapshot) Persist(writer ps.SnapshotWriter) error {
     length := len(self.Chunk)
     for i := 0; i < length; {
         n, err := writer.Write(self.Chunk[i:])
@@ -71,7 +70,7 @@ func (self *RemoteSnapshot) Release() {
 type SnapshotRecoveryState struct {
     *LogStateHead
 
-    writer   persist.SnapshotWriter
+    writer   ps.SnapshotWriter
     snapshot *RemoteSnapshot
 }
 
@@ -151,7 +150,7 @@ func (self *SnapshotRecoveryState) Handle(
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
-        if bytes.Compare(e.Request.Leader, self.snapshot.Leader) != 0 {
+        if ps.AddrNotEqual(&e.Request.Leader, &self.snapshot.Leader) {
             // Receive another leader install snapshot request.
             // This snapshot recovery procedure is interrupted.
             // TODO add log
@@ -161,7 +160,7 @@ func (self *SnapshotRecoveryState) Handle(
             sm.QTran(StateFollowerID)
             return nil
         }
-        if bytes.Compare(e.Request.Servers, self.snapshot.Servers) != 0 {
+        if ps.AddrsNotEqual(e.Request.Servers, self.snapshot.Servers) {
             // Receive inconsistant server configurations among
             // install snapshot requests.
             // TODO add log

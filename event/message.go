@@ -1,8 +1,7 @@
 package event
 
 import (
-    "github.com/hhkbp2/rafted/persist"
-    "net"
+    ps "github.com/hhkbp2/rafted/persist"
     "time"
 )
 
@@ -11,14 +10,14 @@ import (
 type AppendEntriesRequest struct {
     // Provide the current term and leader ID
     Term   uint64
-    Leader []byte
+    Leader ps.ServerAddr
 
     // Provide the previous entries for integrity checking
     PrevLogIndex uint64
     PrevLogTerm  uint64
 
     // New entries to commit
-    Entries []*persist.LogEntry
+    Entries []*ps.LogEntry
 
     // Commit index on the leader
     LeaderCommitIndex uint64
@@ -42,7 +41,7 @@ type AppendEntriesResponse struct {
 type RequestVoteRequest struct {
     // Provide the term and our ID
     Term      uint64
-    Candidate []byte
+    Candidate ps.ServerAddr
 
     // Used to ensure safety
     LastLogIndex uint64
@@ -65,7 +64,7 @@ type InstallSnapshotRequest struct {
     // Leader's current term
     Term uint64
     // Leader ID
-    Leader []byte
+    Leader ps.ServerAddr
 
     // the snapshot replaces all entries up through and including this index
     LastIncludedIndex uint64
@@ -80,7 +79,7 @@ type InstallSnapshotRequest struct {
 
     // The configuration of all servers on LastIncludedIndex log entry
     // (when taking snapshot)
-    Servers []byte
+    Servers []ps.ServerAddr
 
     // Size of the snapshot
     Size uint64
@@ -109,8 +108,8 @@ type ClientReadOnlyRequest struct {
 
 // ClientMemberChangeRequest is a request for member change
 type ClientMemberChangeRequest struct {
-    OldServers []net.Addr
-    NewServers []net.Addr
+    OldServers []ps.ServerAddr
+    NewServers []ps.ServerAddr
 }
 
 // ClientResponse is a general response of raft module answer to client.
@@ -124,7 +123,7 @@ type ClientResponse struct {
 // LeaderRedirectResponse is to redirect client to leader.
 type LeaderRedirectResponse struct {
     // The network addr of leader
-    LeaderAddr string
+    LeaderAddr ps.ServerAddr
 }
 
 // LeaderUnknownResponse is to tell client we are not leader and
@@ -153,16 +152,16 @@ type HeartbeatTimeout struct {
 // a follower) to notify leader it makes some progress on replicate logs.
 type PeerReplicateLog struct {
     // network addr of the peer(follower)
-    Peer net.Addr
+    Peer ps.ServerAddr
     // index of highest log entry known to replicated to follower
     MatchIndex uint64
 }
 
-type MemberChangeNextStep struct {
-    conf *Config
+type MemberChangeNewConf struct {
+    Conf *ps.Config
 }
 
 type LeaderForwardMemberChangePhase struct {
-    Conf       *Config
+    Conf       *ps.Config
     ResultChan chan ClientEvent
 }

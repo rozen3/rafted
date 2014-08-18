@@ -154,6 +154,27 @@ func (self *MemoryLog) GetLog(index uint64) (*LogEntry, error) {
     return entry, nil
 }
 
+func (self *MemoryLog) GetLogInRange(
+    fromIndex uint64, toIndex uint64) ([]*LogEntry, error) {
+
+    self.logLock.RLock()
+    defer self.logLock.RUnlock()
+
+    fromStoredIndex, ok := self.indexMap[fromIndex]
+    if !ok {
+        return nil, errors.New("no such from index")
+    }
+    toStoredIndex, ok := self.indexMap[toIndex]
+    if !ok {
+        return nil, errors.New("no such to index")
+    }
+    result := make([]*LogEntry, 0, toStoredIndex-fromStoredIndex+1)
+    for i := fromStoredIndex; i <= toStoredIndex; i++ {
+        result = append(result, self.logEntries[i])
+    }
+    return result, nil
+}
+
 func (self *MemoryLog) StoreLog(log *LogEntry) error {
     self.logLock.Lock()
     defer self.logLock.Unlock()
@@ -236,7 +257,7 @@ type MemorySnapshotInstance struct {
 }
 
 func NewMemorySnapshotInstance(
-    term, index uint64, Servers []byte) *MemorySnapshotInstance {
+    term, index uint64, Servers []ServerAddr) *MemorySnapshotInstance {
 
     return &MemorySnapshotInstance{
         Meta: &SnapshotMeta{
@@ -275,7 +296,7 @@ func NewMemorySnapshotManager() *MemorySnapshotManager {
 }
 
 func (self *MemorySnapshotManager) Create(
-    term, index uint64, Servers []byte) (SnapshotWriter, error) {
+    term, index uint64, Servers []ServerAddr) (SnapshotWriter, error) {
 
     self.lock.Lock()
     defer self.lock.Unlock()
@@ -527,10 +548,33 @@ func (self *MemoryConfigManager) GetConfig(logIndex uint64) (*Config, error) {
     defer self.lock.RUnlock()
     for e := self.configs.Back(); e != nil; e = e.Prev() {
         meta, _ := e.Value.(*ConfigMeta)
-        if logIndex < meta.FromLogIndex {
-            continue
+        if (meta.FromLogIndex <= logIndex) &&
+            (logIndex <= meta.ToLogIndex) {
+            return meta.Conf, nil
         }
-        return meta.Conf, nil
+    }
+    return nil, errors.New("index out of bound")
+}
+
+func (self *MemoryConfigManager) ListAfter(logIndex uint64) ([]*ConfigMeta, error) {
+    self.lock.RLock()
+    defer self.lock.RUnlock()
+    e := self.configs.Back()
+    found := false
+    for ; e != nil; e = e.Prev() {
+        meta, _ := e.Value.(*ConfigMeta)
+        if (meta.FromLogIndex <= logIndex) &&
+            (logIndex <= meta.ToLogIndex) {
+            found = true
+        }
+    }
+    if found {
+        result := make([]*ConfigMeta, 0)
+        for el := e; el != nil; el = el.Next() {
+            meta, _ := el.Value.(*ConfigMeta)
+            result = append(result, meta)
+        }
+        return result, nil
     }
     return nil, errors.New("index out of bound")
 }

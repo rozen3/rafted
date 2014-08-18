@@ -2,8 +2,9 @@ package rafted
 
 import (
     hsm "github.com/hhkbp2/go-hsm"
+    ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
-    "sync"
+    ps "github.com/hhkbp2/rafted/persist"
 )
 
 type LeaderMemberChangeHSM struct {
@@ -17,7 +18,7 @@ func NewLeaderMemberChangeHSM(
     top hsm.State, initial hsm.State) *LeaderMemberChangeHSM {
 
     return &LeaderMemberChangeHSM{
-        StdHSM: hsm.NewStdHSM(HSMType),
+        StdHSM: hsm.NewStdHSM(HSMTypeLeaderMemberChange, top, initial),
     }
 }
 
@@ -45,7 +46,7 @@ func (self *LeaderMemberChangeHSM) SetLeaderState(leaderState *LeaderState) {
     self.LeaderState = leaderState
 }
 
-func (self *LeadeMemberChangeHSM) SetLocalHSM(localHSM *LocalHSM) {
+func (self *LeaderMemberChangeHSM) SetLocalHSM(localHSM *LocalHSM) {
     self.LocalHSM = localHSM
 }
 
@@ -78,7 +79,7 @@ func (self *LeaderMemberChangeState) Init(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Init", self.ID())
-    self.QInit(StateLeaderMemberChangeDeactivatedID)
+    sm.QInit(StateLeaderMemberChangeDeactivatedID)
     return nil
 }
 
@@ -122,7 +123,7 @@ func (self *LeaderMemberChangeDeactivatedState) Entry(
     return nil
 }
 
-func (self *LedaerMemberChangeDeactivatedState) Exit(
+func (self *LeaderMemberChangeDeactivatedState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Exit", self.ID())
@@ -171,7 +172,7 @@ func (self *LeaderMemberChangeActivatedState) Init(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Init", self.ID())
-    memberChangeHSM, ok := sm.(*MemberChangeHSM)
+    memberChangeHSM, ok := sm.(*LeaderMemberChangeHSM)
     hsm.AssertTrue(ok)
     switch memberChangeHSM.LocalHSM.GetMemberChangeStatus() {
     case OldNewConfigSeen:
@@ -243,36 +244,41 @@ func (self *LeaderNotInMemberChangeState) Handle(
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.PrintEvent(event))
-    memberChangeHSM, ok := sm.(*MemberChangeHSM)
+    memberChangeHSM, ok := sm.(*LeaderMemberChangeHSM)
     hsm.AssertTrue(ok)
     localHSM := memberChangeHSM.LocalHSM
     leaderState := memberChangeHSM.LeaderState
     switch event.Type() {
     case ev.EventClientMemberChangeRequest:
-        e, ok := event.(*ClientMemberChangeRequestEvent)
+        e, ok := event.(*ev.ClientMemberChangeRequestEvent)
         hsm.AssertTrue(ok)
         configManager := localHSM.ConfigManager()
         conf, err := configManager.LastConfig()
         if err != nil {
             // TODO error handling
         }
-        if !(IsNormalConfig(conf) &&
-            persist.AddrsEqual(conf.Servers, e.Request.OldServers)) {
+        if !(ps.IsNormalConfig(conf) &&
+            ps.AddrsEqual(conf.Servers, e.Request.OldServers)) {
 
             // TODO error handling
         }
 
-        newConf := &persist.Config{
+        newConf := &ps.Config{
             Servers:    e.Request.OldServers[:],
             NewServers: e.Request.NewServers[:],
         }
 
-        if err = configManager.PushConfig(newConf); err != nil {
+        lastLogIndex, err := localHSM.Log().LastIndex()
+        if err != nil {
+            // TODO error handling
+        }
+
+        if err = configManager.PushConfig(lastLogIndex+1, newConf); err != nil {
             // TODO error handling
         }
 
         request := &InflightRequest{
-            LogType:    persist.LogMemberChange,
+            LogType:    ps.LogMemberChange,
             Conf:       newConf,
             ResultChan: e.ClientRequestEventHead.ResultChan,
         }
@@ -316,7 +322,7 @@ func (self *LeaderInMemberChangeState) Init(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Init", self.ID())
-    memberChangeHSM, ok := sm.(*MemberChangeHSM)
+    memberChangeHSM, ok := sm.(*LeaderMemberChangeHSM)
     hsm.AssertTrue(ok)
     localHSM := memberChangeHSM.LocalHSM
     switch memberChangeHSM.LocalHSM.GetMemberChangeStatus() {
@@ -324,7 +330,15 @@ func (self *LeaderInMemberChangeState) Init(
         localHSM.SelfDispatch(ev.NewLeaderReenterMemberChangeStateEvent())
         sm.QInit(StateLeaderMemberChangePhase1ID)
     case OldNewConfigCommitted:
-        localHSM.SelfDispatch(ev.NewLeaderForwardMemberChangePhaseEvent())
+        conf, err := localHSM.ConfigManager().LastConfig()
+        if err != nil {
+            // TODO error handling
+        }
+        message := &ev.LeaderForwardMemberChangePhase{
+            Conf: conf,
+        }
+        localHSM.SelfDispatch(
+            ev.NewLeaderForwardMemberChangePhaseEvent(message))
         sm.QInit(StateLeaderMemberChangePhase1ID)
     case NewConfigSeen:
         localHSM.SelfDispatch(ev.NewLeaderReenterMemberChangeStateEvent())
@@ -347,10 +361,10 @@ func (self *LeaderInMemberChangeState) Handle(
         ev.PrintEvent(event))
     switch event.Type() {
     case ev.EventClientMemberChangeRequest:
-        e, ok := event.(*ClientMemberChangeRequestEvent)
+        e, ok := event.(*ev.ClientMemberChangeRequestEvent)
         hsm.AssertTrue(ok)
         response := &ev.LeaderInMemberChangeResponse{}
-        e.Response(ev.NewLeaderInMemberChangeResponseEvent(response))
+        e.SendResponse(ev.NewLeaderInMemberChangeResponseEvent(response))
         return nil
     }
 
@@ -399,38 +413,42 @@ func (self *LeaderMemberChangePhase1State) Handle(
     localHSM := memberChangeHSM.LocalHSM
     leaderState := memberChangeHSM.LeaderState
     switch event.Type() {
-    case ev.EventReenterMemberChangeState:
+    case ev.EventLeaderReenterMemberChangeState:
         // Re-replicate the logs update util now, which include
         // these member change ones.
         // Since peers would automatically start replicating when
         // it enters leader peer state, do nothing here.
         return nil
-    case ev.EventForwardMemberChangePhase:
-        e, ok := event.(*ForwardMemberChangePhaseEvent)
+    case ev.EventLeaderForwardMemberChangePhase:
+        e, ok := event.(*ev.LeaderForwardMemberChangePhaseEvent)
         hsm.AssertTrue(ok)
         configManager := localHSM.ConfigManager()
         conf, err := configManager.LastConfig()
         if err != nil {
             // TODO error handling
         }
-        if !(IsOldNewConfig(conf)) &&
-            persist.ConfigEqual(e.Message.Conf, conf) {
-
+        if !(ps.IsOldNewConfig(conf)) && ps.ConfigEqual(e.Message.Conf, conf) {
             // TODO error handling
         }
 
         // update member change status
         localHSM.SetMemberChangeStatus(OldNewConfigCommitted)
 
-        newConf := &persist.Config{
+        newConf := &ps.Config{
             Servers:    nil,
             NewServers: e.Message.Conf.NewServers[:],
         }
-        if err = configManager.PushConfig(newConf); err != nil {
+        lastLogIndex, err := localHSM.Log().LastIndex()
+        if err != nil {
+            // TODO error handling
+        }
+
+        err = configManager.PushConfig(lastLogIndex+1, newConf)
+        if err != nil {
             // TODO error handling
         }
         request := &InflightRequest{
-            LogType:    persist.LogMemberChange,
+            LogType:    ps.LogMemberChange,
             Conf:       newConf,
             ResultChan: e.Message.ResultChan,
         }
@@ -487,31 +505,36 @@ func (self *LeaderMemberChangePhase2State) Handle(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
-    case ev.EventReenterMemberChangeState:
+    case ev.EventLeaderReenterMemberChangeState:
         // Re-replicate the logs update util now, which include
         // these member change ones.
         // Since peers would automatically start replicating when
         // it enters leader peer state, do nothing here.
         return nil
-    case ev.EventForwardMemberChangePhase:
-        e, ok := event.(*ForwardMemberChangePhaseEvent)
+    case ev.EventLeaderForwardMemberChangePhase:
+        e, ok := event.(*ev.LeaderForwardMemberChangePhaseEvent)
         hsm.AssertTrue(ok)
-        configManager := local.ConfigManager()
+        configManager := localHSM.ConfigManager()
         conf, err := configManager.LastConfig()
         if err != nil {
             // TODO error handling
         }
-        if !(IsNewConfig(conf) &&
-            persist.ConfigEqual(e.Message.Conf, conf)) {
-
+        if !(ps.IsNewConfig(conf) && ps.ConfigEqual(e.Message.Conf, conf)) {
             // TODO error handling
         }
 
-        newConf := &persist.Config{
+        newConf := &ps.Config{
             Servers:    e.Message.Conf.NewServers[:],
             NewServers: nil,
         }
-        if err != configManager.PushConfig(newConf); err != nil {
+
+        lastLogIndex, err := localHSM.Log().LastIndex()
+        if err != nil {
+            // TODO error handling
+        }
+
+        err = configManager.PushConfig(lastLogIndex+1, newConf)
+        if err != nil {
             // TODO error handling
         }
 
@@ -522,7 +545,9 @@ func (self *LeaderMemberChangePhase2State) Handle(
         response := &ev.ClientResponse{
             Success: true,
         }
-        e.Message.ResultChan <- response
+        if e.Message.ResultChan != nil {
+            e.Message.ResultChan <- ev.NewClientResponseEvent(response)
+        }
 
         // TODO stepdown if we are not part of the new cluster
 
@@ -535,8 +560,7 @@ func (self *LeaderMemberChangePhase2State) Handle(
 func SetupLeaderMemberChangeHSM(logger logging.Logger) *LeaderMemberChangeHSM {
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StateLeaderMemberChangeID)
-    leaderMemberChangeState := NewLeaderMemberChangeState(
-        top, StateLeaderMemberChangeID)
+    leaderMemberChangeState := NewLeaderMemberChangeState(top, logger)
     NewLeaderMemberChangeDeactivatedState(leaderMemberChangeState, logger)
     activatedState := NewLeaderMemberChangeActivatedState(
         leaderMemberChangeState, logger)
@@ -544,6 +568,6 @@ func SetupLeaderMemberChangeHSM(logger logging.Logger) *LeaderMemberChangeHSM {
     inMemberChangeState := NewLeaderInMemberChangeState(activatedState, logger)
     NewLeaderMemberChangePhase1State(inMemberChangeState, logger)
     NewLeaderMemberChangePhase2State(inMemberChangeState, logger)
-    leaderMemberChangeHSM := LeaderMemberChangeHSM(top, initial)
+    leaderMemberChangeHSM := NewLeaderMemberChangeHSM(top, initial)
     return leaderMemberChangeHSM
 }

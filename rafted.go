@@ -4,8 +4,7 @@ import (
     "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
-    "github.com/hhkbp2/rafted/persist"
-    "net"
+    ps "github.com/hhkbp2/rafted/persist"
     "time"
 )
 
@@ -23,16 +22,16 @@ func NewRaftNode(
     maxAppendEntriesSize uint64,
     maxSnapshotChunkSize uint64,
     poolSize int,
-    localAddr net.Addr,
-    bindAddr net.Addr,
-    otherPeerAddrs []net.Addr,
-    configManager persist.ConfigManager,
-    stateMachine persist.StateMachine,
-    log persist.Log,
-    snapshotManager persist.SnapshotManager,
+    localAddr ps.ServerAddr,
+    bindAddr ps.ServerAddr,
+    otherPeerAddrs []ps.ServerAddr,
+    configManager ps.ConfigManager,
+    stateMachine ps.StateMachine,
+    log ps.Log,
+    snapshotManager ps.SnapshotManager,
     logger logging.Logger) (*RaftNode, error) {
 
-    local := NewLocal(
+    local, err := NewLocal(
         heartbeatTimeout,
         electionTimeout,
         localAddr,
@@ -41,6 +40,9 @@ func NewRaftNode(
         log,
         snapshotManager,
         logger)
+    if err != nil {
+        return nil, err
+    }
     client := comm.NewSocketClient(poolSize)
     eventHandler1 := func(event ev.RaftEvent) {
         local.Dispatch(event)
@@ -49,7 +51,7 @@ func NewRaftNode(
         local.Dispatch(event)
     }
 
-    getLoggerForPeer := func(net.Addr) logging.Logger {
+    getLoggerForPeer := func(ps.ServerAddr) logging.Logger {
         return logger
     }
     peerManager := NewPeerManager(
@@ -61,7 +63,7 @@ func NewRaftNode(
         eventHandler1,
         local,
         getLoggerForPeer)
-    server, err := comm.NewSocketServer(bindAddr, eventHandler2)
+    server, err := comm.NewSocketServer(&bindAddr, eventHandler2)
     if err != nil {
         // TODO add cleanup
         return nil, err

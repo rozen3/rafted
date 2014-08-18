@@ -5,13 +5,13 @@ import (
     "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
-    "net"
+    ps "github.com/hhkbp2/rafted/persist"
     "sync"
     "time"
 )
 
 type PeerManager struct {
-    peerMap  map[net.Addr]*Peer
+    peerMap  map[ps.ServerAddr]*Peer
     peerLock sync.RWMutex
 
     heartbeatTimeout     time.Duration
@@ -20,19 +20,20 @@ type PeerManager struct {
     client               comm.Client
     eventHandler         func(ev.RaftEvent)
     local                *Local
+    getLoggerForPeer     func(ps.ServerAddr) logging.Logger
 }
 
 func NewPeerManager(
     heartbeatTimeout time.Duration,
     maxAppendEntriesSize uint64,
     maxSnapshotChunkSize uint64,
-    peerAddrs []net.Addr,
+    peerAddrs []ps.ServerAddr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
     local *Local,
-    getLoggerForPeer func(net.Addr) logging.Logger) *PeerManager {
+    getLoggerForPeer func(ps.ServerAddr) logging.Logger) *PeerManager {
 
-    peerMap := make(map[net.Addr]*Peer)
+    peerMap := make(map[ps.ServerAddr]*Peer)
     for _, addr := range peerAddrs {
         logger := getLoggerForPeer(addr)
         peerMap[addr] = NewPeer(
@@ -66,20 +67,20 @@ func (self *PeerManager) Broadcast(event hsm.Event) {
     }
 }
 
-func (self *PeerManager) ChangeMember(localAddr net.Addr, conf *persist.Config) {
+func (self *PeerManager) ChangeMember(localAddr ps.ServerAddr, conf *ps.Config) {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
-    newPeerMap := make(map[net.Addr]*Peer, 0)
+    newPeerMap := make(map[ps.ServerAddr]*Peer, 0)
     if conf.Servers != nil {
         for _, addr := range conf.Servers {
-            if persist.AddrNotEqual(addr, localAddr) {
+            if ps.AddrNotEqual(&addr, &localAddr) {
                 newPeerMap[addr] = nil
             }
         }
     }
     if conf.NewServers != nil {
         for _, addr := range conf.NewServers {
-            if persist.AddrNotEqual(addr, localAddr) {
+            if ps.AddrNotEqual(&addr, &localAddr) {
                 newPeerMap[addr] = nil
             }
         }
@@ -88,12 +89,12 @@ func (self *PeerManager) ChangeMember(localAddr net.Addr, conf *persist.Config) 
     peersToAdd := MapSetMinus(newPeerMap, self.peerMap)
     for _, addr := range peersToRemove {
         delete(self.peerMap, addr)
-        if err := self.client.CloseAll(addr); err != nil {
+        if err := self.client.CloseAll(&addr); err != nil {
             // TODO add log
         }
     }
     for _, addr := range peersToAdd {
-        logger := getLoggerForPeer(addr)
+        logger := self.getLoggerForPeer(addr)
         self.peerMap[addr] = NewPeer(
             self.heartbeatTimeout,
             self.maxAppendEntriesSize,
@@ -114,7 +115,7 @@ func NewPeer(
     heartbeatTimeout time.Duration,
     maxAppendEntriesSize uint64,
     maxSnapshotChunkSize uint64,
-    addr net.Addr,
+    addr ps.ServerAddr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
     local *Local,
@@ -153,7 +154,7 @@ type PeerHSM struct {
     selfDispatchChan chan hsm.Event
     group            sync.WaitGroup
 
-    addr         net.Addr
+    addr         ps.ServerAddr
     client       comm.Client
     eventHandler func(ev.RaftEvent)
     local        *Local
@@ -162,7 +163,7 @@ type PeerHSM struct {
 func NewPeerHSM(
     top hsm.State,
     initial hsm.State,
-    addr net.Addr,
+    addr ps.ServerAddr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
     local *Local) *PeerHSM {
@@ -221,7 +222,7 @@ func (self *PeerHSM) Terminate() {
     self.group.Wait()
 }
 
-func (self *PeerHSM) Addr() net.Addr {
+func (self *PeerHSM) Addr() ps.ServerAddr {
     return self.addr
 }
 

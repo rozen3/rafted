@@ -4,6 +4,7 @@ import (
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
+    ps "github.com/hhkbp2/rafted/persist"
     "sync"
     "time"
 )
@@ -46,7 +47,7 @@ func (self *CandidateState) Entry(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
-    localHSM.SetLeader(nil)
+    localHSM.SetLeader(ps.NilServerAddr)
     // init status for this state
     self.UpdateLastElectionTime()
     self.grantedVoteCount = 0
@@ -100,10 +101,11 @@ func (self *CandidateState) Handle(
             self.grantedVoteCount++
         }
 
-        if self.grantedVoteCount >= localHSM.QuorumSize() {
-            // TODO add log
-            localHSM.QTran(StateLeaderID)
-        }
+        // add inflight
+        // if self.grantedVoteCount >= localHSM.ConfigManager().QuorumSize() {
+        //     // TODO add log
+        //     localHSM.QTran(StateLeaderID)
+        // }
         return nil
     case event.Type() == ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesReqeustEvent)
@@ -144,17 +146,13 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
 
     // Vote for self
     term := localHSM.GetCurrentTerm()
-    localAddrBin, err := EncodeAddr(localHSM.GetLocalAddr())
-    if err != nil {
-        // TODO error handling
-    }
     lastLogTerm, lastLogIndex, err := localHSM.Log().LastEntryInfo()
     if err != nil {
         // TODO error handling
     }
     request := &ev.RequestVoteRequest{
         Term:         term,
-        Candidate:    localAddrBin,
+        Candidate:    localHSM.GetLocalAddr(),
         LastLogIndex: lastLogIndex,
         LastLogTerm:  lastLogTerm,
     }
@@ -171,15 +169,12 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
     localHSM.PeerManager().Broadcast(event)
 }
 
-func Stepdown(localHSM *LocalHSM, event hsm.Event, term uint64, leaderBin []byte) {
+func Stepdown(localHSM *LocalHSM, event hsm.Event, term uint64, leader ps.ServerAddr) {
     // replay this event
     localHSM.SelfDispatch(event)
-    // record the leader
-    leader, err := DecodeAddr(leaderBin)
-    if err != nil {
-        // TODO add error handling
-    }
+    // record the term
     localHSM.SetCurrentTerm(term)
+    // record the leader
     localHSM.SetLeader(leader)
     localHSM.QTran(StateFollowerID)
 }

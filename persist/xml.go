@@ -5,6 +5,7 @@ import (
     "errors"
     "io/ioutil"
     "os"
+    "sync"
 )
 
 type XMLServerAddrs struct {
@@ -89,7 +90,7 @@ func (self *XMLConfigManager) PushConfig(
     self.lock.Lock()
     defer self.lock.Unlock()
 
-    if logIndex <= self.LastMeta.FromLogIndex {
+    if logIndex <= self.Indexes[0] {
         return errors.New("index out of bound")
     }
 
@@ -145,7 +146,7 @@ func (self *XMLConfigManager) ListAfter(
     size := total - metaIndex
     metas := make([]*ConfigMeta, 0, size)
     for i := metaIndex; i < total; i++ {
-        metas := append(metas, self.LookupTable[self.Indexes[i]])
+        metas = append(metas, self.LookupTable[self.Indexes[i]])
     }
     return metas, nil
 }
@@ -155,7 +156,7 @@ func (self *XMLConfigManager) List() ([]*ConfigMeta, error) {
     defer self.lock.Unlock()
     metas := make([]*ConfigMeta, 0, len(self.Indexes))
     for _, index := range self.Indexes {
-        metas := append(metas, self.LookupTable[index])
+        metas = append(metas, self.LookupTable[index])
     }
     return metas, nil
 }
@@ -178,7 +179,7 @@ func (self *XMLConfigManager) TruncateBefore(logIndex uint64) error {
         metaIndex++
         newIndexes = self.Indexes[metaIndex:]
         for k, v := range self.LookupTable {
-            if k < metaIndex {
+            if k < self.Indexes[metaIndex] {
                 continue
             }
             newLookupTable[k] = v
@@ -186,7 +187,7 @@ func (self *XMLConfigManager) TruncateBefore(logIndex uint64) error {
     } else {
         newIndexes = make([]uint64, 0, len(self.Indexes)-metaIndex)
         newIndexes = append(newIndexes, logIndex)
-        newIndexes = append(newIndexes, self.Indexes[metaIndex+1]...)
+        newIndexes = append(newIndexes, self.Indexes[metaIndex+1:]...)
         for k, v := range self.LookupTable {
             if k < self.Indexes[metaIndex] {
                 continue
@@ -219,10 +220,9 @@ func (self *XMLConfigManager) TruncateAfter(logIndex uint64) error {
         return nil
     }
     metaIndex := 0
-    if logIndex < self.Indexes[0] {
-        metaIndex = 0
-    } else {
-        metaIndex, err := self.getMetaIndex(logIndex)
+    if logIndex >= self.Indexes[0] {
+        var err error
+        metaIndex, err = self.getMetaIndex(logIndex)
         if err != nil {
             return err
         }
@@ -233,7 +233,7 @@ func (self *XMLConfigManager) TruncateAfter(logIndex uint64) error {
         if metaIndex != 0 {
             newIndexes = self.Indexes[:metaIndex]
             for k, v := range self.LookupTable {
-                if k < metaIndex {
+                if k < self.Indexes[metaIndex] {
                     newLookupTable[k] = v
                 }
             }
@@ -252,7 +252,7 @@ func (self *XMLConfigManager) TruncateAfter(logIndex uint64) error {
         }
     }
 
-    err = self.persist(self.FilePath, newIndexes, newLookupTable)
+    err := self.persist(self.FilePath, newIndexes, newLookupTable)
     if err != nil {
         return err
     }
@@ -271,7 +271,7 @@ func (self *XMLConfigManager) persist(
     if err != nil {
         return err
     }
-    encoder := xml.Encoder(file)
+    encoder := xml.NewEncoder(file)
 
     xmlMetas := &XMLConfigMetas{
         ConfigMeta: make([]XMLConfigMeta, 0, len(indexes)+1),
@@ -282,21 +282,24 @@ func (self *XMLConfigManager) persist(
             FromLogIndex: meta.FromLogIndex,
             ToLogIndex:   meta.ToLogIndex,
             Conf: &XMLConfig{
-                ServerAddr: XMLServerAddrs{
-                    Servers:    meta.Conf.Servers,
-                    NewServers: meta.Conf.NewServers,
+                Servers: XMLServerAddrs{
+                    ServerAddr: meta.Conf.Servers,
+                },
+                NewServers: XMLServerAddrs{
+                    ServerAddr: meta.Conf.NewServers,
                 },
             },
         }
-        xmlMetas.ConfigMeta = append(xmlMeta.ConfigMeta, xmlMeta)
+        xmlMetas.ConfigMeta = append(xmlMetas.ConfigMeta, xmlMeta)
     }
 
     if err = encoder.Encode(xmlMetas); err != nil {
         return err
     }
+    return nil
 }
 
-func (self *XMLConfigManager) getMetaIndex(logIndex uint64) (uint64, error) {
+func (self *XMLConfigManager) getMetaIndex(logIndex uint64) (int, error) {
     if logIndex < self.Indexes[0] {
         return 0, errors.New("index out of bound")
     }
@@ -311,7 +314,7 @@ func (self *XMLConfigManager) getMetaIndex(logIndex uint64) (uint64, error) {
         middleIndex := (beginIndex + endIndex) / 2
         if (self.Indexes[middleIndex] <= logIndex) &&
             (self.Indexes[middleIndex+1] > logIndex) {
-            return middleIndex
+            return middleIndex, nil
         }
         if logIndex < self.Indexes[middleIndex] {
             endIndex = middleIndex

@@ -1,11 +1,11 @@
 package rafted
 
 import (
-    "bytes"
+    "errors"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
-    "github.com/hhkbp2/rafted/persist"
+    ps "github.com/hhkbp2/rafted/persist"
     "sync"
     "time"
 )
@@ -46,7 +46,7 @@ func (self *FollowerState) Entry(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
-    localHSM.SetVotedFor(nil)
+    localHSM.SetVotedFor(ps.NilServerAddr)
     // init status for this status
     self.UpdateLastContactTime()
     // start heartbeat timeout ticker
@@ -73,7 +73,7 @@ func (self *FollowerState) Exit(
     // stop heartbeat timeout ticker
     self.ticker.Stop()
     // cleanup global status
-    localHSM.SetVotedFor(nil)
+    localHSM.SetVotedFor(ps.NilServerAddr)
     return nil
 }
 
@@ -125,19 +125,25 @@ func (self *FollowerState) Handle(
         e, ok := event.(ev.ClientRequestEvent)
         hsm.AssertTrue(ok)
         // redirect client to current leader
-        leader := localHSM.GetLeader().String()
-        response := &ev.LeaderRedirectResponse{leader}
+        response := &ev.LeaderRedirectResponse{localHSM.GetLeader()}
         e.SendResponse(ev.NewLeaderRedirectResponseEvent(response))
         return nil
     case event.Type() == ev.EventMemberChangeNextStep:
-        e, ok := event.(*MemberChangeNextStepEvent)
+        e, ok := event.(*ev.MemberChangeNextStepEvent)
         hsm.AssertTrue(ok)
-        if !(IsOldNewConfig(e.Message.Conf) &&
+        conf := e.Message.Conf
+        if !(ps.IsOldNewConfig(conf) &&
             localHSM.GetMemberChangeStatus() == NotInMemeberChange) {
             // TODO error handling
         }
 
-        if err := localHSM.ConfigManager().PushConfig(conf); err != nil {
+        lastLogIndex, err := localHSM.Log().LastIndex()
+        if err != nil {
+            // TODO error handling
+        }
+
+        err = localHSM.ConfigManager().PushConfig(lastLogIndex+1, conf)
+        if err != nil {
             // TODO error handling
         }
         localHSM.SetMemberChangeStatus(OldNewConfigSeen)
@@ -167,18 +173,16 @@ func (self *FollowerState) ProcessRequestVote(
     if request.Term > term {
         localHSM.SetCurrentTerm(request.Term)
         // the old leader is now invalidated
-        localHSM.SetLeader(nil)
+        localHSM.SetLeader(ps.NilServerAddr)
         // transfer to follwer state for a new term
         localHSM.QTran(StateFollowerID)
         return nil, false
     }
 
     votedFor := localHSM.GetVotedFor()
-    if votedFor != nil {
+    if ps.AddrNotEqual(&votedFor, &ps.NilServerAddr) {
         // already voted once before
-        votedForBin, err := EncodeAddr(votedFor)
-        hsm.AssertNil(err)
-        if bytes.Compare(votedForBin, request.Candidate) == 0 {
+        if ps.AddrEqual(&votedFor, &request.Candidate) {
             // TODO add log
             response.Granted = true
         }
@@ -200,11 +204,7 @@ func (self *FollowerState) ProcessRequestVote(
         return response, true
     }
 
-    candidate, err := DecodeAddr(request.Candidate)
-    if err != nil {
-        // TODO add err checking
-    }
-    localHSM.SetVotedFor(candidate)
+    localHSM.SetVotedFor(request.Candidate)
     response.Granted = true
     return response, true
 }
@@ -213,8 +213,9 @@ func (self *FollowerState) ProcessAppendEntries(
     localHSM *LocalHSM,
     request *ev.AppendEntriesRequest) (*ev.AppendEntriesResponse, bool) {
 
+    log := localHSM.Log()
     term := localHSM.GetCurrentTerm()
-    lastLogTerm, lastLogIndex, err := localHSM.Log().LastEntryInfo()
+    lastLogTerm, lastLogIndex, err := log.LastEntryInfo()
     if err != nil {
         // TODO error handling
     }
@@ -229,26 +230,21 @@ func (self *FollowerState) ProcessAppendEntries(
         return response, true
     }
 
-    // decode leader from request
-    leader, err := DecodeAddr(request.Leader)
-    if err != nil {
-        // TODO error handling
-    }
-
+    leader := localHSM.GetLeader()
     // Update to latest term if we see newer term
     if request.Term > term {
         localHSM.SetCurrentTerm(request.Term)
         // update leader in new term
-        localHSM.SetLeader(leader)
+        localHSM.SetLeader(request.Leader)
         // transfer to follower state for a new term
         localHSM.QTran(StateFollowerID)
         return nil, false
     }
 
-    if localHSM.GetLeader() == nil {
-        localHSM.SetLeader(leader)
+    if ps.AddrEqual(&leader, &ps.NilServerAddr) {
+        localHSM.SetLeader(request.Leader)
         self.UpdateLastContact()
-    } else if persist.AddrEqual(localHSM.GetLeader(), leader) {
+    } else if ps.AddrEqual(&leader, &request.Leader) {
         self.UpdateLastContact()
     } else {
         // TODO error handling
@@ -260,7 +256,7 @@ func (self *FollowerState) ProcessAppendEntries(
         if request.PrevLogIndex == lastLogIndex {
             prevLogTerm = lastLogTerm
         } else {
-            prevLog, err := localHSM.Log().GetLog(request.PrevLogIndex)
+            prevLog, err := log.GetLog(request.PrevLogIndex)
             if err != nil {
                 // TODO error handling
                 return response, true
@@ -275,62 +271,107 @@ func (self *FollowerState) ProcessAppendEntries(
         }
     }
 
+    // check log entry index increase ascendingly
+    err = checkIndexesForEntries(&request.Entries)
+    if err != nil {
+        // TODO add log
+        return response, true
+    }
+
     // Process any new entries
     if n := len(request.Entries); n > 0 {
         first := request.Entries[0]
-
         // Delete any conflicting entries
         if first.Index <= lastLogIndex {
             // TODO add log
-            if err := localHSM.Log().TruncateAfter(first.Index); err != nil {
+            if err := log.TruncateAfter(first.Index); err != nil {
                 // TODO add log
                 return response, true
             }
         }
 
         // Append the entry
-        if err := localHSM.Log().StoreLogs(request.Entries); err != nil {
+        if err := log.StoreLogs(request.Entries); err != nil {
             // TODO add log
             return response, true
         }
-
     }
 
     // Update the commit index
-    committedIndex, err := localHSM.Log().CommittedIndex()
+    committedIndex, err := log.CommittedIndex()
     if err != nil {
         // TODO error handling
     }
     if (request.LeaderCommitIndex > 0) &&
         (request.LeaderCommitIndex > committedIndex) {
         index := Min(request.LeaderCommitIndex, lastLogIndex)
-        localHSM.Log().StoreCommittedIndex(index)
         localHSM.CommitLogsUpTo(index)
+        log.StoreCommittedIndex(index)
     }
 
-    // TODO if there is any member change entries
-    // from old CommittedIndex to first log index in request, if any member change entry commit
-    // send MemberChangeLogEntryCommitEvent
-    // from first log index in request, to new committted index, if any member change entry commit
-    // send MemberChangeNextStepEvent and MemberChangeLogEntryCommitEvent
-    // from new committed index to lastLogIndex, if any member change entry commit
-    // send MemberChangeNextStepEvent
+    // dispatch member change events
+    newLastLogIndex, err := log.LastIndex()
+    if err != nil {
+        // TODO error handling
+    }
+    newCommittedIndex, err := log.CommittedIndex()
+    if err != nil {
+        // TODO error handling
+    }
+    logEntries, err := log.GetLogInRange(committedIndex+1, newLastLogIndex)
+    if err != nil {
+        // TODO error handling
+    }
 
-    for _, entry := range request.Entries {
-        if entry.LogType == persist.LogMemberChange {
-            conf, err := DecodeConfig(entry.Conf)
-            if err != nil {
-                // TODO error handling
-            }
-            message := &MemberChangeNextStep{conf}
-            localHSM.SelfDispatch(ev.NewMemberChangeNextStepEvent(message))
-            if entry.Index <= newCommittedIndex {
-                message := &MemberChangeNextStep{conf}
+    if newCommittedIndex <= lastLogIndex {
+        // from old CommittedIndex to new CommittedIndex, if any member change entry commit
+        // send MemberChangeLogEntryCommitEvent
+        for i := committedIndex + 1; i <= newCommittedIndex; i++ {
+            entry := logEntries[i-(committedIndex+1)]
+            if entry.Type == ps.LogMemberChange {
+                message := &ev.MemberChangeNewConf{entry.Conf}
                 localHSM.SelfDispatch(ev.NewMemberChangeLogEntryCommitEvent(message))
             }
         }
+        // from old LastLogIndex to new LastLogIndex, if any member change entry commit
+        // send MemberChangeNextStepEvent
+        for i := lastLogIndex + 1; i <= newLastLogIndex; i++ {
+            entry := logEntries[i-(committedIndex+1)]
+            if entry.Type == ps.LogMemberChange {
+                message := &ev.MemberChangeNewConf{entry.Conf}
+                localHSM.SelfDispatch(ev.NewMemberChangeNextStepEvent(message))
+            }
+        }
+    } else {
+        // from old CommittedIndex to old LastLogIndex, if any member change entry commit
+        // send MemberChangeLogEntryCommitEvent
+        for i := committedIndex + 1; i <= lastLogIndex; i++ {
+            entry := logEntries[i-(committedIndex+1)]
+            if entry.Type == ps.LogMemberChange {
+                message := &ev.MemberChangeNewConf{entry.Conf}
+                localHSM.SelfDispatch(ev.NewMemberChangeLogEntryCommitEvent(message))
+            }
+        }
+        // from old LastLogIndex to new CommittedIndex, if any member change entry commit
+        // send MemberChangeNextStepEvent and MemberChangeLogEntryCommitEvent
+        for i := lastLogIndex + 1; i <= newCommittedIndex; i++ {
+            entry := logEntries[i-(committedIndex+1)]
+            if entry.Type == ps.LogMemberChange {
+                message := &ev.MemberChangeNewConf{entry.Conf}
+                localHSM.SelfDispatch(ev.NewMemberChangeNextStepEvent(message))
+                localHSM.SelfDispatch(ev.NewMemberChangeLogEntryCommitEvent(message))
+            }
+        }
+        // from new CommittedIndex to new LastLogIndex, if any member change entry commit
+        // send MemberChangeNextStepEvent
+        for i := newCommittedIndex + 1; i <= newLastLogIndex; i++ {
+            entry := logEntries[i-(committedIndex+1)]
+            if entry.Type == ps.LogMemberChange {
+                message := &ev.MemberChangeNewConf{entry.Conf}
+                localHSM.SelfDispatch(ev.NewMemberChangeNextStepEvent(message))
+            }
+        }
     }
-
     response.Success = true
     return response, true
 }
@@ -350,4 +391,15 @@ func (self *FollowerState) UpdateLastContactTime() {
 func (self *FollowerState) UpdateLastContact() {
     self.UpdateLastContactTime()
     self.ticker.Reset()
+}
+
+func checkIndexesForEntries(entries *[]*ps.LogEntry) error {
+    var index uint64 = 0
+    for _, entry := range *entries {
+        if !(index < entry.Index) {
+            return errors.New("log entry index not ascending")
+        }
+        index = entry.Index
+    }
+    return nil
 }

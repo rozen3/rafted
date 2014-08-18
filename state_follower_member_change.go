@@ -1,7 +1,10 @@
 package rafted
 
 import (
+    hsm "github.com/hhkbp2/go-hsm"
+    ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
+    ps "github.com/hhkbp2/rafted/persist"
 )
 
 type FollowerMemberChangeState struct {
@@ -11,7 +14,7 @@ type FollowerMemberChangeState struct {
 func NewFollowerMemberChangeState(
     super hsm.State, logger logging.Logger) *FollowerMemberChangeState {
 
-    object := &FollowerState{
+    object := &FollowerMemberChangeState{
         LogStateHead: NewLogStateHead(super, logger),
     }
     super.AddChild(object)
@@ -81,10 +84,12 @@ func (self *FollowerOldNewConfigSeenState) Handle(
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.PrintEvent(event))
     switch event.Type() {
-    case ev.EventMemberLogEntryCommit:
-        e, ok := event.(*MemberChangeLogEntryCommitEvent)
+    case ev.EventMemberChangeLogEntryCommit:
+        e, ok := event.(*ev.MemberChangeLogEntryCommitEvent)
         hsm.AssertTrue(ok)
-        if !(IsOldNewConfig(e.Message.Conf) &&
+        localHSM, ok := sm.(*LocalHSM)
+        hsm.AssertTrue(ok)
+        if !(ps.IsOldNewConfig(e.Message.Conf) &&
             localHSM.GetMemberChangeStatus() == OldNewConfigSeen) {
             // TODO error handling
         }
@@ -136,14 +141,23 @@ func (self *FollowerOldNewConfigCommittedState) Handle(
         ev.PrintEvent(event))
     switch event.Type() {
     case ev.EventMemberChangeNextStep:
-        e, ok := event.(*MemberChangeNextStepEvent)
+        e, ok := event.(*ev.MemberChangeNextStepEvent)
         hsm.AssertTrue(ok)
-        if !(IsNewConfig(e.Message.Conf) &&
+        localHSM, ok := sm.(*LocalHSM)
+        hsm.AssertTrue(ok)
+        conf := e.Message.Conf
+        if !(ps.IsNewConfig(conf) &&
             localHSM.GetMemberChangeStatus() == OldNewConfigCommitted) {
             // TODO error handling
         }
 
-        if err := localHSM.ConfigManager().PushConfig(conf); err != nil {
+        lastLogIndex, err := localHSM.Log().LastIndex()
+        if err != nil {
+            // TODO error handling
+        }
+
+        err = localHSM.ConfigManager().PushConfig(lastLogIndex+1, conf)
+        if err != nil {
             // TODO error handling
         }
         localHSM.SetMemberChangeStatus(NewConfigSeen)
@@ -191,19 +205,28 @@ func (self *FollowerNewConfigSeenState) Handle(
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.PrintEvent(event))
     switch event.Type() {
-    case ev.EventMemberLogEntryCommit:
-        e, ok := event.(*MemberChangeLogEntryCommitEvent)
+    case ev.EventMemberChangeLogEntryCommit:
+        e, ok := event.(*ev.MemberChangeLogEntryCommitEvent)
         hsm.AssertTrue(ok)
-        if !(IsNewConfig(e.Message.Conf) &&
+        localHSM, ok := sm.(*LocalHSM)
+        hsm.AssertTrue(ok)
+        if !(ps.IsNewConfig(e.Message.Conf) &&
             localHSM.GetMemberChangeStatus() == OldNewConfigCommitted) {
             // TODO error handling
         }
 
-        newConf := &persist.Config{
+        newConf := &ps.Config{
             Servers:    e.Message.Conf.NewServers[:],
             NewServers: nil,
         }
-        if err = configManager.PushConfig(newConf); err != nil {
+
+        lastLogIndex, err := localHSM.Log().LastIndex()
+        if err != nil {
+            // TODO error handling
+        }
+
+        err = localHSM.ConfigManager().PushConfig(lastLogIndex+1, newConf)
+        if err != nil {
             // TODO error handling
         }
         localHSM.SetMemberChangeStatus(NotInMemeberChange)

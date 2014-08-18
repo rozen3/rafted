@@ -6,8 +6,7 @@ import (
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
-    "github.com/hhkbp2/rafted/persist"
-    "net"
+    ps "github.com/hhkbp2/rafted/persist"
     "sync"
     "sync/atomic"
     "time"
@@ -22,12 +21,16 @@ const (
 type MemberChangeStatusType uint8
 
 const (
-    MemberChangeStatusNotSet MemberChangeStateType = iota
+    MemberChangeStatusNotSet MemberChangeStatusType = iota
     NotInMemeberChange
     OldNewConfigSeen
     OldNewConfigCommitted
     NewConfigSeen
     NewConfigCommitted
+)
+
+const (
+    DefaultSelfDispatchChanSize = 1000
 )
 
 type SelfDispatchHSM interface {
@@ -55,14 +58,14 @@ type LocalHSM struct {
     currentTerm uint64
 
     // the local addr
-    localAddr     net.Addr
+    localAddr     ps.ServerAddr
     localAddrLock sync.RWMutex
 
     // CandidateId that received vote in current term(or nil if none)
-    votedFor     net.Addr
+    votedFor     ps.ServerAddr
     votedForLock sync.RWMutex
     // leader infos
-    leader     net.Addr
+    leader     ps.ServerAddr
     leaderLock sync.RWMutex
 
     // member change infos
@@ -70,16 +73,16 @@ type LocalHSM struct {
     memberChangeStatusLock sync.RWMutex
 
     // configuration
-    configManager persist.ConfigManager
+    configManager ps.ConfigManager
 
     // state machine is exclusively used only in here
-    stateMachine persist.StateMachine
+    stateMachine ps.StateMachine
 
     // log entries
-    log persist.Log
+    log ps.Log
 
     // snapshot
-    snapshotManager persist.SnapshotManager
+    snapshotManager ps.SnapshotManager
 
     // peers
     peerManager *PeerManager
@@ -93,11 +96,11 @@ type LocalHSM struct {
 func NewLocalHSM(
     top hsm.State,
     initial hsm.State,
-    localAddr net.Addr,
-    configManager persist.ConfigManager,
-    stateMachine persist.StateMachine,
-    log persist.Log,
-    snapshotManager persist.SnapshotManager,
+    localAddr ps.ServerAddr,
+    configManager ps.ConfigManager,
+    stateMachine ps.StateMachine,
+    log ps.Log,
+    snapshotManager ps.SnapshotManager,
     logger logging.Logger) (*LocalHSM, error) {
 
     // TODO check the integrety between log and configManager
@@ -110,10 +113,11 @@ func NewLocalHSM(
         return nil, err
     }
 
+    chanSize := DefaultSelfDispatchChanSize
     return &LocalHSM{
         StdHSM:             hsm.NewStdHSM(HSMTypeLocal, top, initial),
         dispatchChan:       make(chan hsm.Event, 1),
-        selfDispatchChan:   make(chan hsm.Event, 1),
+        selfDispatchChan:   make(chan hsm.Event, chanSize),
         group:              sync.WaitGroup{},
         localAddr:          localAddr,
         configManager:      configManager,
@@ -123,7 +127,7 @@ func NewLocalHSM(
         Notifier:           NewNotifier(),
         Logger:             logger,
         memberChangeStatus: memberChangeStatus,
-    }
+    }, nil
 }
 
 func (self *LocalHSM) Init() {
@@ -185,37 +189,37 @@ func (self *LocalHSM) SetCurrentTerm(term uint64) {
     atomic.StoreUint64(&self.currentTerm, term)
 }
 
-func (self *LocalHSM) GetLocalAddr() net.Addr {
+func (self *LocalHSM) GetLocalAddr() ps.ServerAddr {
     self.localAddrLock.RLock()
     defer self.localAddrLock.RUnlock()
     return self.localAddr
 }
 
-func (self *LocalHSM) SetLocalAddr(addr net.Addr) {
+func (self *LocalHSM) SetLocalAddr(addr ps.ServerAddr) {
     self.localAddrLock.Lock()
     defer self.localAddrLock.Unlock()
     self.localAddr = addr
 }
 
-func (self *LocalHSM) GetVotedFor() net.Addr {
+func (self *LocalHSM) GetVotedFor() ps.ServerAddr {
     self.votedForLock.RLock()
     defer self.votedForLock.RUnlock()
     return self.votedFor
 }
 
-func (self *LocalHSM) SetVotedFor(votedFor net.Addr) {
+func (self *LocalHSM) SetVotedFor(votedFor ps.ServerAddr) {
     self.votedForLock.Lock()
     defer self.votedForLock.Unlock()
     self.votedFor = votedFor
 }
 
-func (self *LocalHSM) GetLeader() net.Addr {
+func (self *LocalHSM) GetLeader() ps.ServerAddr {
     self.leaderLock.RLock()
     defer self.leaderLock.RUnlock()
     return self.leader
 }
 
-func (self *LocalHSM) SetLeader(leader net.Addr) {
+func (self *LocalHSM) SetLeader(leader ps.ServerAddr) {
     self.leaderLock.Lock()
     defer self.leaderLock.Unlock()
     self.leader = leader
@@ -233,15 +237,15 @@ func (self *LocalHSM) SetMemberChangeStatus(status MemberChangeStatusType) {
     self.memberChangeStatus = status
 }
 
-func (self *LocalHSM) ConfigManager() persist.ConfigManager {
+func (self *LocalHSM) ConfigManager() ps.ConfigManager {
     return self.configManager
 }
 
-func (self *LocalHSM) Log() persist.Log {
+func (self *LocalHSM) Log() ps.Log {
     return self.log
 }
 
-func (self *LocalHSM) SnapshotManager() persist.SnapshotManager {
+func (self *LocalHSM) SnapshotManager() ps.SnapshotManager {
     return self.snapshotManager
 }
 
@@ -281,16 +285,16 @@ func (self *LocalHSM) CommitLogAt(index uint64) ([]byte, error) {
     return self.CommitLog(logEntry), nil
 }
 
-func (self *LocalHSM) CommitLog(logEntry *persist.LogEntry) []byte {
+func (self *LocalHSM) CommitLog(logEntry *ps.LogEntry) []byte {
     switch logEntry.Type {
-    case persist.LogCommand:
+    case ps.LogCommand:
         // TODO add impl
         return self.applyLog(logEntry)
-    case persist.LogNoop:
+    case ps.LogNoop:
         // just ignore
 
         /* TODO add other types */
-    case persist.LogMemberChange:
+    case ps.LogMemberChange:
         // nothing to do for member change
         return nil
     default:
@@ -300,15 +304,15 @@ func (self *LocalHSM) CommitLog(logEntry *persist.LogEntry) []byte {
     return nil
 }
 
-func (self *LocalHSM) applyLog(logEntry *persist.LogEntry) []byte {
+func (self *LocalHSM) applyLog(logEntry *ps.LogEntry) []byte {
     result := self.stateMachine.Apply(logEntry.Data)
     self.log.StoreLastAppliedIndex(logEntry.Index)
     return result
 }
 
 func InitMemberChangeStatus(
-    configManager persist.ConfigManager,
-    log persist.Log) (MemberChangeStatusType, error) {
+    configManager ps.ConfigManager,
+    log ps.Log) (MemberChangeStatusType, error) {
 
     // setup member change status according to the recent config
     committedIndex, err := log.CommittedIndex()
@@ -330,19 +334,19 @@ func InitMemberChangeStatus(
     }
     if length == 1 {
         conf := metas[0].Conf
-        if IsNormalConfig(conf) {
+        if ps.IsNormalConfig(conf) {
             return NotInMemeberChange, nil
-        } else if IsOldNewConfig(conf) {
+        } else if ps.IsOldNewConfig(conf) {
             return OldNewConfigCommitted, nil
         }
     } else { // length == 2
-        prevConf = metas[0].Conf
-        nextConf = metas[1].Conf
-        if IsNormalConfig(prevConf) && IsOldNewConfig(nextConf) {
+        prevConf := metas[0].Conf
+        nextConf := metas[1].Conf
+        if ps.IsNormalConfig(prevConf) && ps.IsOldNewConfig(nextConf) {
             return OldNewConfigSeen, nil
-        } else if IsOldNewConfig(prevConf) && IsNewConfig(nextConf) {
+        } else if ps.IsOldNewConfig(prevConf) && ps.IsNewConfig(nextConf) {
             return NewConfigSeen, nil
-        } else if IsNewConfig(prevConf) && IsNormalConfig(nextConf) {
+        } else if ps.IsNewConfig(prevConf) && ps.IsNormalConfig(nextConf) {
             return NotInMemeberChange, nil
         }
     }
@@ -357,12 +361,12 @@ type Local struct {
 func NewLocal(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
-    localAddr net.Addr,
-    configManager persist.ConfigManager,
-    stateMachine persist.StateMachine,
-    log persist.Log,
-    snapshotManager persist.SnapshotManager,
-    logger logging.Logger) *Local {
+    localAddr ps.ServerAddr,
+    configManager ps.ConfigManager,
+    stateMachine ps.StateMachine,
+    log ps.Log,
+    snapshotManager ps.SnapshotManager,
+    logger logging.Logger) (*Local, error) {
 
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StateLocalID)
@@ -378,7 +382,7 @@ func NewLocal(
     leaderState := NewLeaderState(needPeersState, logger)
     NewUnsyncState(leaderState, logger)
     NewSyncState(leaderState, logger)
-    localHSM := NewLocalHSM(
+    localHSM, err := NewLocalHSM(
         top,
         initial,
         localAddr,
@@ -387,6 +391,9 @@ func NewLocal(
         log,
         snapshotManager,
         logger)
+    if err != nil {
+        return nil, err
+    }
     localHSM.Init()
-    return &Local{localHSM}
+    return &Local{localHSM}, nil
 }

@@ -1,6 +1,8 @@
 package persist
 
-import "io"
+import (
+    "io"
+)
 
 // Metadata for a snapshot.
 type SnapshotMeta struct {
@@ -13,7 +15,7 @@ type SnapshotMeta struct {
     // total size of this snapshot
     Size uint64
     // the configuration of all servers
-    Servers []byte
+    Servers []ServerAddr
 }
 
 // SnapshotManager is the interface for durable snapshot management.
@@ -21,7 +23,7 @@ type SnapshotMeta struct {
 type SnapshotManager interface {
     // Create begins a snapshot at a given index and term,
     // along with the configuration of all servers
-    Create(term, index uint64, Servers []byte) (SnapshotWriter, error)
+    Create(term, index uint64, Servers []ServerAddr) (SnapshotWriter, error)
 
     // LastSnapshotInfo returns the term and logIndex of the latest snapshot.
     LastSnapshotInfo() (term uint64, logIndex uint64, err error)

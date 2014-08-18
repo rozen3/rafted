@@ -4,8 +4,7 @@ import (
     "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
-    "github.com/hhkbp2/rafted/persist"
-    "net"
+    ps "github.com/hhkbp2/rafted/persist"
     "testing"
     "time"
 )
@@ -19,12 +18,12 @@ const (
 )
 
 func NewTestRaftNode(
-    localAddr net.Addr,
-    otherPeerAddrs []net.Addr,
-    configManager persist.ConfigManager,
-    stateMachine persist.StateMachine,
-    log persist.Log,
-    snapshotManager persist.SnapshotManager) *RaftNode {
+    localAddr ps.ServerAddr,
+    otherPeerAddrs []ps.ServerAddr,
+    configManager ps.ConfigManager,
+    stateMachine ps.StateMachine,
+    log ps.Log,
+    snapshotManager ps.SnapshotManager) *RaftNode {
 
     localLogger := logging.GetLogger(
         "leader" + "#" + localAddr.Network() + "://" + localAddr.String())
@@ -48,7 +47,7 @@ func NewTestRaftNode(
     eventHandler2 := func(event ev.RaftRequestEvent) {
         local.Dispatch(event)
     }
-    getLoggerForPeer := func(peerAddr net.Addr) logging.Logger {
+    getLoggerForPeer := func(peerAddr ps.ServerAddr) logging.Logger {
         return logging.GetLogger(
             "peer" + "#" + peerAddr.Network() + "://" + peerAddr.String())
     }
@@ -64,7 +63,7 @@ func NewTestRaftNode(
     serverLogger := logging.GetLogger(
         "Server" + "#" + localAddr.Network() + "://" + localAddr.String())
     server := comm.NewMemoryServer(
-        localAddr, eventHandler2, register, serverLogger)
+        &localAddr, eventHandler2, register, serverLogger)
     go func() {
         server.Serve()
     }()
@@ -77,19 +76,27 @@ func NewTestRaftNode(
 }
 
 func TestRafted(t *testing.T) {
-    allAddrs := []net.Addr{
-        comm.NewMemoryAddr(),
-        comm.NewMemoryAddr(),
+    allAddrs := []ps.ServerAddr{
+        ps.ServerAddr{
+            Protocol: "memory",
+            IP:       "127.0.0.1",
+            Port:     6152,
+        },
+        ps.ServerAddr{
+            Protocol: "memory",
+            IP:       "127.0.0.1",
+            Port:     6153,
+        },
     }
-    stateMachine := persist.NewMemoryStateMachine()
-    log := persist.NewMemoryLog()
-    snapshotManager := persist.NewMemorySnapshotManager()
+    stateMachine := ps.NewMemoryStateMachine()
+    log := ps.NewMemoryLog()
+    snapshotManager := ps.NewMemorySnapshotManager()
     firstLogIndex, _ := log.FirstIndex()
-    config := &persist.Config{
+    config := &ps.Config{
         Servers:    allAddrs,
         NewServers: nil,
     }
-    configManager := persist.NewMemoryConfigManager(firstLogIndex, config)
+    configManager := ps.NewMemoryConfigManager(firstLogIndex, config)
     node1 := NewTestRaftNode(allAddrs[0], allAddrs[1:],
         configManager, stateMachine, log, snapshotManager)
     t.Log(node1)
