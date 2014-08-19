@@ -89,31 +89,52 @@ func (self *ReliableEventChannel) Close() {
     self.group.Wait()
 }
 
-const (
-    DefaultNotifyBufferSize = 100
-)
-
 type Notifier struct {
-    notifyCh chan ev.NotifyEvent
+    inChan    *ReliableEventChannel
+    outChan   chan ev.NotifyEvent
+    closeChan chan interface{}
+    group     *sync.WaitGroup
 }
 
 func NewNotifier() *Notifier {
-    return &Notifier{
-        notifyCh: make(chan ev.NotifyEvent, DefaultNotifyBufferSize),
+    object := &Notifier{
+        inChan:  NewReliableEventChannel(),
+        outChan: make(chan ev.NotifyEvent, 1),
+        group:   &sync.WaitGroup{},
     }
+    object.Start()
+    return object
+}
+
+func (self *Notifier) Start() {
+    self.group.Add(1)
+    go func() {
+        defer self.group.Done()
+        inChan := self.inChan.GetOutChan()
+        for {
+            select {
+            case <-self.closeChan:
+                return
+            case event := <-inChan:
+                ne, _ := event.(ev.NotifyEvent)
+                self.outChan <- ne
+            }
+        }
+    }()
 }
 
 func (self *Notifier) Notify(event ev.NotifyEvent) {
-    select {
-    case self.notifyCh <- event:
-    default:
-        // notifyCh not writable, ignore this event
-        // TODO add log
-    }
+    self.inChan.Send(event)
 }
 
 func (self *Notifier) GetNotifyChan() <-chan ev.NotifyEvent {
-    return self.notifyCh
+    return self.outChan
+}
+
+func (self *Notifier) Close() {
+    self.closeChan <- self
+    self.group.Wait()
+    self.inChan.Close()
 }
 
 type ClientEventListener struct {
