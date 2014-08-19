@@ -42,7 +42,7 @@ func (self *LocalState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
 func (self *LocalState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     // TODO add event handling if needed
     return nil
 }
@@ -119,7 +119,7 @@ func (self *NeedPeersState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     // TODO add log
     return self.Super()
 }

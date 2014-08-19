@@ -48,7 +48,7 @@ const (
     EventClientUser = hsm.EventUser + 1000 + iota
 )
 
-func PrintEvent(event hsm.Event) string {
+func EventTypeString(event hsm.Event) string {
     switch event.Type() {
     case hsm.EventInit:
         return "InitEvent"

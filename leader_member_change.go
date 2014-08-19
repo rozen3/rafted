@@ -94,7 +94,7 @@ func (self *LeaderMemberChangeState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     return self.Super()
 }
 
@@ -134,7 +134,7 @@ func (self *LeaderMemberChangeDeactivatedState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     switch event.Type() {
     case ev.EventLeaderMemberChangeActivate:
         sm.QTran(StateLeaderMemberChangeActivatedID)
@@ -198,7 +198,7 @@ func (self *LeaderMemberChangeActivatedState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     switch event.Type() {
     case ev.EventLeaderMemberChangeDeactivate:
         sm.QTran(StateLeaderMemberChangeDeactivatedID)
@@ -243,7 +243,7 @@ func (self *LeaderNotInMemberChangeState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     memberChangeHSM, ok := sm.(*LeaderMemberChangeHSM)
     hsm.AssertTrue(ok)
     localHSM := memberChangeHSM.LocalHSM
@@ -358,7 +358,7 @@ func (self *LeaderInMemberChangeState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     switch event.Type() {
     case ev.EventClientMemberChangeRequest:
         e, ok := event.(*ev.ClientMemberChangeRequestEvent)
@@ -407,7 +407,7 @@ func (self *LeaderMemberChangePhase1State) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     memberChangeHSM, ok := sm.(*LeaderMemberChangeHSM)
     hsm.AssertTrue(ok)
     localHSM := memberChangeHSM.LocalHSM
@@ -501,7 +501,7 @@ func (self *LeaderMemberChangePhase2State) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {

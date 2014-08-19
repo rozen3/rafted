@@ -43,7 +43,7 @@ func (self *FollowerMemberChangeState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     return self.Super()
 }
 
@@ -82,7 +82,7 @@ func (self *FollowerOldNewConfigSeenState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     switch event.Type() {
     case ev.EventMemberChangeLogEntryCommit:
         e, ok := event.(*ev.MemberChangeLogEntryCommitEvent)
@@ -138,7 +138,7 @@ func (self *FollowerOldNewConfigCommittedState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     switch event.Type() {
     case ev.EventMemberChangeNextStep:
         e, ok := event.(*ev.MemberChangeNextStepEvent)
@@ -203,7 +203,7 @@ func (self *FollowerNewConfigSeenState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     switch event.Type() {
     case ev.EventMemberChangeLogEntryCommit:
         e, ok := event.(*ev.MemberChangeLogEntryCommitEvent)

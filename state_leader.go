@@ -73,7 +73,7 @@ func (self *LeaderState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
@@ -339,7 +339,7 @@ func (self *UnsyncState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
@@ -411,6 +411,6 @@ func (self *SyncState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.PrintEvent(event))
+        ev.EventTypeString(event))
     return self.Super()
 }
