@@ -86,6 +86,11 @@ func (self *FollowerState) Handle(
     hsm.AssertTrue(ok)
     switch {
     case event.Type() == ev.EventTimeoutHeartbeat:
+        e, ok := event.(*ev.HeartbeatTimeoutEvent)
+        hsm.AssertTrue(ok)
+        notifyEvent := ev.NewNotifyHeartbeatTimeoutEvent(
+            e.Message.LastTime, e.Message.Timeout)
+        localHSM.Notifier().Notify(notifyEvent)
         localHSM.QTran(StateCandidateID)
         return nil
     case event.Type() == ev.EventRequestVoteRequest:

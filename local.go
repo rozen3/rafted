@@ -84,7 +84,7 @@ type LocalHSM struct {
     peerManager *PeerManager
 
     // notifier
-    *Notifier
+    notifier *Notifier
 
     logging.Logger
 }
@@ -119,7 +119,7 @@ func NewLocalHSM(
         stateMachine:       stateMachine,
         log:                log,
         snapshotManager:    snapshotManager,
-        Notifier:           NewNotifier(),
+        notifier:           NewNotifier(),
         Logger:             logger,
         memberChangeStatus: memberChangeStatus,
     }, nil
@@ -252,6 +252,10 @@ func (self *LocalHSM) PeerManager() *PeerManager {
 
 func (self *LocalHSM) SetPeerManager(peerManager *PeerManager) {
     self.peerManager = peerManager
+}
+
+func (self *LocalHSM) Notifier() *Notifier {
+    return self.notifier
 }
 
 func (self *LocalHSM) CommitLogsUpTo(index uint64) {

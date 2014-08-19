@@ -119,6 +119,11 @@ func (self *CandidateState) Handle(
     hsm.AssertTrue(ok)
     switch {
     case event.Type() == ev.EventTimeoutElection:
+        e, ok := event.(*ev.ElectionTimeoutEvent)
+        hsm.AssertTrue(ok)
+        notifyEvent := ev.NewNotifyElectionTimeoutEvent(
+            e.Message.LastTime, e.Message.Timeout)
+        localHSM.Notifier().Notify(notifyEvent)
         // transfer to self, trigger Exit and Entry
         localHSM.QTran(StateCandidateID)
         return nil

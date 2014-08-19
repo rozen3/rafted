@@ -308,6 +308,11 @@ func (self *LeaderPeerState) Handle(
     local := peerHSM.Local()
     switch event.Type() {
     case ev.EventTimeoutHeartbeat:
+        e, ok := event.(*ev.HeartbeatTimeoutEvent)
+        hsm.AssertTrue(ok)
+        notifyEvent := ev.NewNotifyHeartbeatTimeoutEvent(
+            e.Message.LastTime, e.Message.Timeout)
+        local.Notifier().Notify(notifyEvent)
         // check whether the peer falls behind the leader
         matchIndex, _ := self.GetIndexInfo()
         lastLogIndex, err := local.Log().LastIndex()
@@ -335,9 +340,9 @@ func (self *LeaderPeerState) Handle(
             Entries:           make([]*ps.LogEntry, 0),
             LeaderCommitIndex: committedIndex,
         }
-        e := ev.NewAppendEntriesRequestEvent(request)
+        requestEvent := ev.NewAppendEntriesRequestEvent(request)
         peerAddr := peerHSM.Addr()
-        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
+        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, requestEvent)
         if err != nil {
             // TODO error handling
         }
