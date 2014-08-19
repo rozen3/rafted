@@ -1,6 +1,9 @@
 package event
 
-import hsm "github.com/hhkbp2/go-hsm"
+import (
+    hsm "github.com/hhkbp2/go-hsm"
+    ps "github.com/hhkbp2/rafted/persist"
+)
 
 const (
     EventTerm hsm.EventType = hsm.EventUser + 100 + iota
@@ -180,8 +183,8 @@ func (self *RaftRequestEventHead) RecvResponse() RaftEvent {
 
 func NewRaftRequestEventHead(eventType hsm.EventType) *RaftRequestEventHead {
     return &RaftRequestEventHead{
-        hsm.NewStdEvent(eventType),
-        make(chan RaftEvent, 1),
+        StdEvent:   hsm.NewStdEvent(eventType),
+        resultChan: make(chan RaftEvent, 1),
     }
 }
 
@@ -194,8 +197,9 @@ func NewAppendEntriesRequestEvent(
     request *AppendEntriesRequest) *AppendEntriesReqeustEvent {
 
     return &AppendEntriesReqeustEvent{
-        NewRaftRequestEventHead(EventAppendEntriesRequest),
-        request,
+        RaftRequestEventHead: NewRaftRequestEventHead(
+            EventAppendEntriesRequest),
+        Request: request,
     }
 }
 func (self *AppendEntriesReqeustEvent) Message() interface{} {
@@ -204,14 +208,15 @@ func (self *AppendEntriesReqeustEvent) Message() interface{} {
 
 type AppendEntriesResponseEvent struct {
     *hsm.StdEvent
+    FromAddr ps.ServerAddr
     Response *AppendEntriesResponse
 }
 
 func NewAppendEntriesResponseEvent(
     response *AppendEntriesResponse) *AppendEntriesResponseEvent {
     return &AppendEntriesResponseEvent{
-        hsm.NewStdEvent(EventAppendEntriesResponse),
-        response,
+        StdEvent: hsm.NewStdEvent(EventAppendEntriesResponse),
+        Response: response,
     }
 }
 
@@ -228,8 +233,8 @@ func NewRequestVoteRequestEvent(
     request *RequestVoteRequest) *RequestVoteRequestEvent {
 
     return &RequestVoteRequestEvent{
-        NewRaftRequestEventHead(EventRequestVoteRequest),
-        request,
+        RaftRequestEventHead: NewRaftRequestEventHead(EventRequestVoteRequest),
+        Request:              request,
     }
 }
 
@@ -239,6 +244,7 @@ func (self *RequestVoteRequestEvent) Message() interface{} {
 
 type RequestVoteResponseEvent struct {
     *hsm.StdEvent
+    FromAddr ps.ServerAddr
     Response *RequestVoteResponse
 }
 
@@ -246,8 +252,8 @@ func NewRequestVoteResponseEvent(
     response *RequestVoteResponse) *RequestVoteResponseEvent {
 
     return &RequestVoteResponseEvent{
-        hsm.NewStdEvent(EventRequestVoteResponse),
-        response,
+        StdEvent: hsm.NewStdEvent(EventRequestVoteResponse),
+        Response: response,
     }
 }
 
@@ -263,8 +269,9 @@ type InstallSnapshotRequestEvent struct {
 func NewInstallSnapshotRequestEvent(
     request *InstallSnapshotRequest) *InstallSnapshotRequestEvent {
     return &InstallSnapshotRequestEvent{
-        NewRaftRequestEventHead(EventInstallSnapshotRequest),
-        request,
+        RaftRequestEventHead: NewRaftRequestEventHead(
+            EventInstallSnapshotRequest),
+        Request: request,
     }
 }
 
@@ -281,8 +288,8 @@ func NewInstallSnapshotResponseEvent(
     response *InstallSnapshotResponse) *InstallSnapshotResponseEvent {
 
     return &InstallSnapshotResponseEvent{
-        hsm.NewStdEvent(EventInstallSnapshotResponse),
-        response,
+        StdEvent: hsm.NewStdEvent(EventInstallSnapshotResponse),
+        Response: response,
     }
 }
 
@@ -299,8 +306,8 @@ func NewHeartbeatTimeoutEvent(
     message *HeartbeatTimeout) *HeartbeatTimeoutEvent {
 
     return &HeartbeatTimeoutEvent{
-        hsm.NewStdEvent(EventTimeoutHeartbeat),
-        message,
+        StdEvent: hsm.NewStdEvent(EventTimeoutHeartbeat),
+        Message:  message,
     }
 }
 
@@ -309,7 +316,9 @@ type ElectionTimeoutEvent struct {
 }
 
 func NewElectionTimeoutEvent() *ElectionTimeoutEvent {
-    return &ElectionTimeoutEvent{hsm.NewStdEvent(EventTimeoutElection)}
+    return &ElectionTimeoutEvent{
+        hsm.NewStdEvent(EventTimeoutElection),
+    }
 }
 
 type AbortSnapshotRecoveryEvent struct {
@@ -318,7 +327,7 @@ type AbortSnapshotRecoveryEvent struct {
 
 func NewAbortSnapshotRecoveryEvent() *AbortSnapshotRecoveryEvent {
     return &AbortSnapshotRecoveryEvent{
-        hsm.NewStdEvent(EventAbortSnapshotRecovery),
+        StdEvent: hsm.NewStdEvent(EventAbortSnapshotRecovery),
     }
 }
 
@@ -328,7 +337,7 @@ type StepdownEvent struct {
 
 func NewStepdownEvent() *StepdownEvent {
     return &StepdownEvent{
-        hsm.NewStdEvent(EventStepdown),
+        StdEvent: hsm.NewStdEvent(EventStepdown),
     }
 }
 
@@ -341,8 +350,8 @@ func NewMemberChangeNextStepEvent(
     message *MemberChangeNewConf) *MemberChangeNextStepEvent {
 
     return &MemberChangeNextStepEvent{
-        hsm.NewStdEvent(EventMemberChangeNextStep),
-        message,
+        StdEvent: hsm.NewStdEvent(EventMemberChangeNextStep),
+        Message:  message,
     }
 }
 
@@ -355,8 +364,8 @@ func NewMemberChangeLogEntryCommitEvent(
     message *MemberChangeNewConf) *MemberChangeLogEntryCommitEvent {
 
     return &MemberChangeLogEntryCommitEvent{
-        hsm.NewStdEvent(EventMemberChangeLogEntryCommit),
-        message,
+        StdEvent: hsm.NewStdEvent(EventMemberChangeLogEntryCommit),
+        Message:  message,
     }
 }
 
@@ -366,7 +375,7 @@ type LeaderMemberChangeActivateEvent struct {
 
 func NewLeaderMemberChangeActivateEvent() *LeaderMemberChangeActivateEvent {
     return &LeaderMemberChangeActivateEvent{
-        hsm.NewStdEvent(EventLeaderMemberChangeActivate),
+        StdEvent: hsm.NewStdEvent(EventLeaderMemberChangeActivate),
     }
 }
 
@@ -376,7 +385,7 @@ type LeaderMemberChangeDeactivateEvent struct {
 
 func NewLeaderMemberChangeDeactivateEvent() *LeaderMemberChangeDeactivateEvent {
     return &LeaderMemberChangeDeactivateEvent{
-        hsm.NewStdEvent(EventLeaderMemberChangeDeactivate),
+        StdEvent: hsm.NewStdEvent(EventLeaderMemberChangeDeactivate),
     }
 }
 
@@ -386,21 +395,20 @@ type LeaderReenterMemberChangeStateEvent struct {
 
 func NewLeaderReenterMemberChangeStateEvent() *LeaderReenterMemberChangeStateEvent {
     return &LeaderReenterMemberChangeStateEvent{
-        hsm.NewStdEvent(EventLeaderReenterMemberChangeState),
+        StdEvent: hsm.NewStdEvent(EventLeaderReenterMemberChangeState),
     }
 }
 
 type LeaderForwardMemberChangePhaseEvent struct {
     *hsm.StdEvent
-
     Message *LeaderForwardMemberChangePhase
 }
 
 func NewLeaderForwardMemberChangePhaseEvent(
     message *LeaderForwardMemberChangePhase) *LeaderForwardMemberChangePhaseEvent {
     return &LeaderForwardMemberChangePhaseEvent{
-        hsm.NewStdEvent(EventLeaderForwardMemberChangePhase),
-        message,
+        StdEvent: hsm.NewStdEvent(EventLeaderForwardMemberChangePhase),
+        Message:  message,
     }
 }
 
@@ -413,8 +421,8 @@ func NewPeerReplicateLogEvent(
     message *PeerReplicateLog) *PeerReplicateLogEvent {
 
     return &PeerReplicateLogEvent{
-        hsm.NewStdEvent(EventPeerReplicateLog),
-        message,
+        StdEvent: hsm.NewStdEvent(EventPeerReplicateLog),
+        Message:  message,
     }
 }
 
@@ -424,7 +432,7 @@ type PeerActivateEvent struct {
 
 func NewPeerActivateEvent() *PeerActivateEvent {
     return &PeerActivateEvent{
-        hsm.NewStdEvent(EventPeerActivate),
+        StdEvent: hsm.NewStdEvent(EventPeerActivate),
     }
 }
 
@@ -434,7 +442,7 @@ type PeerDeactivateEvent struct {
 
 func NewPeerDeactivateEvent() *PeerDeactivateEvent {
     return &PeerDeactivateEvent{
-        hsm.NewStdEvent(EventPeerDeactivate),
+        StdEvent: hsm.NewStdEvent(EventPeerDeactivate),
     }
 }
 
@@ -444,7 +452,7 @@ type PeerEnterLeaderEvent struct {
 
 func NewPeerEnterLeaderEvent() *PeerEnterLeaderEvent {
     return &PeerEnterLeaderEvent{
-        hsm.NewStdEvent(EventPeerEnterLeader),
+        StdEvent: hsm.NewStdEvent(EventPeerEnterLeader),
     }
 }
 
@@ -454,7 +462,7 @@ type PeerEnterSnapshotModeEvent struct {
 
 func NewPeerEnterSnapshotModeEvent() *PeerEnterSnapshotModeEvent {
     return &PeerEnterSnapshotModeEvent{
-        hsm.NewStdEvent(EventPeerEnterSnapshotMode),
+        StdEvent: hsm.NewStdEvent(EventPeerEnterSnapshotMode),
     }
 }
 
@@ -464,7 +472,7 @@ type PeerAbortSnapshotModeEvent struct {
 
 func NewPeerAbortSnapshotModeEvent() *PeerAbortSnapshotModeEvent {
     return &PeerAbortSnapshotModeEvent{
-        hsm.NewStdEvent(EventPeerAbortSnapshotMode),
+        StdEvent: hsm.NewStdEvent(EventPeerAbortSnapshotMode),
     }
 }
 
@@ -496,8 +504,8 @@ func NewClientRequestEventHead(
     eventType hsm.EventType) *ClientRequestEventHead {
 
     return &ClientRequestEventHead{
-        hsm.NewStdEvent(eventType),
-        make(chan ClientEvent, 1),
+        StdEvent:   hsm.NewStdEvent(eventType),
+        ResultChan: make(chan ClientEvent, 1),
     }
 }
 
@@ -510,8 +518,9 @@ func NewClientWriteRequestEvent(
     request *ClientWriteRequest) *ClientWriteRequestEvent {
 
     return &ClientWriteRequestEvent{
-        NewClientRequestEventHead(EventClientWriteRequest),
-        request,
+        ClientRequestEventHead: NewClientRequestEventHead(
+            EventClientWriteRequest),
+        Request: request,
     }
 }
 
@@ -524,8 +533,9 @@ func NewClientReadOnlyRequestEvent(
     request *ClientReadOnlyRequest) *ClientReadOnlyRequestEvent {
 
     return &ClientReadOnlyRequestEvent{
-        NewClientRequestEventHead(EventClientReadOnlyRequest),
-        request,
+        ClientRequestEventHead: NewClientRequestEventHead(
+            EventClientReadOnlyRequest),
+        Request: request,
     }
 }
 
@@ -538,8 +548,9 @@ func NewClientMemberChangeRequestEvent(
     request *ClientMemberChangeRequest) *ClientMemberChangeRequestEvent {
 
     return &ClientMemberChangeRequestEvent{
-        NewClientRequestEventHead(EventClientMemberChangeRequest),
-        request,
+        ClientRequestEventHead: NewClientRequestEventHead(
+            EventClientMemberChangeRequest),
+        Request: request,
     }
 }
 
@@ -552,8 +563,8 @@ func NewClientResponseEvent(
     response *ClientResponse) *ClientResponseEvent {
 
     return &ClientResponseEvent{
-        hsm.NewStdEvent(EventClientResponse),
-        response,
+        StdEvent: hsm.NewStdEvent(EventClientResponse),
+        Response: response,
     }
 }
 
@@ -565,8 +576,8 @@ type LeaderRedirectResponseEvent struct {
 func NewLeaderRedirectResponseEvent(
     response *LeaderRedirectResponse) *LeaderRedirectResponseEvent {
     return &LeaderRedirectResponseEvent{
-        hsm.NewStdEvent(EventLeaderRedirectResponse),
-        response,
+        StdEvent: hsm.NewStdEvent(EventLeaderRedirectResponse),
+        Response: response,
     }
 }
 
@@ -579,8 +590,8 @@ func NewLeaderUnknownResponseEvent(
     response *LeaderUnknownResponse) *LeaderUnknownResponseEvent {
 
     return &LeaderUnknownResponseEvent{
-        hsm.NewStdEvent(EventLeaderUnknownResponse),
-        response,
+        StdEvent: hsm.NewStdEvent(EventLeaderUnknownResponse),
+        Response: response,
     }
 }
 
@@ -593,8 +604,8 @@ func NewLeaderUnsyncResponseEvent(
     response *LeaderUnsyncResponse) *LeaderUnsyncResponseEvent {
 
     return &LeaderUnsyncResponseEvent{
-        hsm.NewStdEvent(EventLeaderUnsyncResponse),
-        response,
+        StdEvent: hsm.NewStdEvent(EventLeaderUnsyncResponse),
+        Response: response,
     }
 }
 
@@ -607,7 +618,7 @@ func NewLeaderInMemberChangeResponseEvent(
     response *LeaderInMemberChangeResponse) *LeaderInMemberChangeResponseEvent {
 
     return &LeaderInMemberChangeResponseEvent{
-        hsm.NewStdEvent(EventLeaderInMemberChangeResponse),
-        response,
+        StdEvent: hsm.NewStdEvent(EventLeaderInMemberChangeResponse),
+        Response: response,
     }
 }

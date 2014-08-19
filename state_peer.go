@@ -153,8 +153,9 @@ func (self *ActivatedPeerState) Handle(
         peerHSM.SelfDispatch(response)
         return nil
     case ev.EventRequestVoteResponse:
-        e, ok := event.(ev.RaftEvent)
+        e, ok := event.(*ev.RequestVoteResponseEvent)
         hsm.AssertTrue(ok)
+        e.FromAddr = peerHSM.Addr()
         peerHSM.EventHandler()(e)
         return nil
     case ev.EventPeerDeactivate:
@@ -339,13 +340,14 @@ func (self *LeaderPeerState) Handle(
         if err != nil {
             // TODO error handling
         }
-        appendEntriesResponseEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
+        appendEntriesRespEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
         if !ok {
             // TODO error handling
         }
+        appendEntriesRespEvent.FromAddr = peerAddr
         // update last contact timer
         self.UpdateLastContact()
-        peerHSM.SelfDispatch(appendEntriesResponseEvent)
+        peerHSM.SelfDispatch(appendEntriesRespEvent)
         return nil
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
@@ -464,20 +466,21 @@ func (self *StandardModePeerState) Handle(
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
         peerAddr := peerHSM.Addr()
-        responseEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
+        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
             // TODO error handling
         }
-        aeResponseEvent, ok := responseEvent.(*ev.AppendEntriesResponseEvent)
+        appendEntriesRespEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
         if !ok {
             // TODO error handling
         }
+        appendEntriesRespEvent.FromAddr = peerAddr
         // update last contact timer
         leaderPeerState, ok := self.Super().(*LeaderPeerState)
         hsm.AssertTrue(ok)
         leaderPeerState.UpdateLastContact()
         // dispatch response to self, just jump to the next case block
-        peerHSM.SelfDispatch(aeResponseEvent)
+        peerHSM.SelfDispatch(appendEntriesRespEvent)
         return nil
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)

@@ -23,7 +23,7 @@ func NewTestRaftNode(
     configManager ps.ConfigManager,
     stateMachine ps.StateMachine,
     log ps.Log,
-    snapshotManager ps.SnapshotManager) *RaftNode {
+    snapshotManager ps.SnapshotManager) (*RaftNode, error) {
 
     localLogger := logging.GetLogger(
         "leader" + "#" + localAddr.Network() + "://" + localAddr.String())
@@ -38,6 +38,7 @@ func NewTestRaftNode(
         localLogger)
     if err != nil {
         // TODO error handling
+        return nil, err
     }
     register := comm.NewMemoryTransportRegister()
     client := comm.NewMemoryClient(DefaultPoolSize, register)
@@ -72,7 +73,7 @@ func NewTestRaftNode(
         peerManager: peerManager,
         client:      client,
         server:      server,
-    }
+    }, nil
 }
 
 func TestRafted(t *testing.T) {
@@ -97,8 +98,11 @@ func TestRafted(t *testing.T) {
         NewServers: nil,
     }
     configManager := ps.NewMemoryConfigManager(firstLogIndex, config)
-    node1 := NewTestRaftNode(allAddrs[0], allAddrs[1:],
+    node1, err := NewTestRaftNode(allAddrs[0], allAddrs[1:],
         configManager, stateMachine, log, snapshotManager)
+    if err != nil {
+        t.Error("fail to create test raft node, error:", err)
+    }
     t.Log(node1)
     // node2 := NewTestRaftNode(allAddrs[1], allAddrs[:1],
     //     configManager, stateMachine, log, snapshotManager)

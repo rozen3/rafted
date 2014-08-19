@@ -203,8 +203,7 @@ func (self *LeaderState) StartFlight(
     }
 
     if ps.IsInMemeberChange(request.Conf) {
-        localHSM.PeerManager().ChangeMember(
-            localHSM.GetLocalAddr(), request.Conf)
+        localHSM.PeerManager().ResetPeers(localHSM.GetLocalAddr(), request.Conf)
         self.Inflight.ChangeMember(request.Conf)
     }
     //  and inflight log entry

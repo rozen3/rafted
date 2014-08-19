@@ -14,28 +14,39 @@ type CommitCondition interface {
 }
 
 type MajorityCommitCondition struct {
+    VoteStatus   map[ps.ServerAddr]bool
     VoteCount    uint32
-    ClusterSize  uint32
     MajoritySize uint32
 }
 
 func NewMajorityCommitCondition(
-    clusterSize int) *MajorityCommitCondition {
+    addrs []ps.ServerAddr) *MajorityCommitCondition {
 
-    size := uint32(clusterSize)
+    voteStatus := make(map[ps.ServerAddr]bool)
+    for _, addr := range addrs {
+        voteStatus[addr] = false
+    }
     return &MajorityCommitCondition{
+        VoteStatus:   voteStatus,
         VoteCount:    0,
-        ClusterSize:  size,
-        MajoritySize: (size / 2) + 1,
+        MajoritySize: uint32((len(addrs) / 2) + 1),
     }
 }
 
-func (self *MajorityCommitCondition) AddVote(_ ps.ServerAddr) error {
-    if self.VoteCount < self.ClusterSize {
-        self.VoteCount++
-        return nil
+func (self *MajorityCommitCondition) AddVote(addr ps.ServerAddr) error {
+    if _, ok := self.VoteStatus[addr]; ok {
+        return errors.New(fmt.Sprintf("%s already voted", addr.String()))
     }
-    return errors.New("vote overflow")
+    self.VoteStatus[addr] = true
+    self.VoteCount++
+    return nil
+}
+
+func (self *MajorityCommitCondition) IsInCluster(addr ps.ServerAddr) bool {
+    if _, ok := self.VoteStatus[addr]; ok {
+        return true
+    }
+    return false
 }
 
 func (self *MajorityCommitCondition) IsCommitted() bool {
@@ -43,53 +54,34 @@ func (self *MajorityCommitCondition) IsCommitted() bool {
 }
 
 type MemberChangeCommitCondition struct {
-    OldServersVoteStatus      map[ps.ServerAddr]bool
     OldServersCommitCondition *MajorityCommitCondition
-    NewServersVoteStatus      map[ps.ServerAddr]bool
     NewServersCommitCondition *MajorityCommitCondition
 }
 
 func NewMemberChangeCommitCondition(
     conf *ps.Config) *MemberChangeCommitCondition {
 
-    genVoteStatus := func(servers []ps.ServerAddr) map[ps.ServerAddr]bool {
-        voteStatus := make(map[ps.ServerAddr]bool)
-        for _, server := range servers {
-            voteStatus[server] = false
-        }
-        return voteStatus
-    }
-    oldServersLen := len(conf.Servers)
-    newServersLen := len(conf.NewServers)
     return &MemberChangeCommitCondition{
-        OldServersVoteStatus:      genVoteStatus(conf.Servers),
-        OldServersCommitCondition: NewMajorityCommitCondition(oldServersLen),
-        NewServersVoteStatus:      genVoteStatus(conf.NewServers),
-        NewServersCommitCondition: NewMajorityCommitCondition(newServersLen),
+        OldServersCommitCondition: NewMajorityCommitCondition(conf.Servers),
+        NewServersCommitCondition: NewMajorityCommitCondition(conf.NewServers),
     }
 }
 
 func (self *MemberChangeCommitCondition) AddVote(addr ps.ServerAddr) error {
-    voteSuccess := false
-    if _, ok := self.OldServersVoteStatus[addr]; ok {
+    if self.OldServersCommitCondition.IsInCluster(addr) {
         if err := self.OldServersCommitCondition.AddVote(addr); err != nil {
             return err
         }
-        self.OldServersVoteStatus[addr] = true
-        voteSuccess = true
+        return nil
     }
-    if _, ok := self.NewServersVoteStatus[addr]; ok {
+    if self.NewServersCommitCondition.IsInCluster(addr) {
         if err := self.NewServersCommitCondition.AddVote(addr); err != nil {
             return err
         }
-        self.NewServersVoteStatus[addr] = true
-        voteSuccess = true
-    }
-    if voteSuccess {
         return nil
     }
     return errors.New(
-        fmt.Sprintf("unknown server with addr: %s:%d", addr.IP, addr.Port))
+        fmt.Sprintf("addr %s not in old/new config", addr.String()))
 }
 
 func (self *MemberChangeCommitCondition) IsCommitted() bool {
@@ -128,7 +120,7 @@ func NewInflightEntry(
     return &InflightEntry{
         LogIndex:  logIndex,
         Request:   request,
-        Condition: NewMajorityCommitCondition(len(request.Conf.Servers)),
+        Condition: NewMajorityCommitCondition(request.Conf.Servers),
     }
 }
 

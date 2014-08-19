@@ -19,7 +19,7 @@ type CandidateState struct {
     lastElectionTime     time.Time
     lastElectionTimeLock sync.RWMutex
     // vote
-    grantedVoteCount uint32
+    condition CommitCondition
 }
 
 func NewCandidateState(
@@ -48,9 +48,40 @@ func (self *CandidateState) Entry(
     hsm.AssertTrue(ok)
     // init global status
     localHSM.SetLeader(ps.NilServerAddr)
+    memberChangeStatus := localHSM.GetMemberChangeStatus()
+    switch memberChangeStatus {
+    case OldNewConfigSeen:
+        fallthrough
+    case OldNewConfigCommitted:
+        conf, err := localHSM.ConfigManager().LastConfig()
+        if err != nil {
+            // TODO error handling
+        }
+        self.condition = NewMemberChangeCommitCondition(conf)
+    case NewConfigSeen:
+        committedIndex, err := localHSM.Log().CommittedIndex()
+        if err != nil {
+            // TODO error handling
+        }
+        metas, err := localHSM.ConfigManager().ListAfter(committedIndex)
+        if err != nil {
+            // TODO error handling
+        }
+        if len(metas) != 2 {
+            // TODO error handling
+        }
+        self.condition = NewMemberChangeCommitCondition(metas[0].Conf)
+    case NotInMemeberChange:
+        fallthrough
+    default:
+        conf, err := localHSM.ConfigManager().LastConfig()
+        if err != nil {
+            // TODO error handling
+        }
+        self.condition = NewMajorityCommitCondition(conf.Servers)
+    }
     // init status for this state
     self.UpdateLastElectionTime()
-    self.grantedVoteCount = 0
     // start election procedure
     self.StartElection(localHSM)
     // start election timeout ticker
@@ -70,7 +101,7 @@ func (self *CandidateState) Exit(
     // stop election timeout ticker
     self.ticker.Stop()
     // cleanup status for this state
-    self.grantedVoteCount = 0
+    self.condition = nil
     return nil
 }
 
@@ -89,6 +120,11 @@ func (self *CandidateState) Handle(
     case event.Type() == ev.EventRequestVoteResponse:
         e, ok := event.(*ev.RequestVoteResponseEvent)
         hsm.AssertTrue(ok)
+        if e.Response.Term < localHSM.GetCurrentTerm() {
+            // ignore stale response for old term
+            return nil
+        }
+
         if e.Response.Term > localHSM.GetCurrentTerm() {
             // TODO add log
             localHSM.SetCurrentTerm(e.Response.Term)
@@ -98,14 +134,11 @@ func (self *CandidateState) Handle(
 
         if e.Response.Granted {
             // TODO add log
-            self.grantedVoteCount++
+            self.condition.AddVote(e.FromAddr)
+            if self.condition.IsCommitted() {
+                sm.QTran(StateLeaderID)
+            }
         }
-
-        // add inflight
-        // if self.grantedVoteCount >= localHSM.ConfigManager().QuorumSize() {
-        //     // TODO add log
-        //     localHSM.QTran(StateLeaderID)
-        // }
         return nil
     case event.Type() == ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesReqeustEvent)

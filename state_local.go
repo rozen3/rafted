@@ -69,7 +69,37 @@ func (self *NeedPeersState) Entry(
     self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
-    // coordinate peer into ActivatedPeerState
+    // coordinate peer
+    memberChangeStatus := localHSM.GetMemberChangeStatus()
+    switch memberChangeStatus {
+    case NewConfigSeen:
+        // TODO add impl
+        committedIndex, err := localHSM.Log().CommittedIndex()
+        if err != nil {
+            // TODO error handling
+        }
+        metas, err := localHSM.ConfigManager().ListAfter(committedIndex)
+        if err != nil {
+            // TODO error handling
+        }
+        if len(metas) != 2 {
+            // TODO error handling
+        }
+        conf := metas[0].Conf
+        localHSM.PeerManager().ResetPeers(localHSM.GetLocalAddr(), conf)
+    case NotInMemeberChange:
+        fallthrough
+    case OldNewConfigSeen:
+        fallthrough
+    case OldNewConfigCommitted:
+        fallthrough
+    default:
+        conf, err := localHSM.ConfigManager().LastConfig()
+        if err != nil {
+            // TODO error handling
+        }
+        localHSM.PeerManager().ResetPeers(localHSM.GetLocalAddr(), conf)
+    }
     localHSM.PeerManager().Broadcast(ev.NewPeerActivateEvent())
     return nil
 }
