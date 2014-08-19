@@ -8,12 +8,15 @@ import (
     "sync"
 )
 
+// The general interface of event channel.
 type EventChannel interface {
     Send(hsm.Event)
     Recv() hsm.Event
     Close()
 }
 
+// ReliableEventChannel is an unlimited size channel for
+// non-blocking event sending/receiving.
 type ReliableEventChannel struct {
     inChan    chan hsm.Event
     outChan   chan hsm.Event
@@ -89,6 +92,7 @@ func (self *ReliableEventChannel) Close() {
     self.group.Wait()
 }
 
+// Notifier is use to signal notify to the outside of this module.
 type Notifier struct {
     inChan    *ReliableEventChannel
     outChan   chan ev.NotifyEvent
@@ -137,6 +141,8 @@ func (self *Notifier) Close() {
     self.inChan.Close()
 }
 
+// ClientEventListener is a a helper class for listening client response
+// in independent go routine.
 type ClientEventListener struct {
     eventChan chan ev.ClientEvent
     stopChan  chan interface{}
@@ -182,7 +188,7 @@ func Min(a, b uint64) uint64 {
     return b
 }
 
-// Max returns the maximum
+// Max returns the maximum.
 func Max(a, b uint64) uint64 {
     if a >= b {
         return a
@@ -190,6 +196,8 @@ func Max(a, b uint64) uint64 {
     return b
 }
 
+// MapSetMinus calculates the difference of two map, and returns
+// the result of s1 - s2.
 func MapSetMinus(
     s1 map[ps.ServerAddr]*Peer, s2 map[ps.ServerAddr]*Peer) []ps.ServerAddr {
 
