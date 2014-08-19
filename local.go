@@ -29,10 +29,6 @@ const (
     NewConfigCommitted
 )
 
-const (
-    DefaultSelfDispatchChanSize = 1000
-)
-
 type SelfDispatchHSM interface {
     hsm.HSM
     SelfDispatch(event hsm.Event)
@@ -51,7 +47,7 @@ type NotifiableHSM interface {
 type LocalHSM struct {
     *hsm.StdHSM
     dispatchChan     chan hsm.Event
-    selfDispatchChan chan hsm.Event
+    selfDispatchChan *ReliableEventChannel
     group            sync.WaitGroup
 
     // the current term
@@ -113,11 +109,10 @@ func NewLocalHSM(
         return nil, err
     }
 
-    chanSize := DefaultSelfDispatchChanSize
     return &LocalHSM{
         StdHSM:             hsm.NewStdHSM(HSMTypeLocal, top, initial),
         dispatchChan:       make(chan hsm.Event, 1),
-        selfDispatchChan:   make(chan hsm.Event, chanSize),
+        selfDispatchChan:   NewReliableEventChannel(),
         group:              sync.WaitGroup{},
         localAddr:          localAddr,
         configManager:      configManager,
@@ -143,15 +138,16 @@ func (self *LocalHSM) eventLoop() {
 func (self *LocalHSM) loop() {
     defer self.group.Done()
     // loop forever to process incoming event
+    priorityChan := self.selfDispatchChan.GetOutChan()
     for {
+        // Event in selfDispatchChan has higher priority to be processed
         select {
-        case event := <-self.selfDispatchChan:
-            // make selfDispatchChan has higher priority
-            // Event in this channel would be processed first
+        case event := <-priorityChan:
             self.StdHSM.Dispatch2(self, event)
-            if event.Type() == ev.EventTerm {
-                return
-            }
+        default:
+            // no event in priorityChan
+        }
+        select {
         case event := <-self.dispatchChan:
             self.StdHSM.Dispatch2(self, event)
         }
@@ -173,12 +169,13 @@ func (self *LocalHSM) QTranOnEvent(targetStateID string, event hsm.Event) {
 }
 
 func (self *LocalHSM) SelfDispatch(event hsm.Event) {
-    self.selfDispatchChan <- event
+    self.selfDispatchChan.Send(event)
 }
 
 func (self *LocalHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
     self.group.Wait()
+    self.selfDispatchChan.Close()
 }
 
 func (self *LocalHSM) GetCurrentTerm() uint64 {

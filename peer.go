@@ -151,7 +151,7 @@ func (self *Peer) Close() {
 type PeerHSM struct {
     *hsm.StdHSM
     dispatchChan     chan hsm.Event
-    selfDispatchChan chan hsm.Event
+    selfDispatchChan *ReliableEventChannel
     group            sync.WaitGroup
 
     addr         ps.ServerAddr
@@ -171,7 +171,7 @@ func NewPeerHSM(
     return &PeerHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypePeer, top, initial),
         dispatchChan:     make(chan hsm.Event, 1),
-        selfDispatchChan: make(chan hsm.Event, 1),
+        selfDispatchChan: NewReliableEventChannel(),
         addr:             addr,
         client:           client,
         eventHandler:     eventHandler,
@@ -191,13 +191,15 @@ func (self *PeerHSM) eventLoop() {
 
 func (self *PeerHSM) loop() {
     defer self.group.Done()
+    priorityChan := self.selfDispatchChan.GetOutChan()
     for {
         select {
-        case event := <-self.selfDispatchChan:
+        case event := <-priorityChan:
             self.StdHSM.Dispatch2(self, event)
-            if event.Type() == ev.EventTerm {
-                return
-            }
+        default:
+            // no event in priorityChan
+        }
+        select {
         case event := <-self.dispatchChan:
             self.StdHSM.Dispatch2(self, event)
         }
@@ -214,12 +216,13 @@ func (self *PeerHSM) QTran(targetStateID string) {
 }
 
 func (self *PeerHSM) SelfDispatch(event hsm.Event) {
-    self.selfDispatchChan <- event
+    self.selfDispatchChan.Send(event)
 }
 
 func (self *PeerHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
     self.group.Wait()
+    self.selfDispatchChan.Close()
 }
 
 func (self *PeerHSM) Addr() ps.ServerAddr {
