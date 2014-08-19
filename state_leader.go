@@ -346,8 +346,7 @@ func (self *UnsyncState) Handle(
     case ev.EventClientReadOnlyRequest:
         e, ok := event.(ev.ClientRequestEvent)
         hsm.AssertTrue(ok)
-        response := &ev.LeaderUnsyncResponse{}
-        e.SendResponse(ev.NewLeaderUnsyncResponseEvent(response))
+        e.SendResponse(ev.NewLeaderUnsyncResponseEvent())
         return nil
     case ev.EventClientResponse:
         e, ok := event.(*ev.ClientResponseEvent)

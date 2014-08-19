@@ -363,8 +363,7 @@ func (self *LeaderInMemberChangeState) Handle(
     case ev.EventClientMemberChangeRequest:
         e, ok := event.(*ev.ClientMemberChangeRequestEvent)
         hsm.AssertTrue(ok)
-        response := &ev.LeaderInMemberChangeResponse{}
-        e.SendResponse(ev.NewLeaderInMemberChangeResponseEvent(response))
+        e.SendResponse(ev.NewLeaderInMemberChangeResponseEvent())
         return nil
     }
 

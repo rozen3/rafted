@@ -53,9 +53,9 @@ func (self *FollowerState) Entry(
     deliverHeartbeatTimeout := func() {
         lastContactTime := self.LastContactTime()
         if TimeExpire(lastContactTime, self.heartbeatTimeout) {
-            timeout := &ev.HeartbeatTimeout{
-                LastContactTime: lastContactTime,
-                Timeout:         self.heartbeatTimeout,
+            timeout := &ev.Timeout{
+                LastTime: lastContactTime,
+                Timeout:  self.heartbeatTimeout,
             }
             localHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
         }

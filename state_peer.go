@@ -269,18 +269,18 @@ func (self *LeaderPeerState) Entry(
     self.nextIndex = lastLogIndex + 1
     self.UpdateLastContactTime()
     // trigger a check on whether to start log replication
-    timeout := &ev.HeartbeatTimeout{
-        LastContactTime: self.LastContactTime(),
-        Timeout:         self.heartbeatTimeout,
+    timeout := &ev.Timeout{
+        LastTime: self.LastContactTime(),
+        Timeout:  self.heartbeatTimeout,
     }
     peerHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
     // init timer
     deliverHearbeatTimeout := func() {
         lastContactTime := self.LastContactTime()
         if TimeExpire(lastContactTime, self.heartbeatTimeout) {
-            timeout := &ev.HeartbeatTimeout{
-                LastContactTime: lastContactTime,
-                Timeout:         self.heartbeatTimeout,
+            timeout := &ev.Timeout{
+                LastTime: lastContactTime,
+                Timeout:  self.heartbeatTimeout,
             }
             peerHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
         }

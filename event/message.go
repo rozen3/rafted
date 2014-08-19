@@ -5,6 +5,10 @@ import (
     "time"
 )
 
+// ------------------------------------------------------------
+// Raft Messages
+// ------------------------------------------------------------
+
 // AppendEntriesRequest is the command used to append entries to the
 // replicated log.
 type AppendEntriesRequest struct {
@@ -93,20 +97,23 @@ type InstallSnapshotResponse struct {
     Success bool
 }
 
-// ClientWriteRequest is a write request for raft module to serve client.
+// ------------------------------------------------------------
+// Client Messages
+// ------------------------------------------------------------
+
+// ClientWriteRequest is the general request to be appended to raft log.
 type ClientWriteRequest struct {
     // the request content, to be applied to state machine
     Data []byte
 }
 
-// ClientReadOnlyRequest is a read-only request for raft module to
-// serve client.
+// ClientReadOnlyRequest is a read-only request not to be appended to raft log.
 type ClientReadOnlyRequest struct {
     // the request content, to be applied to state machine
     Data []byte
 }
 
-// ClientMemberChangeRequest is a request for member change
+// ClientMemberChangeRequest is a request for a member change in cluster.
 type ClientMemberChangeRequest struct {
     OldServers []ps.ServerAddr
     NewServers []ps.ServerAddr
@@ -120,36 +127,25 @@ type ClientResponse struct {
     Data []byte
 }
 
-// LeaderRedirectResponse is to redirect client to leader.
+// LeaderRedirectResponse contains the leader info for client to redirect.
 type LeaderRedirectResponse struct {
-    // The network addr of leader
+    // The network address of leader
     LeaderAddr ps.ServerAddr
 }
 
-// LeaderUnknownResponse is to tell client we are not leader and
-// don't known which node in cluster is leader.
-type LeaderUnknownResponse struct {
-}
+// ------------------------------------------------------------
+// Internal Messages
+// ------------------------------------------------------------
 
-// LeaderUnsyncResponse is to tell client we are leader but not
-// synchronized with other nodes in cluster yet.
-// To handle this situation, it's a good for client to retry this request.
-type LeaderUnsyncResponse struct {
-}
-
-// LeaderInMemberChangeResponse is to tell client the leader is already
-// in a member change procedure and doesn't accept another member change
-// request before finish the previous.
-type LeaderInMemberChangeResponse struct {
-}
-
-type HeartbeatTimeout struct {
-    LastContactTime time.Time
-    Timeout         time.Duration
+// Timeout is a message contains timeout info for all kinds of timeout
+// in this raft module, which includes heartbeat timeout and election timeout.
+type Timeout struct {
+    LastTime time.Time
+    Timeout  time.Duration
 }
 
 // PeerReplicateLog is a internal message for a peer(which represents
-// a follower) to notify leader it makes some progress on replicate logs.
+// a follower) to signal leader it makes some progress on log replication.
 type PeerReplicateLog struct {
     // network addr of the peer(follower)
     Peer ps.ServerAddr
@@ -157,6 +153,8 @@ type PeerReplicateLog struct {
     MatchIndex uint64
 }
 
+// MemberChangeNewConf contains new configuration of the cluster.
+// It is used in member change prodedure for follower state.
 type MemberChangeNewConf struct {
     Conf *ps.Config
 }

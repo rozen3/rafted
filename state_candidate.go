@@ -86,8 +86,13 @@ func (self *CandidateState) Entry(
     self.StartElection(localHSM)
     // start election timeout ticker
     notifyElectionTimeout := func() {
-        if TimeExpire(self.LastElectionTime(), self.electionTimeout) {
-            localHSM.SelfDispatch(ev.NewElectionTimeoutEvent())
+        lastElectionTime := self.LastElectionTime()
+        if TimeExpire(lastElectionTime, self.electionTimeout) {
+            timeout := &ev.Timeout{
+                LastTime: lastElectionTime,
+                Timeout:  self.electionTimeout,
+            }
+            localHSM.SelfDispatch(ev.NewElectionTimeoutEvent(timeout))
         }
     }
     self.ticker.Start(notifyElectionTimeout)
@@ -154,8 +159,7 @@ func (self *CandidateState) Handle(
         // Return a error response.
         e, ok := event.(ev.ClientRequestEvent)
         hsm.AssertTrue(ok)
-        response := &ev.LeaderUnknownResponse{}
-        e.SendResponse(ev.NewLeaderUnknownResponseEvent(response))
+        e.SendResponse(ev.NewLeaderUnknownResponseEvent())
         return nil
     }
     return self.Super()

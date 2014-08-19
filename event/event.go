@@ -156,6 +156,10 @@ func IsClientEvent(eventType hsm.EventType) bool {
         eventType, EventClientRequestBegin, EventClientRequestEnd)
 }
 
+// ------------------------------------------------------------
+// Raft Events
+// ------------------------------------------------------------
+
 type RaftEvent interface {
     hsm.Event
     Message() interface{}
@@ -188,6 +192,7 @@ func NewRaftRequestEventHead(eventType hsm.EventType) *RaftRequestEventHead {
     }
 }
 
+// Event for AppendEntriesRequest message.
 type AppendEntriesReqeustEvent struct {
     *RaftRequestEventHead
     Request *AppendEntriesRequest
@@ -206,6 +211,7 @@ func (self *AppendEntriesReqeustEvent) Message() interface{} {
     return self.Request
 }
 
+// Event for AppendEntriesResponse message.
 type AppendEntriesResponseEvent struct {
     *hsm.StdEvent
     FromAddr ps.ServerAddr
@@ -224,6 +230,7 @@ func (self *AppendEntriesResponseEvent) Message() interface{} {
     return self.Response
 }
 
+// Event for RequestVoteRequest message.
 type RequestVoteRequestEvent struct {
     *RaftRequestEventHead
     Request *RequestVoteRequest
@@ -242,6 +249,7 @@ func (self *RequestVoteRequestEvent) Message() interface{} {
     return self.Request
 }
 
+// Event for RequestVoteResponse message.
 type RequestVoteResponseEvent struct {
     *hsm.StdEvent
     FromAddr ps.ServerAddr
@@ -261,6 +269,7 @@ func (self *RequestVoteResponseEvent) Message() interface{} {
     return self.Response
 }
 
+// Event for InstallSnapshotRequest message.
 type InstallSnapshotRequestEvent struct {
     *RaftRequestEventHead
     Request *InstallSnapshotRequest
@@ -279,6 +288,7 @@ func (self *InstallSnapshotRequestEvent) Message() interface{} {
     return self.Request
 }
 
+// Event for InstallSnapshotResponse message.
 type InstallSnapshotResponseEvent struct {
     *hsm.StdEvent
     Response *InstallSnapshotResponse
@@ -297,184 +307,9 @@ func (self *InstallSnapshotResponseEvent) Message() interface{} {
     return self.Response
 }
 
-type HeartbeatTimeoutEvent struct {
-    *hsm.StdEvent
-    Message *HeartbeatTimeout
-}
-
-func NewHeartbeatTimeoutEvent(
-    message *HeartbeatTimeout) *HeartbeatTimeoutEvent {
-
-    return &HeartbeatTimeoutEvent{
-        StdEvent: hsm.NewStdEvent(EventTimeoutHeartbeat),
-        Message:  message,
-    }
-}
-
-type ElectionTimeoutEvent struct {
-    *hsm.StdEvent
-}
-
-func NewElectionTimeoutEvent() *ElectionTimeoutEvent {
-    return &ElectionTimeoutEvent{
-        hsm.NewStdEvent(EventTimeoutElection),
-    }
-}
-
-type AbortSnapshotRecoveryEvent struct {
-    *hsm.StdEvent
-}
-
-func NewAbortSnapshotRecoveryEvent() *AbortSnapshotRecoveryEvent {
-    return &AbortSnapshotRecoveryEvent{
-        StdEvent: hsm.NewStdEvent(EventAbortSnapshotRecovery),
-    }
-}
-
-type StepdownEvent struct {
-    *hsm.StdEvent
-}
-
-func NewStepdownEvent() *StepdownEvent {
-    return &StepdownEvent{
-        StdEvent: hsm.NewStdEvent(EventStepdown),
-    }
-}
-
-type MemberChangeNextStepEvent struct {
-    *hsm.StdEvent
-    Message *MemberChangeNewConf
-}
-
-func NewMemberChangeNextStepEvent(
-    message *MemberChangeNewConf) *MemberChangeNextStepEvent {
-
-    return &MemberChangeNextStepEvent{
-        StdEvent: hsm.NewStdEvent(EventMemberChangeNextStep),
-        Message:  message,
-    }
-}
-
-type MemberChangeLogEntryCommitEvent struct {
-    *hsm.StdEvent
-    Message *MemberChangeNewConf
-}
-
-func NewMemberChangeLogEntryCommitEvent(
-    message *MemberChangeNewConf) *MemberChangeLogEntryCommitEvent {
-
-    return &MemberChangeLogEntryCommitEvent{
-        StdEvent: hsm.NewStdEvent(EventMemberChangeLogEntryCommit),
-        Message:  message,
-    }
-}
-
-type LeaderMemberChangeActivateEvent struct {
-    *hsm.StdEvent
-}
-
-func NewLeaderMemberChangeActivateEvent() *LeaderMemberChangeActivateEvent {
-    return &LeaderMemberChangeActivateEvent{
-        StdEvent: hsm.NewStdEvent(EventLeaderMemberChangeActivate),
-    }
-}
-
-type LeaderMemberChangeDeactivateEvent struct {
-    *hsm.StdEvent
-}
-
-func NewLeaderMemberChangeDeactivateEvent() *LeaderMemberChangeDeactivateEvent {
-    return &LeaderMemberChangeDeactivateEvent{
-        StdEvent: hsm.NewStdEvent(EventLeaderMemberChangeDeactivate),
-    }
-}
-
-type LeaderReenterMemberChangeStateEvent struct {
-    *hsm.StdEvent
-}
-
-func NewLeaderReenterMemberChangeStateEvent() *LeaderReenterMemberChangeStateEvent {
-    return &LeaderReenterMemberChangeStateEvent{
-        StdEvent: hsm.NewStdEvent(EventLeaderReenterMemberChangeState),
-    }
-}
-
-type LeaderForwardMemberChangePhaseEvent struct {
-    *hsm.StdEvent
-    Message *LeaderForwardMemberChangePhase
-}
-
-func NewLeaderForwardMemberChangePhaseEvent(
-    message *LeaderForwardMemberChangePhase) *LeaderForwardMemberChangePhaseEvent {
-    return &LeaderForwardMemberChangePhaseEvent{
-        StdEvent: hsm.NewStdEvent(EventLeaderForwardMemberChangePhase),
-        Message:  message,
-    }
-}
-
-type PeerReplicateLogEvent struct {
-    *hsm.StdEvent
-    Message *PeerReplicateLog
-}
-
-func NewPeerReplicateLogEvent(
-    message *PeerReplicateLog) *PeerReplicateLogEvent {
-
-    return &PeerReplicateLogEvent{
-        StdEvent: hsm.NewStdEvent(EventPeerReplicateLog),
-        Message:  message,
-    }
-}
-
-type PeerActivateEvent struct {
-    *hsm.StdEvent
-}
-
-func NewPeerActivateEvent() *PeerActivateEvent {
-    return &PeerActivateEvent{
-        StdEvent: hsm.NewStdEvent(EventPeerActivate),
-    }
-}
-
-type PeerDeactivateEvent struct {
-    *hsm.StdEvent
-}
-
-func NewPeerDeactivateEvent() *PeerDeactivateEvent {
-    return &PeerDeactivateEvent{
-        StdEvent: hsm.NewStdEvent(EventPeerDeactivate),
-    }
-}
-
-type PeerEnterLeaderEvent struct {
-    *hsm.StdEvent
-}
-
-func NewPeerEnterLeaderEvent() *PeerEnterLeaderEvent {
-    return &PeerEnterLeaderEvent{
-        StdEvent: hsm.NewStdEvent(EventPeerEnterLeader),
-    }
-}
-
-type PeerEnterSnapshotModeEvent struct {
-    *hsm.StdEvent
-}
-
-func NewPeerEnterSnapshotModeEvent() *PeerEnterSnapshotModeEvent {
-    return &PeerEnterSnapshotModeEvent{
-        StdEvent: hsm.NewStdEvent(EventPeerEnterSnapshotMode),
-    }
-}
-
-type PeerAbortSnapshotModeEvent struct {
-    *hsm.StdEvent
-}
-
-func NewPeerAbortSnapshotModeEvent() *PeerAbortSnapshotModeEvent {
-    return &PeerAbortSnapshotModeEvent{
-        StdEvent: hsm.NewStdEvent(EventPeerAbortSnapshotMode),
-    }
-}
+// ------------------------------------------------------------
+// Client Events
+// ------------------------------------------------------------
 
 type ClientEvent interface {
     hsm.Event
@@ -509,6 +344,7 @@ func NewClientRequestEventHead(
     }
 }
 
+// Event for ClientWriteRequest message.
 type ClientWriteRequestEvent struct {
     *ClientRequestEventHead
     Request *ClientWriteRequest
@@ -524,6 +360,7 @@ func NewClientWriteRequestEvent(
     }
 }
 
+// Event for ClientReadOnlyRequest message.
 type ClientReadOnlyRequestEvent struct {
     *ClientRequestEventHead
     Request *ClientReadOnlyRequest
@@ -539,6 +376,7 @@ func NewClientReadOnlyRequestEvent(
     }
 }
 
+// Event for ClientMemberChangeRequest message.
 type ClientMemberChangeRequestEvent struct {
     *ClientRequestEventHead
     Request *ClientMemberChangeRequest
@@ -554,6 +392,7 @@ func NewClientMemberChangeRequestEvent(
     }
 }
 
+// ClientResponseEvent is the general response event to client.
 type ClientResponseEvent struct {
     *hsm.StdEvent
     Response *ClientResponse
@@ -568,6 +407,8 @@ func NewClientResponseEvent(
     }
 }
 
+// LeaderUnknownResponseEvent is to tell client we are not leader and
+// the leader address at this moment for client to redirect.
 type LeaderRedirectResponseEvent struct {
     *hsm.StdEvent
     Response *LeaderRedirectResponse
@@ -575,50 +416,258 @@ type LeaderRedirectResponseEvent struct {
 
 func NewLeaderRedirectResponseEvent(
     response *LeaderRedirectResponse) *LeaderRedirectResponseEvent {
+
     return &LeaderRedirectResponseEvent{
         StdEvent: hsm.NewStdEvent(EventLeaderRedirectResponse),
         Response: response,
     }
 }
 
+// LeaderUnknownResponseEvent is to tell client we are not leader and
+// don't known which node in cluster is leader at this moment.
 type LeaderUnknownResponseEvent struct {
     *hsm.StdEvent
-    Response *LeaderUnknownResponse
 }
 
-func NewLeaderUnknownResponseEvent(
-    response *LeaderUnknownResponse) *LeaderUnknownResponseEvent {
-
+func NewLeaderUnknownResponseEvent() *LeaderUnknownResponseEvent {
     return &LeaderUnknownResponseEvent{
         StdEvent: hsm.NewStdEvent(EventLeaderUnknownResponse),
-        Response: response,
     }
 }
 
+// LeaderUnsyncResponseEvent is to tell client we are leader but not
+// synchronized with other nodes in cluster yet, so we cannot handle
+// read-only request at this moment.
+// To handle this situation, it's a good for client to retry the read-only request.
 type LeaderUnsyncResponseEvent struct {
     *hsm.StdEvent
-    Response *LeaderUnsyncResponse
 }
 
-func NewLeaderUnsyncResponseEvent(
-    response *LeaderUnsyncResponse) *LeaderUnsyncResponseEvent {
-
+func NewLeaderUnsyncResponseEvent() *LeaderUnsyncResponseEvent {
     return &LeaderUnsyncResponseEvent{
         StdEvent: hsm.NewStdEvent(EventLeaderUnsyncResponse),
-        Response: response,
     }
 }
 
+// LeaderInMemberChangeResponseEvent is to tell client the leader is already
+// in a member change procedure and doesn't accept another member change
+// request before finish the previous.
 type LeaderInMemberChangeResponseEvent struct {
     *hsm.StdEvent
-    Response *LeaderInMemberChangeResponse
 }
 
-func NewLeaderInMemberChangeResponseEvent(
-    response *LeaderInMemberChangeResponse) *LeaderInMemberChangeResponseEvent {
-
+func NewLeaderInMemberChangeResponseEvent() *LeaderInMemberChangeResponseEvent {
     return &LeaderInMemberChangeResponseEvent{
         StdEvent: hsm.NewStdEvent(EventLeaderInMemberChangeResponse),
-        Response: response,
+    }
+}
+
+// ------------------------------------------------------------
+// Internal Events
+// ------------------------------------------------------------
+
+// HeartbeatTimeoutEvent is the event for heartbeat timeout.
+type HeartbeatTimeoutEvent struct {
+    *hsm.StdEvent
+    Message *Timeout
+}
+
+func NewHeartbeatTimeoutEvent(message *Timeout) *HeartbeatTimeoutEvent {
+    return &HeartbeatTimeoutEvent{
+        StdEvent: hsm.NewStdEvent(EventTimeoutHeartbeat),
+        Message:  message,
+    }
+}
+
+// ElectionTimeoutEvent is the event for election timeout.
+type ElectionTimeoutEvent struct {
+    *hsm.StdEvent
+    Message *Timeout
+}
+
+func NewElectionTimeoutEvent(message *Timeout) *ElectionTimeoutEvent {
+    return &ElectionTimeoutEvent{
+        StdEvent: hsm.NewStdEvent(EventTimeoutElection),
+        Message:  message,
+    }
+}
+
+// AbortSnapshotRecoveryEvent is a event for snapshot recovery state to exit.
+type AbortSnapshotRecoveryEvent struct {
+    *hsm.StdEvent
+}
+
+func NewAbortSnapshotRecoveryEvent() *AbortSnapshotRecoveryEvent {
+    return &AbortSnapshotRecoveryEvent{
+        StdEvent: hsm.NewStdEvent(EventAbortSnapshotRecovery),
+    }
+}
+
+// StepdownEvent is a event for candidate state or leader state to
+// transfer back to follower state.
+type StepdownEvent struct {
+    *hsm.StdEvent
+}
+
+func NewStepdownEvent() *StepdownEvent {
+    return &StepdownEvent{
+        StdEvent: hsm.NewStdEvent(EventStepdown),
+    }
+}
+
+// MemberChangeNextStepEvent is a event to signal follower state to
+// move forward during member change procedure.
+type MemberChangeNextStepEvent struct {
+    *hsm.StdEvent
+    Message *MemberChangeNewConf
+}
+
+func NewMemberChangeNextStepEvent(
+    message *MemberChangeNewConf) *MemberChangeNextStepEvent {
+
+    return &MemberChangeNextStepEvent{
+        StdEvent: hsm.NewStdEvent(EventMemberChangeNextStep),
+        Message:  message,
+    }
+}
+
+// MemberChangeLogEntryCommitEvent is a event to signal follower state
+// during member change procedure that the transitional configuration
+// C[old,new] or C[new] is already committed.
+type MemberChangeLogEntryCommitEvent struct {
+    *hsm.StdEvent
+    Message *MemberChangeNewConf
+}
+
+func NewMemberChangeLogEntryCommitEvent(
+    message *MemberChangeNewConf) *MemberChangeLogEntryCommitEvent {
+
+    return &MemberChangeLogEntryCommitEvent{
+        StdEvent: hsm.NewStdEvent(EventMemberChangeLogEntryCommit),
+        Message:  message,
+    }
+}
+
+// LeaderMemberChangeActivateEvent is a event to activate
+// the member change orthogonal component of leader state.
+type LeaderMemberChangeActivateEvent struct {
+    *hsm.StdEvent
+}
+
+func NewLeaderMemberChangeActivateEvent() *LeaderMemberChangeActivateEvent {
+    return &LeaderMemberChangeActivateEvent{
+        StdEvent: hsm.NewStdEvent(EventLeaderMemberChangeActivate),
+    }
+}
+
+// LeaderMemberChangeDeactivateEvent is a event to deactivate
+// the member change orthogonal component of leader state.
+type LeaderMemberChangeDeactivateEvent struct {
+    *hsm.StdEvent
+}
+
+func NewLeaderMemberChangeDeactivateEvent() *LeaderMemberChangeDeactivateEvent {
+    return &LeaderMemberChangeDeactivateEvent{
+        StdEvent: hsm.NewStdEvent(EventLeaderMemberChangeDeactivate),
+    }
+}
+
+// LeaderReenterMemberChangeStateEvent is a event to signal leader state
+// it's a re-entry to member change procedure.
+type LeaderReenterMemberChangeStateEvent struct {
+    *hsm.StdEvent
+}
+
+func NewLeaderReenterMemberChangeStateEvent() *LeaderReenterMemberChangeStateEvent {
+    return &LeaderReenterMemberChangeStateEvent{
+        StdEvent: hsm.NewStdEvent(EventLeaderReenterMemberChangeState),
+    }
+}
+
+// LeaderForwardMemberChangePhaseEvent is a event to signal leader state to
+// move forward during member change procedure.
+type LeaderForwardMemberChangePhaseEvent struct {
+    *hsm.StdEvent
+    Message *LeaderForwardMemberChangePhase
+}
+
+func NewLeaderForwardMemberChangePhaseEvent(
+    message *LeaderForwardMemberChangePhase) *LeaderForwardMemberChangePhaseEvent {
+    return &LeaderForwardMemberChangePhaseEvent{
+        StdEvent: hsm.NewStdEvent(EventLeaderForwardMemberChangePhase),
+        Message:  message,
+    }
+}
+
+// PeerReplicateLogEvent is a event for a peer to signal leader that
+// it make progress on replicating logs.
+type PeerReplicateLogEvent struct {
+    *hsm.StdEvent
+    Message *PeerReplicateLog
+}
+
+func NewPeerReplicateLogEvent(
+    message *PeerReplicateLog) *PeerReplicateLogEvent {
+
+    return &PeerReplicateLogEvent{
+        StdEvent: hsm.NewStdEvent(EventPeerReplicateLog),
+        Message:  message,
+    }
+}
+
+// PeerActivateEvent is a event to activate peers.
+type PeerActivateEvent struct {
+    *hsm.StdEvent
+}
+
+func NewPeerActivateEvent() *PeerActivateEvent {
+    return &PeerActivateEvent{
+        StdEvent: hsm.NewStdEvent(EventPeerActivate),
+    }
+}
+
+// PeerDeactivateEvent is a event to deactivate peers.
+type PeerDeactivateEvent struct {
+    *hsm.StdEvent
+}
+
+func NewPeerDeactivateEvent() *PeerDeactivateEvent {
+    return &PeerDeactivateEvent{
+        StdEvent: hsm.NewStdEvent(EventPeerDeactivate),
+    }
+}
+
+// PeerEnterLeaderEvent is a event to signal peer to enter leader mode.
+type PeerEnterLeaderEvent struct {
+    *hsm.StdEvent
+}
+
+func NewPeerEnterLeaderEvent() *PeerEnterLeaderEvent {
+    return &PeerEnterLeaderEvent{
+        StdEvent: hsm.NewStdEvent(EventPeerEnterLeader),
+    }
+}
+
+// PeerEnterSnapshotModeEvent is a event to signal peer to
+// enter snapshot mode.
+type PeerEnterSnapshotModeEvent struct {
+    *hsm.StdEvent
+}
+
+func NewPeerEnterSnapshotModeEvent() *PeerEnterSnapshotModeEvent {
+    return &PeerEnterSnapshotModeEvent{
+        StdEvent: hsm.NewStdEvent(EventPeerEnterSnapshotMode),
+    }
+}
+
+// PeerAbortSnapshotModeEvent is a event to signal peer to exit
+// snapshot mode.
+type PeerAbortSnapshotModeEvent struct {
+    *hsm.StdEvent
+}
+
+func NewPeerAbortSnapshotModeEvent() *PeerAbortSnapshotModeEvent {
+    return &PeerAbortSnapshotModeEvent{
+        StdEvent: hsm.NewStdEvent(EventPeerAbortSnapshotMode),
     }
 }
