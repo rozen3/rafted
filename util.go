@@ -1,10 +1,93 @@
 package rafted
 
 import (
+    "container/list"
+    hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     ps "github.com/hhkbp2/rafted/persist"
     "sync"
 )
+
+type EventChannel interface {
+    Send(hsm.Event)
+    Recv() hsm.Event
+    Close()
+}
+
+type ReliableEventChannel struct {
+    inChan    chan hsm.Event
+    outChan   chan hsm.Event
+    closeChan chan interface{}
+    queue     *list.List
+    group     *sync.WaitGroup
+}
+
+func NewReliableEventChannel() *ReliableEventChannel {
+    object := &ReliableEventChannel{
+        inChan:    make(chan hsm.Event, 1),
+        outChan:   make(chan hsm.Event, 1),
+        closeChan: make(chan interface{}, 1),
+        queue:     list.New(),
+        group:     &sync.WaitGroup{},
+    }
+    object.Start()
+    return object
+}
+
+func (self *ReliableEventChannel) Start() {
+    routine := func() {
+        defer self.group.Done()
+        for {
+            if self.queue.Len() > 0 {
+                e := self.queue.Front()
+                outEvent, _ := e.Value.(hsm.Event)
+                select {
+                case <-self.closeChan:
+                    return
+                case inEvent := <-self.inChan:
+                    self.queue.PushBack(inEvent)
+                case self.outChan <- outEvent:
+                    self.queue.Remove(e)
+                }
+            } else {
+                select {
+                case <-self.closeChan:
+                    return
+                case event := <-self.inChan:
+                    self.queue.PushBack(event)
+                }
+            }
+        }
+    }
+    self.startRoutine(routine)
+}
+
+func (self *ReliableEventChannel) startRoutine(fn func()) {
+    self.group.Add(1)
+    go fn()
+}
+
+func (self *ReliableEventChannel) Send(event hsm.Event) {
+    self.inChan <- event
+}
+
+func (self *ReliableEventChannel) Recv() hsm.Event {
+    event := <-self.outChan
+    return event
+}
+
+func (self *ReliableEventChannel) GetInChan() chan<- hsm.Event {
+    return self.inChan
+}
+
+func (self *ReliableEventChannel) GetOutChan() <-chan hsm.Event {
+    return self.outChan
+}
+
+func (self *ReliableEventChannel) Close() {
+    self.closeChan <- self
+    self.group.Wait()
+}
 
 const (
     DefaultNotifyBufferSize = 100
