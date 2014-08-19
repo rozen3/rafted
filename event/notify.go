@@ -3,7 +3,6 @@ package event
 import (
     hsm "github.com/hhkbp2/go-hsm"
     ps "github.com/hhkbp2/rafted/persist"
-    "net"
     "time"
 )
 
@@ -20,50 +19,69 @@ const (
     EventNotifyEnd
 )
 
+type RaftStateType uint8
+
+const (
+    RaftStateUnknown RaftStateType = iota
+    RaftStateFollower
+    RaftStateCandidate
+    RaftStateLeader
+)
+
 func IsNotifyEvent(eventType hsm.EventType) bool {
     return IsEventBetween(eventType, EventNotifyBegin, EventNotifyEnd)
 }
 
+// The general interface for all notify events.
 type NotifyEvent interface {
     hsm.Event
 }
 
+// NotifyHeartbeatTimeoutEvent is an event to notify heartbeat timeout.
 type NotifyHeartbeatTimeoutEvent struct {
     *hsm.StdEvent
     LastHeartbeatTime time.Time
+    Timeout           time.Duration
 }
 
 func NewNotifyHeartbeatTimeoutEvent(
-    lastHeartbeatTime time.Time) *NotifyHeartbeatTimeoutEvent {
+    lastHeartbeatTime time.Time,
+    timeout time.Duration) *NotifyHeartbeatTimeoutEvent {
 
     return &NotifyHeartbeatTimeoutEvent{
-        hsm.NewStdEvent(EventNotifyHeartbeatTimeout),
-        lastHeartbeatTime,
+        StdEvent:          hsm.NewStdEvent(EventNotifyHeartbeatTimeout),
+        LastHeartbeatTime: lastHeartbeatTime,
+        Timeout:           timeout,
     }
 }
 
+// NotifyElectionTimeoutEvent is an event to notify election timeout.
 type NotifyElectionTimeoutEvent struct {
     *hsm.StdEvent
     LastElectionTime time.Time
+    Timeout          time.Duration
 }
 
 func NewNotifyElectionTimeoutEvent(
-    lastElectionTime time.Time) *NotifyElectionTimeoutEvent {
+    lastElectionTime time.Time,
+    timeout time.Duration) *NotifyElectionTimeoutEvent {
 
     return &NotifyElectionTimeoutEvent{
-        hsm.NewStdEvent(EventNotifyElectionTimeout),
-        lastElectionTime,
+        StdEvent:         hsm.NewStdEvent(EventNotifyElectionTimeout),
+        LastElectionTime: lastElectionTime,
+        Timeout:          timeout,
     }
 }
 
+// NotifyElectionTimeoutEvent is an event to notify election timeout.
 type NotifyStateChangeEvent struct {
     *hsm.StdEvent
-    OldState string
-    NewState string
+    OldState RaftStateType
+    NewState RaftStateType
 }
 
 func NewNotifyStateChangeEvent(
-    oldState, newState string) *NotifyStateChangeEvent {
+    oldState, newState RaftStateType) *NotifyStateChangeEvent {
 
     return &NotifyStateChangeEvent{
         StdEvent: hsm.NewStdEvent(EventNotifyStateChange),
@@ -72,14 +90,15 @@ func NewNotifyStateChangeEvent(
     }
 }
 
+// NotifyLeaderChangeEvent is an event to notify that leader has changed.
 type NotifyLeaderChangeEvent struct {
     *hsm.StdEvent
-    OldLeader net.Addr
-    NewLeader net.Addr
+    OldLeader ps.ServerAddr
+    NewLeader ps.ServerAddr
 }
 
 func NewNotifyLeaderChangeEvent(
-    oldLeader, newLeader net.Addr) *NotifyLeaderChangeEvent {
+    oldLeader, newLeader ps.ServerAddr) *NotifyLeaderChangeEvent {
 
     return &NotifyLeaderChangeEvent{
         StdEvent:  hsm.NewStdEvent(EventNotifyLeaderChange),
@@ -88,15 +107,14 @@ func NewNotifyLeaderChangeEvent(
     }
 }
 
+// NotifyTermChangeEvent is an event to notify term has changed.
 type NotifyTermChangeEvent struct {
     *hsm.StdEvent
     OldTerm uint64
     NewTerm uint64
 }
 
-func NewNotifyTermChangeEvent(
-    oldTerm, newTerm uint64) *NotifyTermChangeEvent {
-
+func NewNotifyTermChangeEvent(oldTerm, newTerm uint64) *NotifyTermChangeEvent {
     return &NotifyTermChangeEvent{
         StdEvent: hsm.NewStdEvent(EventNotifyTermChange),
         OldTerm:  oldTerm,
@@ -104,15 +122,14 @@ func NewNotifyTermChangeEvent(
     }
 }
 
+// NotifyCommitEvent is an event to notify a log entry has committed.
 type NotifyCommitEvent struct {
     *hsm.StdEvent
     Term     uint64
     LogIndex uint64
 }
 
-func NewNotifyCommitEvent(
-    term, logIndex uint64) *NotifyCommitEvent {
-
+func NewNotifyCommitEvent(term, logIndex uint64) *NotifyCommitEvent {
     return &NotifyCommitEvent{
         StdEvent: hsm.NewStdEvent(EventNotifyCommit),
         Term:     term,
@@ -120,9 +137,10 @@ func NewNotifyCommitEvent(
     }
 }
 
+// NotifyMemberChangeEvent is an event to notify a member change procedure
+// has happened in cluster.
 type NotifyMemberChangeEvent struct {
     *hsm.StdEvent
-
     OldServers []ps.ServerAddr
     NewServers []ps.ServerAddr
 }
@@ -137,9 +155,10 @@ func NewNotifyMemberChangeEvent(
     }
 }
 
+// NotifyPersistErrorEvent is an event to notify a persist action has failed.
+// Probably it's a hard disk failure.
 type NotifyPersistErrorEvent struct {
     *hsm.StdEvent
-
     Error error
 }
 

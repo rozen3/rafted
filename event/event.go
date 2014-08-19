@@ -492,7 +492,7 @@ func NewElectionTimeoutEvent(message *Timeout) *ElectionTimeoutEvent {
     }
 }
 
-// AbortSnapshotRecoveryEvent is a event for snapshot recovery state to exit.
+// AbortSnapshotRecoveryEvent is an event for snapshot recovery state to exit.
 type AbortSnapshotRecoveryEvent struct {
     *hsm.StdEvent
 }
@@ -503,7 +503,7 @@ func NewAbortSnapshotRecoveryEvent() *AbortSnapshotRecoveryEvent {
     }
 }
 
-// StepdownEvent is a event for candidate state or leader state to
+// StepdownEvent is an event for candidate state or leader state to
 // transfer back to follower state.
 type StepdownEvent struct {
     *hsm.StdEvent
@@ -515,7 +515,7 @@ func NewStepdownEvent() *StepdownEvent {
     }
 }
 
-// MemberChangeNextStepEvent is a event to signal follower state to
+// MemberChangeNextStepEvent is an event to signal follower state to
 // move forward during member change procedure.
 type MemberChangeNextStepEvent struct {
     *hsm.StdEvent
@@ -531,7 +531,7 @@ func NewMemberChangeNextStepEvent(
     }
 }
 
-// MemberChangeLogEntryCommitEvent is a event to signal follower state
+// MemberChangeLogEntryCommitEvent is an event to signal follower state
 // during member change procedure that the transitional configuration
 // C[old,new] or C[new] is already committed.
 type MemberChangeLogEntryCommitEvent struct {
@@ -548,7 +548,7 @@ func NewMemberChangeLogEntryCommitEvent(
     }
 }
 
-// LeaderMemberChangeActivateEvent is a event to activate
+// LeaderMemberChangeActivateEvent is an event to activate
 // the member change orthogonal component of leader state.
 type LeaderMemberChangeActivateEvent struct {
     *hsm.StdEvent
@@ -560,7 +560,7 @@ func NewLeaderMemberChangeActivateEvent() *LeaderMemberChangeActivateEvent {
     }
 }
 
-// LeaderMemberChangeDeactivateEvent is a event to deactivate
+// LeaderMemberChangeDeactivateEvent is an event to deactivate
 // the member change orthogonal component of leader state.
 type LeaderMemberChangeDeactivateEvent struct {
     *hsm.StdEvent
@@ -572,7 +572,7 @@ func NewLeaderMemberChangeDeactivateEvent() *LeaderMemberChangeDeactivateEvent {
     }
 }
 
-// LeaderReenterMemberChangeStateEvent is a event to signal leader state
+// LeaderReenterMemberChangeStateEvent is an event to signal leader state
 // it's a re-entry to member change procedure.
 type LeaderReenterMemberChangeStateEvent struct {
     *hsm.StdEvent
@@ -584,7 +584,7 @@ func NewLeaderReenterMemberChangeStateEvent() *LeaderReenterMemberChangeStateEve
     }
 }
 
-// LeaderForwardMemberChangePhaseEvent is a event to signal leader state to
+// LeaderForwardMemberChangePhaseEvent is an event to signal leader state to
 // move forward during member change procedure.
 type LeaderForwardMemberChangePhaseEvent struct {
     *hsm.StdEvent
@@ -599,7 +599,7 @@ func NewLeaderForwardMemberChangePhaseEvent(
     }
 }
 
-// PeerReplicateLogEvent is a event for a peer to signal leader that
+// PeerReplicateLogEvent is an event for a peer to signal leader that
 // it make progress on replicating logs.
 type PeerReplicateLogEvent struct {
     *hsm.StdEvent
@@ -615,7 +615,7 @@ func NewPeerReplicateLogEvent(
     }
 }
 
-// PeerActivateEvent is a event to activate peers.
+// PeerActivateEvent is an event to activate peers.
 type PeerActivateEvent struct {
     *hsm.StdEvent
 }
@@ -626,7 +626,7 @@ func NewPeerActivateEvent() *PeerActivateEvent {
     }
 }
 
-// PeerDeactivateEvent is a event to deactivate peers.
+// PeerDeactivateEvent is an event to deactivate peers.
 type PeerDeactivateEvent struct {
     *hsm.StdEvent
 }
@@ -637,7 +637,7 @@ func NewPeerDeactivateEvent() *PeerDeactivateEvent {
     }
 }
 
-// PeerEnterLeaderEvent is a event to signal peer to enter leader mode.
+// PeerEnterLeaderEvent is an event to signal peer to enter leader mode.
 type PeerEnterLeaderEvent struct {
     *hsm.StdEvent
 }
@@ -648,7 +648,7 @@ func NewPeerEnterLeaderEvent() *PeerEnterLeaderEvent {
     }
 }
 
-// PeerEnterSnapshotModeEvent is a event to signal peer to
+// PeerEnterSnapshotModeEvent is an event to signal peer to
 // enter snapshot mode.
 type PeerEnterSnapshotModeEvent struct {
     *hsm.StdEvent
@@ -660,7 +660,7 @@ func NewPeerEnterSnapshotModeEvent() *PeerEnterSnapshotModeEvent {
     }
 }
 
-// PeerAbortSnapshotModeEvent is a event to signal peer to exit
+// PeerAbortSnapshotModeEvent is an event to signal peer to exit
 // snapshot mode.
 type PeerAbortSnapshotModeEvent struct {
     *hsm.StdEvent
