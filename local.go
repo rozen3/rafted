@@ -298,6 +298,8 @@ func (self *LocalHSM) CommitLogAt(index uint64) ([]byte, error) {
 }
 
 func (self *LocalHSM) CommitLog(logEntry *ps.LogEntry) []byte {
+    self.Notifier().Notify(ev.NewNotifyCommitEvent(
+        logEntry.Term, logEntry.Index))
     switch logEntry.Type {
     case ps.LogCommand:
         // TODO add impl
