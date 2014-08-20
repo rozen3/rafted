@@ -77,24 +77,6 @@ func (self *LeaderState) Handle(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
-    case ev.EventPeerReplicateLog:
-        e, ok := event.(*ev.PeerReplicateLogEvent)
-        hsm.AssertTrue(ok)
-        goodToCommit, err := self.Inflight.Replicate(
-            e.Message.Peer, e.Message.MatchIndex)
-        if err != nil {
-            // TODO add log
-            return nil
-        }
-        if goodToCommit {
-            allCommitted := self.Inflight.GetCommitted()
-            self.CommitInflightEntries(localHSM, allCommitted)
-        }
-        return nil
-    case ev.EventStepdown:
-        // TODO add log
-        sm.QTran(StateFollowerID)
-        return nil
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
@@ -110,21 +92,24 @@ func (self *LeaderState) Handle(
         // step down to follower state if local term is not greater than
         // the remote one
         if e.Request.Term >= localHSM.GetCurrentTerm() {
-            Stepdown(localHSM, event, e.Request.Term, e.Request.Leader)
+            ReplayEventAndStepdown(
+                localHSM, event, e.Request.Term, e.Request.Leader)
         }
         return nil
     case ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
         if e.Request.Term >= localHSM.GetCurrentTerm() {
-            Stepdown(localHSM, event, e.Request.Term, e.Request.Candidate)
+            ReplayEventAndStepdown(
+                localHSM, event, e.Request.Term, e.Request.Candidate)
         }
         return nil
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
         if e.Request.Term >= localHSM.GetCurrentTerm() {
-            Stepdown(localHSM, event, e.Request.Term, e.Request.Leader)
+            ReplayEventAndStepdown(
+                localHSM, event, e.Request.Term, e.Request.Leader)
         }
         return nil
     case ev.EventClientReadOnlyRequest:
@@ -138,6 +123,25 @@ func (self *LeaderState) Handle(
         hsm.AssertTrue(ok)
         self.HandleClientRequest(
             localHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
+        return nil
+    case ev.EventPeerReplicateLog:
+        e, ok := event.(*ev.PeerReplicateLogEvent)
+        hsm.AssertTrue(ok)
+        goodToCommit, err := self.Inflight.Replicate(
+            e.Message.Peer, e.Message.MatchIndex)
+        if err != nil {
+            // TODO add log
+            return nil
+        }
+        if goodToCommit {
+            allCommitted := self.Inflight.GetCommitted()
+            self.CommitInflightEntries(localHSM, allCommitted)
+        }
+        return nil
+    case ev.EventStepdown:
+        localHSM.Notifier().Notify(ev.NewNotifyStateChangeEvent(
+            ev.RaftStateLeader, ev.RaftStateFollower))
+        sm.QTran(StateFollowerID)
         return nil
     case ev.EventClientMemberChangeRequest:
         fallthrough

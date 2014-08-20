@@ -88,14 +88,6 @@ func (self *FollowerState) Handle(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
-    case event.Type() == ev.EventTimeoutElection:
-        e, ok := event.(*ev.ElectionTimeoutEvent)
-        hsm.AssertTrue(ok)
-        notifyEvent := ev.NewNotifyElectionTimeoutEvent(
-            e.Message.LastTime, e.Message.Timeout)
-        localHSM.Notifier().Notify(notifyEvent)
-        localHSM.QTran(StateCandidateID)
-        return nil
     case event.Type() == ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
@@ -133,6 +125,15 @@ func (self *FollowerState) Handle(
         // redirect client to current leader
         response := &ev.LeaderRedirectResponse{localHSM.GetLeader()}
         e.SendResponse(ev.NewLeaderRedirectResponseEvent(response))
+        return nil
+    case event.Type() == ev.EventTimeoutElection:
+        e, ok := event.(*ev.ElectionTimeoutEvent)
+        hsm.AssertTrue(ok)
+        localHSM.Notifier().Notify(ev.NewNotifyElectionTimeoutEvent(
+            e.Message.LastTime, e.Message.Timeout))
+        localHSM.Notifier().Notify(ev.NewNotifyStateChangeEvent(
+            ev.RaftStateFollower, ev.RaftStateCandidate))
+        localHSM.QTran(StateCandidateID)
         return nil
     case event.Type() == ev.EventMemberChangeNextStep:
         e, ok := event.(*ev.MemberChangeNextStepEvent)
@@ -397,9 +398,8 @@ func (self *FollowerState) UpdateLastContactTime() {
 func (self *FollowerState) UpdateLastContact(localHSM *LocalHSM) {
     lastContactTime := self.LastContactTime()
     if TimeExpire(lastContactTime, self.electionTimeout) {
-        notifyEvent := ev.NewNotifyElectionTimeoutThresholdEvent(
-            lastContactTime, self.electionTimeout)
-        localHSM.Notifier().Notify(notifyEvent)
+        localHSM.Notifier().Notify(ev.NewNotifyElectionTimeoutThresholdEvent(
+            lastContactTime, self.electionTimeout))
     }
     self.UpdateLastContactTime()
     self.ticker.Reset()

@@ -118,15 +118,6 @@ func (self *CandidateState) Handle(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
-    case event.Type() == ev.EventTimeoutElection:
-        e, ok := event.(*ev.ElectionTimeoutEvent)
-        hsm.AssertTrue(ok)
-        notifyEvent := ev.NewNotifyElectionTimeoutEvent(
-            e.Message.LastTime, e.Message.Timeout)
-        localHSM.Notifier().Notify(notifyEvent)
-        // transfer to self, trigger Exit and Entry
-        localHSM.QTran(StateCandidateID)
-        return nil
     case event.Type() == ev.EventRequestVoteResponse:
         e, ok := event.(*ev.RequestVoteResponseEvent)
         hsm.AssertTrue(ok)
@@ -138,7 +129,7 @@ func (self *CandidateState) Handle(
         if e.Response.Term > localHSM.GetCurrentTerm() {
             // TODO add log
             localHSM.SetCurrentTerm(e.Response.Term)
-            localHSM.QTran(StateFollowerID)
+            localHSM.SelfDispatch(ev.NewStepdownEvent())
             return nil
         }
 
@@ -146,6 +137,8 @@ func (self *CandidateState) Handle(
             // TODO add log
             self.condition.AddVote(e.FromAddr)
             if self.condition.IsCommitted() {
+                localHSM.Notifier().Notify(ev.NewNotifyStateChangeEvent(
+                    ev.RaftStateCandidate, ev.RaftStateLeader))
                 sm.QTran(StateLeaderID)
             }
         }
@@ -156,7 +149,8 @@ func (self *CandidateState) Handle(
         // step down to follower state if local term is not greater than
         // the remote one
         if e.Request.Term >= localHSM.GetCurrentTerm() {
-            Stepdown(localHSM, event, e.Request.Term, e.Request.Leader)
+            ReplayEventAndStepdown(
+                localHSM, event, e.Request.Term, e.Request.Leader)
         }
         return nil
     case ev.IsClientEvent(event.Type()):
@@ -165,6 +159,19 @@ func (self *CandidateState) Handle(
         e, ok := event.(ev.ClientRequestEvent)
         hsm.AssertTrue(ok)
         e.SendResponse(ev.NewLeaderUnknownResponseEvent())
+        return nil
+    case event.Type() == ev.EventTimeoutElection:
+        e, ok := event.(*ev.ElectionTimeoutEvent)
+        hsm.AssertTrue(ok)
+        localHSM.Notifier().Notify(ev.NewNotifyElectionTimeoutEvent(
+            e.Message.LastTime, e.Message.Timeout))
+        // transfer to self, trigger Exit and Entry
+        sm.QTran(StateCandidateID)
+        return nil
+    case event.Type() == ev.EventStepdown:
+        localHSM.Notifier().Notify(ev.NewNotifyStateChangeEvent(
+            ev.RaftStateCandidate, ev.RaftStateFollower))
+        sm.QTran(StateFollowerID)
         return nil
     }
     return self.Super()
@@ -211,12 +218,11 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
     localHSM.PeerManager().Broadcast(event)
 }
 
-func Stepdown(localHSM *LocalHSM, event hsm.Event, term uint64, leader ps.ServerAddr) {
-    // replay this event
+func ReplayEventAndStepdown(
+    localHSM *LocalHSM, event hsm.Event, term uint64, leader ps.ServerAddr) {
+
     localHSM.SelfDispatch(event)
-    // record the term
     localHSM.SetCurrentTerm(term)
-    // record the leader
     localHSM.SetLeader(leader)
-    localHSM.QTran(StateFollowerID)
+    localHSM.SelfDispatch(ev.NewStepdownEvent())
 }

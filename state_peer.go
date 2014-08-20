@@ -307,12 +307,31 @@ func (self *LeaderPeerState) Handle(
     hsm.AssertTrue(ok)
     local := peerHSM.Local()
     switch event.Type() {
+    case ev.EventAppendEntriesResponse:
+        e, ok := event.(*ev.AppendEntriesResponseEvent)
+        hsm.AssertTrue(ok)
+        if e.Response.Term > local.GetCurrentTerm() {
+            local.SelfDispatch(ev.NewStepdownEvent())
+        }
+        matchIndex, _ := self.GetIndexInfo()
+        if e.Response.LastLogIndex != matchIndex {
+            // TODO add log
+            if e.Response.LastLogIndex > matchIndex {
+                message := &ev.PeerReplicateLog{
+                    Peer:       peerHSM.Addr(),
+                    MatchIndex: matchIndex,
+                }
+                event := ev.NewPeerReplicateLogEvent(message)
+                local.SelfDispatch(event)
+            }
+            self.SetMatchIndex(e.Response.LastLogIndex)
+        }
+        return nil
     case ev.EventTimeoutHeartbeat:
         e, ok := event.(*ev.HeartbeatTimeoutEvent)
         hsm.AssertTrue(ok)
-        notifyEvent := ev.NewNotifyHeartbeatTimeoutEvent(
-            e.Message.LastTime, e.Message.Timeout)
-        local.Notifier().Notify(notifyEvent)
+        local.Notifier().Notify(ev.NewNotifyHeartbeatTimeoutEvent(
+            e.Message.LastTime, e.Message.Timeout))
         // check whether the peer falls behind the leader
         matchIndex, _ := self.GetIndexInfo()
         lastLogIndex, err := local.Log().LastIndex()
@@ -354,26 +373,6 @@ func (self *LeaderPeerState) Handle(
         // update last contact timer
         self.UpdateLastContact()
         peerHSM.SelfDispatch(appendEntriesRespEvent)
-        return nil
-    case ev.EventAppendEntriesResponse:
-        e, ok := event.(*ev.AppendEntriesResponseEvent)
-        hsm.AssertTrue(ok)
-        if e.Response.Term > local.GetCurrentTerm() {
-            local.SelfDispatch(ev.NewStepdownEvent())
-        }
-        matchIndex, _ := self.GetIndexInfo()
-        if e.Response.LastLogIndex != matchIndex {
-            // TODO add log
-            if e.Response.LastLogIndex > matchIndex {
-                message := &ev.PeerReplicateLog{
-                    Peer:       peerHSM.Addr(),
-                    MatchIndex: matchIndex,
-                }
-                event := ev.NewPeerReplicateLogEvent(message)
-                local.SelfDispatch(event)
-            }
-            self.SetMatchIndex(e.Response.LastLogIndex)
-        }
         return nil
     }
     return self.Super()
@@ -465,9 +464,6 @@ func (self *StandardModePeerState) Handle(
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
-    case ev.EventTimeoutHeartbeat:
-        event := self.SetupReplicating(peerHSM)
-        peerHSM.SelfDispatch(event)
     case ev.EventAppendEntriesRequest:
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
@@ -505,6 +501,9 @@ func (self *StandardModePeerState) Handle(
             sm.QTran(StateLeaderPeerID)
         }
         return self.Super()
+    case ev.EventTimeoutHeartbeat:
+        event := self.SetupReplicating(peerHSM)
+        peerHSM.SelfDispatch(event)
     case ev.EventPeerEnterSnapshotMode:
         // TODO add log
         sm.QTran(StateSnapshotModePeerID)
@@ -684,8 +683,7 @@ func (self *SnapshotModePeerState) Handle(
         leaderPeerState.UpdateLastContact()
 
         if snapshotRespEvent.Response.Term > local.GetCurrentTerm() {
-            event := ev.NewStepdownEvent()
-            local.SelfDispatch(event)
+            local.SelfDispatch(ev.NewStepdownEvent())
             // Stop replicating snapshot to this peer since it already
             // connected to another more up-to-date leader.
             peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())

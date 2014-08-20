@@ -143,10 +143,6 @@ func (self *SnapshotRecoveryState) Handle(
     hsm.AssertTrue(ok)
     switch event.Type() {
     // TODO add a breakout policy for this state
-    case ev.EventTimeoutElection:
-        // Ignore this event. Don't transfer to candidate state when
-        // recovering from snapshot.
-        return nil
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
@@ -218,6 +214,10 @@ func (self *SnapshotRecoveryState) Handle(
                 sm.QTran(StateFollowerID)
             }
         }
+        return nil
+    case ev.EventTimeoutElection:
+        // Ignore this event. Don't transfer to candidate state when
+        // recovering from snapshot.
         return nil
     case ev.EventAbortSnapshotRecovery:
         // TODO add log
