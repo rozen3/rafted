@@ -62,12 +62,8 @@ func (self *ReliableEventChannel) Start() {
             }
         }
     }
-    self.startRoutine(routine)
-}
-
-func (self *ReliableEventChannel) startRoutine(fn func()) {
     self.group.Add(1)
-    go fn()
+    go routine()
 }
 
 func (self *ReliableEventChannel) Send(event hsm.Event) {
@@ -88,6 +84,150 @@ func (self *ReliableEventChannel) GetOutChan() <-chan hsm.Event {
 }
 
 func (self *ReliableEventChannel) Close() {
+    self.closeChan <- self
+    self.group.Wait()
+}
+
+// ReliableUint64Channel is an unlimited size channel for
+// non-blocking sending/receiving
+type ReliableUint64Channel struct {
+    inChan    chan uint64
+    outChan   chan uint64
+    closeChan chan interface{}
+    queue     *list.List
+    group     *sync.WaitGroup
+}
+
+func NewReliableUint64Channel() *ReliableUint64Channel {
+    object := &ReliableUint64Channel{
+        inChan:    make(chan uint64, 1),
+        outChan:   make(chan uint64, 1),
+        closeChan: make(chan interface{}, 1),
+        queue:     list.New(),
+        group:     &sync.WaitGroup{},
+    }
+    object.Start()
+    return object
+}
+
+func (self *ReliableUint64Channel) Start() {
+    routine := func() {
+        defer self.group.Done()
+        for {
+            if self.queue.Len() > 0 {
+                e := self.queue.Front()
+                out, _ := e.Value.(uint64)
+                select {
+                case <-self.closeChan:
+                    return
+                case in := <-self.inChan:
+                    self.queue.PushBack(in)
+                case self.outChan <- out:
+                    self.queue.Remove(e)
+                }
+            } else {
+                select {
+                case <-self.closeChan:
+                    return
+                case in := <-self.inChan:
+                    self.queue.PushBack(in)
+                }
+            }
+        }
+    }
+    self.group.Add(1)
+    go routine()
+}
+
+func (self *ReliableUint64Channel) Send(in uint64) {
+    self.inChan <- in
+}
+
+func (self *ReliableUint64Channel) Recv() uint64 {
+    out := <-self.outChan
+    return out
+}
+
+func (self *ReliableUint64Channel) GetInChan() chan<- uint64 {
+    return self.inChan
+}
+
+func (self *ReliableUint64Channel) GetOutChan() <-chan uint64 {
+    return self.outChan
+}
+
+func (self *ReliableUint64Channel) Close() {
+    self.closeChan <- self
+    self.group.Wait()
+}
+
+type ReliableInflightEntryChannel struct {
+    inChan    chan *InflightEntry
+    outChan   chan *InflightEntry
+    closeChan chan interface{}
+    queue     *list.List
+    group     *sync.WaitGroup
+}
+
+func NewReliableInflightEntryChannel() *ReliableInflightEntryChannel {
+    object := &ReliableInflightEntryChannel{
+        inChan:    make(chan *InflightEntry, 1),
+        outChan:   make(chan *InflightEntry, 1),
+        closeChan: make(chan interface{}, 1),
+        queue:     list.New(),
+        group:     &sync.WaitGroup{},
+    }
+    object.Start()
+    return object
+}
+
+func (self *ReliableInflightEntryChannel) Start() {
+    routine := func() {
+        defer self.group.Done()
+        for {
+            if self.queue.Len() > 0 {
+                e := self.queue.Front()
+                out, _ := e.Value.(*InflightEntry)
+                select {
+                case <-self.closeChan:
+                    return
+                case in := <-self.inChan:
+                    self.queue.PushBack(in)
+                case self.outChan <- out:
+                    self.queue.Remove(e)
+                }
+            } else {
+                select {
+                case <-self.closeChan:
+                    return
+                case in := <-self.inChan:
+                    self.queue.PushBack(in)
+                }
+            }
+        }
+    }
+    self.group.Add(1)
+    go routine()
+}
+
+func (self *ReliableInflightEntryChannel) Send(entry *InflightEntry) {
+    self.inChan <- entry
+}
+
+func (self *ReliableInflightEntryChannel) Recv() *InflightEntry {
+    out := <-self.outChan
+    return out
+}
+
+func (self *ReliableInflightEntryChannel) GetInChan() chan<- *InflightEntry {
+    return self.inChan
+}
+
+func (self *ReliableInflightEntryChannel) GetOutChan() <-chan *InflightEntry {
+    return self.outChan
+}
+
+func (self *ReliableInflightEntryChannel) Close() {
     self.closeChan <- self
     self.group.Wait()
 }
@@ -183,6 +323,10 @@ func (self *ClientEventListener) Stop() {
 type Applier struct {
     log          ps.Log
     stateMachine ps.StateMachine
+
+    followerCommitChan chan uint64
+    leaderCommitChan   chan *InflightEntry
+    stopChan           interface{}
 }
 
 func NewApplier(log ps.Log, stateMachine ps.StateMachine) *Applier {
