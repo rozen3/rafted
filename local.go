@@ -186,6 +186,12 @@ func (self *LocalHSM) SetCurrentTerm(term uint64) {
     atomic.StoreUint64(&self.currentTerm, term)
 }
 
+func (self *LocalHSM) SetCurrentTermWithNotify(term uint64) {
+    oldTerm := self.GetCurrentTerm()
+    self.SetCurrentTerm(term)
+    self.Notifier().Notify(ev.NewNotifyTermChangeEvent(oldTerm, term))
+}
+
 func (self *LocalHSM) GetLocalAddr() ps.ServerAddr {
     self.localAddrLock.RLock()
     defer self.localAddrLock.RUnlock()

@@ -178,7 +178,7 @@ func (self *FollowerState) ProcessRequestVote(
 
     // Update to latest term if we see newer term
     if request.Term > term {
-        localHSM.SetCurrentTerm(request.Term)
+        localHSM.SetCurrentTermWithNotify(request.Term)
         // the old leader is now invalidated
         localHSM.SetLeader(ps.NilServerAddr)
         // transfer to follwer state for a new term
@@ -240,7 +240,7 @@ func (self *FollowerState) ProcessAppendEntries(
     leader := localHSM.GetLeader()
     // Update to latest term if we see newer term
     if request.Term > term {
-        localHSM.SetCurrentTerm(request.Term)
+        localHSM.SetCurrentTermWithNotify(request.Term)
         // update leader in new term
         localHSM.SetLeaderWithNotify(request.Leader)
         // transfer to follower state for a new term

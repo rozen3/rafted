@@ -118,6 +118,7 @@ func (self *CandidateState) Handle(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
+    // TODO process RequestVoteRequestEvent here?
     case event.Type() == ev.EventRequestVoteResponse:
         e, ok := event.(*ev.RequestVoteResponseEvent)
         hsm.AssertTrue(ok)
@@ -128,7 +129,7 @@ func (self *CandidateState) Handle(
 
         if e.Response.Term > localHSM.GetCurrentTerm() {
             // TODO add log
-            localHSM.SetCurrentTerm(e.Response.Term)
+            localHSM.SetCurrentTermWithNotify(e.Response.Term)
             localHSM.SelfDispatch(ev.NewStepdownEvent())
             return nil
         }
@@ -191,7 +192,7 @@ func (self *CandidateState) UpdateLastElectionTime() {
 
 func (self *CandidateState) StartElection(localHSM *LocalHSM) {
     // increase the term
-    localHSM.SetCurrentTerm(localHSM.GetCurrentTerm() + 1)
+    localHSM.SetCurrentTermWithNotify(localHSM.GetCurrentTerm() + 1)
 
     // Vote for self
     term := localHSM.GetCurrentTerm()
@@ -222,7 +223,7 @@ func ReplayEventAndStepdown(
     localHSM *LocalHSM, event hsm.Event, term uint64, leader ps.ServerAddr) {
 
     localHSM.SelfDispatch(event)
-    localHSM.SetCurrentTerm(term)
+    localHSM.SetCurrentTermWithNotify(term)
     localHSM.SetLeaderWithNotify(leader)
     localHSM.SelfDispatch(ev.NewStepdownEvent())
 }
