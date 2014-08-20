@@ -10,11 +10,12 @@ import (
 )
 
 const (
-    HeartbeatTimeout            = time.Millisecond * 200
-    ElectionTimeout             = time.Millisecond * 50
-    MaxAppendEntriesSize uint64 = 10
-    MaxSnapshotChunkSize uint64 = 1000
-    DefaultPoolSize             = 2
+    HeartbeatTimeout                        = time.Millisecond * 200
+    ElectionTimeout                         = time.Millisecond * 50
+    ElectionTimeoutThresholdPersent float32 = 0.8
+    MaxAppendEntriesSize            uint64  = 10
+    MaxSnapshotChunkSize            uint64  = 1000
+    DefaultPoolSize                         = 2
 )
 
 func NewTestRaftNode(
@@ -30,6 +31,7 @@ func NewTestRaftNode(
     local, err := NewLocal(
         HeartbeatTimeout,
         ElectionTimeout,
+        ElectionTimeoutThresholdPersent,
         localAddr,
         configManager,
         stateMachine,

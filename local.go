@@ -362,6 +362,7 @@ type Local struct {
 func NewLocal(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
+    electionTimeoutThresholdPersent float32,
     localAddr ps.ServerAddr,
     configManager ps.ConfigManager,
     stateMachine ps.StateMachine,
@@ -372,7 +373,8 @@ func NewLocal(
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StateLocalID)
     localState := NewLocalState(top, logger)
-    followerState := NewFollowerState(localState, heartbeatTimeout, logger)
+    followerState := NewFollowerState(
+        localState, heartbeatTimeout, electionTimeoutThresholdPersent, logger)
     NewSnapshotRecoveryState(followerState, logger)
     followerMemberChangeState := NewFollowerMemberChangeState(followerState, logger)
     NewFollowerOldNewConfigSeenState(followerMemberChangeState, logger)

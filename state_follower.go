@@ -13,9 +13,10 @@ import (
 type FollowerState struct {
     *LogStateHead
 
-    // heartbeat timeout and its time ticker
-    heartbeatTimeout time.Duration
-    ticker           Ticker
+    // election timeout and its time ticker
+    electionTimeout                 time.Duration
+    electionTimeoutThresholdPersent float32
+    ticker                          Ticker
     // last time we have contact from the leader
     lastContactTime     time.Time
     lastContactTimeLock sync.RWMutex
@@ -23,13 +24,15 @@ type FollowerState struct {
 
 func NewFollowerState(
     super hsm.State,
-    heartbeatTimeout time.Duration,
+    electionTimeout time.Duration,
+    electionTimeoutThresholdPersent float32,
     logger logging.Logger) *FollowerState {
 
     object := &FollowerState{
-        LogStateHead:     NewLogStateHead(super, logger),
-        heartbeatTimeout: heartbeatTimeout,
-        ticker:           NewRandomTicker(heartbeatTimeout),
+        LogStateHead:                    NewLogStateHead(super, logger),
+        electionTimeout:                 electionTimeout,
+        electionTimeoutThresholdPersent: electionTimeoutThresholdPersent,
+        ticker: NewRandomTicker(electionTimeout),
     }
     super.AddChild(object)
     return object
@@ -50,17 +53,17 @@ func (self *FollowerState) Entry(
     // init status for this status
     self.UpdateLastContactTime()
     // start heartbeat timeout ticker
-    deliverHeartbeatTimeout := func() {
+    dispatchTimeout := func() {
         lastContactTime := self.LastContactTime()
-        if TimeExpire(lastContactTime, self.heartbeatTimeout) {
+        if TimeExpire(lastContactTime, self.electionTimeout) {
             timeout := &ev.Timeout{
                 LastTime: lastContactTime,
-                Timeout:  self.heartbeatTimeout,
+                Timeout:  self.electionTimeout,
             }
-            localHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
+            localHSM.SelfDispatch(ev.NewElectionTimeoutEvent(timeout))
         }
     }
-    self.ticker.Start(deliverHeartbeatTimeout)
+    self.ticker.Start(dispatchTimeout)
     return nil
 }
 
@@ -85,10 +88,10 @@ func (self *FollowerState) Handle(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
-    case event.Type() == ev.EventTimeoutHeartbeat:
-        e, ok := event.(*ev.HeartbeatTimeoutEvent)
+    case event.Type() == ev.EventTimeoutElection:
+        e, ok := event.(*ev.ElectionTimeoutEvent)
         hsm.AssertTrue(ok)
-        notifyEvent := ev.NewNotifyHeartbeatTimeoutEvent(
+        notifyEvent := ev.NewNotifyElectionTimeoutEvent(
             e.Message.LastTime, e.Message.Timeout)
         localHSM.Notifier().Notify(notifyEvent)
         localHSM.QTran(StateCandidateID)
@@ -96,7 +99,7 @@ func (self *FollowerState) Handle(
     case event.Type() == ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
-        self.UpdateLastContact()
+        self.UpdateLastContact(localHSM)
         response, toSend := self.ProcessRequestVote(localHSM, e.Request)
         if toSend {
             e.SendResponse(ev.NewRequestVoteResponseEvent(response))
@@ -107,7 +110,6 @@ func (self *FollowerState) Handle(
     case event.Type() == ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesReqeustEvent)
         hsm.AssertTrue(ok)
-        self.UpdateLastContact()
         response, toSend := self.ProcessAppendEntries(localHSM, e.Request)
         if toSend {
             e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
@@ -120,7 +122,6 @@ func (self *FollowerState) Handle(
         // replay this event on its entry/init/handle handlers.
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
-        self.UpdateLastContact()
         if (e.Request.Term >= localHSM.GetCurrentTerm()) &&
             (e.Request.Offset == 0) {
             localHSM.QTranOnEvent(StateSnapshotRecoveryID, event)
@@ -248,9 +249,9 @@ func (self *FollowerState) ProcessAppendEntries(
 
     if ps.AddrEqual(&leader, &ps.NilServerAddr) {
         localHSM.SetLeader(request.Leader)
-        self.UpdateLastContact()
+        self.UpdateLastContact(localHSM)
     } else if ps.AddrEqual(&leader, &request.Leader) {
-        self.UpdateLastContact()
+        self.UpdateLastContact(localHSM)
     } else {
         // TODO error handling
         // fatal error two leader in the same term sending AE to us
@@ -393,7 +394,13 @@ func (self *FollowerState) UpdateLastContactTime() {
     self.lastContactTime = time.Now()
 }
 
-func (self *FollowerState) UpdateLastContact() {
+func (self *FollowerState) UpdateLastContact(localHSM *LocalHSM) {
+    lastContactTime := self.LastContactTime()
+    if TimeExpire(lastContactTime, self.electionTimeout) {
+        notifyEvent := ev.NewNotifyElectionTimeoutThresholdEvent(
+            lastContactTime, self.electionTimeout)
+        localHSM.Notifier().Notify(notifyEvent)
+    }
     self.UpdateLastContactTime()
     self.ticker.Reset()
 }

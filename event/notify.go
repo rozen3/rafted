@@ -10,6 +10,7 @@ const (
     EventNotifyBegin hsm.EventType = EventClientUser + 1 + iota
     EventNotifyHeartbeatTimeout
     EventNotifyElectionTimeout
+    EventNotifyElectionTimeoutThreshold
     EventNotifyStateChange
     EventNotifyLeaderChange
     EventNotifyTermChange
@@ -70,6 +71,25 @@ func NewNotifyElectionTimeoutEvent(
         StdEvent:         hsm.NewStdEvent(EventNotifyElectionTimeout),
         LastElectionTime: lastElectionTime,
         Timeout:          timeout,
+    }
+}
+
+// NotifyElectionTimeoutThresholdEvent is an event to notify when
+// election timeout is about to happen in follower state.
+type NotifyElectionTimeoutThresholdEvent struct {
+    *hsm.StdEvent
+    LastContactTime time.Time
+    Timeout         time.Duration
+}
+
+func NewNotifyElectionTimeoutThresholdEvent(
+    lastContactTime time.Time,
+    timeout time.Duration) *NotifyElectionTimeoutThresholdEvent {
+
+    return &NotifyElectionTimeoutThresholdEvent{
+        StdEvent:        hsm.NewStdEvent(EventNotifyElectionTimeoutThreshold),
+        LastContactTime: lastContactTime,
+        Timeout:         timeout,
     }
 }
 

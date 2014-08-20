@@ -143,7 +143,7 @@ func (self *SnapshotRecoveryState) Handle(
     hsm.AssertTrue(ok)
     switch event.Type() {
     // TODO add a breakout policy for this state
-    case ev.EventTimeoutHeartbeat:
+    case ev.EventTimeoutElection:
         // Ignore this event. Don't transfer to candidate state when
         // recovering from snapshot.
         return nil
@@ -160,18 +160,24 @@ func (self *SnapshotRecoveryState) Handle(
             sm.QTran(StateFollowerID)
             return nil
         }
-        if ps.AddrsNotEqual(e.Request.Servers, self.snapshot.Servers) {
-            // Receive inconsistant server configurations among
-            // install snapshot requests.
-            // TODO add log
+        if e.Request.Term < localHSM.GetCurrentTerm() {
+            // The request is stale with a outdated term.
             if err := self.writer.Cancel(); err != nil {
                 // TODO add log
             }
             sm.QTran(StateFollowerID)
             return nil
         }
-        if e.Request.Term < localHSM.GetCurrentTerm() {
-            // The request is stale with a outdated term.
+
+        // update last contact time
+        followerState, ok := self.Super().(*FollowerState)
+        hsm.AssertTrue(ok)
+        followerState.UpdateLastContact(localHSM)
+
+        if ps.AddrsNotEqual(e.Request.Servers, self.snapshot.Servers) {
+            // Receive inconsistant server configurations among
+            // install snapshot requests.
+            // TODO add log
             if err := self.writer.Cancel(); err != nil {
                 // TODO add log
             }

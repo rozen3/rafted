@@ -85,7 +85,7 @@ func (self *CandidateState) Entry(
     // start election procedure
     self.StartElection(localHSM)
     // start election timeout ticker
-    notifyElectionTimeout := func() {
+    dispatchTimeout := func() {
         lastElectionTime := self.LastElectionTime()
         if TimeExpire(lastElectionTime, self.electionTimeout) {
             timeout := &ev.Timeout{
@@ -95,7 +95,7 @@ func (self *CandidateState) Entry(
             localHSM.SelfDispatch(ev.NewElectionTimeoutEvent(timeout))
         }
     }
-    self.ticker.Start(notifyElectionTimeout)
+    self.ticker.Start(dispatchTimeout)
     return nil
 }
 
