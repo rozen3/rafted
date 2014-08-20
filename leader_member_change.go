@@ -229,6 +229,10 @@ func (self *LeaderNotInMemberChangeState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Entry", self.ID())
+    memberChangeHSM, ok := sm.(*LeaderMemberChangeHSM)
+    hsm.AssertTrue(ok)
+    localHSM := memberChangeHSM.LocalHSM
+    localHSM.SetMemberChangeStatus(NotInMemeberChange)
     return nil
 }
 
@@ -252,8 +256,7 @@ func (self *LeaderNotInMemberChangeState) Handle(
     case ev.EventClientMemberChangeRequest:
         e, ok := event.(*ev.ClientMemberChangeRequestEvent)
         hsm.AssertTrue(ok)
-        configManager := localHSM.ConfigManager()
-        conf, err := configManager.LastConfig()
+        conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
             // TODO error handling
         }
@@ -272,8 +275,8 @@ func (self *LeaderNotInMemberChangeState) Handle(
         if err != nil {
             // TODO error handling
         }
-
-        if err = configManager.PushConfig(lastLogIndex+1, newConf); err != nil {
+        err = localHSM.ConfigManager().Push(lastLogIndex+1, newConf)
+        if err != nil {
             // TODO error handling
         }
 
@@ -330,7 +333,7 @@ func (self *LeaderInMemberChangeState) Init(
         localHSM.SelfDispatch(ev.NewLeaderReenterMemberChangeStateEvent())
         sm.QInit(StateLeaderMemberChangePhase1ID)
     case OldNewConfigCommitted:
-        conf, err := localHSM.ConfigManager().LastConfig()
+        conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
             // TODO error handling
         }
@@ -421,8 +424,7 @@ func (self *LeaderMemberChangePhase1State) Handle(
     case ev.EventLeaderForwardMemberChangePhase:
         e, ok := event.(*ev.LeaderForwardMemberChangePhaseEvent)
         hsm.AssertTrue(ok)
-        configManager := localHSM.ConfigManager()
-        conf, err := configManager.LastConfig()
+        conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
             // TODO error handling
         }
@@ -442,7 +444,7 @@ func (self *LeaderMemberChangePhase1State) Handle(
             // TODO error handling
         }
 
-        err = configManager.PushConfig(lastLogIndex+1, newConf)
+        err = localHSM.ConfigManager().Push(lastLogIndex+1, newConf)
         if err != nil {
             // TODO error handling
         }
@@ -501,8 +503,9 @@ func (self *LeaderMemberChangePhase2State) Handle(
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.EventTypeString(event))
-    localHSM, ok := sm.(*LocalHSM)
+    memberChangeHSM, ok := sm.(*LeaderMemberChangeHSM)
     hsm.AssertTrue(ok)
+    localHSM := memberChangeHSM.LocalHSM
     switch event.Type() {
     case ev.EventLeaderReenterMemberChangeState:
         // Re-replicate the logs update util now, which include
@@ -513,8 +516,7 @@ func (self *LeaderMemberChangePhase2State) Handle(
     case ev.EventLeaderForwardMemberChangePhase:
         e, ok := event.(*ev.LeaderForwardMemberChangePhaseEvent)
         hsm.AssertTrue(ok)
-        configManager := localHSM.ConfigManager()
-        conf, err := configManager.LastConfig()
+        conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
             // TODO error handling
         }
@@ -532,7 +534,7 @@ func (self *LeaderMemberChangePhase2State) Handle(
             // TODO error handling
         }
 
-        err = configManager.PushConfig(lastLogIndex+1, newConf)
+        err = localHSM.ConfigManager().Push(lastLogIndex+1, newConf)
         if err != nil {
             // TODO error handling
         }
@@ -549,6 +551,10 @@ func (self *LeaderMemberChangePhase2State) Handle(
         }
 
         // TODO stepdown if we are not part of the new cluster
+
+        if err = localHSM.SendMemberChangeNotify(); err != nil {
+            // TODO error handling
+        }
 
         sm.QTran(StateLeaderNotInMemberChangeID)
         return nil

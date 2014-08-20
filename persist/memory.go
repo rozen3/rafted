@@ -517,9 +517,7 @@ func NewMemoryConfigManager(
     }
 }
 
-func (self *MemoryConfigManager) PushConfig(
-    logIndex uint64, conf *Config) error {
-
+func (self *MemoryConfigManager) Push(logIndex uint64, conf *Config) error {
     self.lock.Lock()
     defer self.lock.Unlock()
     elem := self.configs.Back()
@@ -535,22 +533,30 @@ func (self *MemoryConfigManager) PushConfig(
     return nil
 }
 
-func (self *MemoryConfigManager) LastConfig() (*Config, error) {
+func (self *MemoryConfigManager) RNth(n uint32) (*Config, error) {
     self.lock.RLock()
     defer self.lock.RUnlock()
     elem := self.configs.Back()
+    for i := uint32(0); (i < n) && (elem != nil); i++ {
+        elem = elem.Prev()
+    }
+    if elem == nil {
+        return nil, errors.New("n out of bound")
+    }
     meta, _ := elem.Value.(*ConfigMeta)
     return meta.Conf, nil
 }
 
-func (self *MemoryConfigManager) GetConfig(logIndex uint64) (*Config, error) {
+func (self *MemoryConfigManager) PreviousOf(
+    logIndex uint64) (*ConfigMeta, error) {
+
     self.lock.RLock()
     defer self.lock.RUnlock()
-    for e := self.configs.Back(); e != nil; e = e.Prev() {
+    e := self.configs.Back()
+    for ; e != nil; e = e.Prev() {
         meta, _ := e.Value.(*ConfigMeta)
-        if (meta.FromLogIndex <= logIndex) &&
-            (logIndex <= meta.ToLogIndex) {
-            return meta.Conf, nil
+        if meta.FromLogIndex < logIndex {
+            return meta, nil
         }
     }
     return nil, errors.New("index out of bound")
@@ -577,17 +583,6 @@ func (self *MemoryConfigManager) ListAfter(logIndex uint64) ([]*ConfigMeta, erro
         return result, nil
     }
     return nil, errors.New("index out of bound")
-}
-
-func (self *MemoryConfigManager) List() ([]*ConfigMeta, error) {
-    self.lock.RLock()
-    defer self.lock.RUnlock()
-    metas := make([]*ConfigMeta, 0, self.configs.Len())
-    for e := self.configs.Front(); e != nil; e = e.Next() {
-        meta, _ := e.Value.(*ConfigMeta)
-        metas = append(metas, meta)
-    }
-    return metas, nil
 }
 
 func (self *MemoryConfigManager) TruncateBefore(logIndex uint64) error {

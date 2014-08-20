@@ -15,22 +15,19 @@ type ConfigMeta struct {
 // It provides functions to store and restrieve config.
 type ConfigManager interface {
     // Store a new config at the log entry with specified index
-    PushConfig(logIndex uint64, conf *Config) error
+    Push(logIndex uint64, conf *Config) error
 
-    // Returns the last config
-    LastConfig() (*Config, error)
+    // Returns the nth config(start from 0) from back to front.
+    RNth(n uint32) (*Config, error)
 
-    // Returns the config at log entry with specified index
-    GetConfig(logIndex uint64) (*Config, error)
+    // Returns the previous one of specified config
+    PreviousOf(logIndex uint64) (*ConfigMeta, error)
 
     // Lists all durable config metadatas after the given index,
     // including the given index.
-    ListAfter(logIndex uint64) ([]*ConfigMeta, error)
-
-    // Lists all durable config metadatas.
     // Metadatas should be returned in ascending log index order,
     // with smallest index first.
-    List() ([]*ConfigMeta, error)
+    ListAfter(logIndex uint64) ([]*ConfigMeta, error)
 
     // Delete the config metadata before and up to the given index,
     // including the given index.

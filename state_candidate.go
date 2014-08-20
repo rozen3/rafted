@@ -53,28 +53,21 @@ func (self *CandidateState) Entry(
     case OldNewConfigSeen:
         fallthrough
     case OldNewConfigCommitted:
-        conf, err := localHSM.ConfigManager().LastConfig()
+        conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
             // TODO error handling
         }
         self.condition = NewMemberChangeCommitCondition(conf)
     case NewConfigSeen:
-        committedIndex, err := localHSM.Log().CommittedIndex()
+        conf, err := localHSM.ConfigManager().RNth(1)
         if err != nil {
             // TODO error handling
         }
-        metas, err := localHSM.ConfigManager().ListAfter(committedIndex)
-        if err != nil {
-            // TODO error handling
-        }
-        if len(metas) != 2 {
-            // TODO error handling
-        }
-        self.condition = NewMemberChangeCommitCondition(metas[0].Conf)
+        self.condition = NewMemberChangeCommitCondition(conf)
     case NotInMemeberChange:
         fallthrough
     default:
-        conf, err := localHSM.ConfigManager().LastConfig()
+        conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
             // TODO error handling
         }

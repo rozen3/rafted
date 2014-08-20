@@ -39,7 +39,7 @@ func (self *LeaderState) Entry(
     // coordinate peer into LeaderPeerState
     localHSM.PeerManager().Broadcast(ev.NewPeerEnterLeaderEvent())
     // init status for this state
-    conf, err := localHSM.configManager.LastConfig()
+    conf, err := localHSM.ConfigManager().RNth(0)
     if err != nil {
         // TODO error handling
     }
@@ -157,7 +157,7 @@ func (self *LeaderState) Handle(
 func (self *LeaderState) HandleClientRequest(
     localHSM *LocalHSM, requestData []byte, resultChan chan ev.ClientEvent) {
 
-    conf, err := localHSM.ConfigManager().LastConfig()
+    conf, err := localHSM.ConfigManager().RNth(0)
     if err != nil {
         // TODO error handling
     }

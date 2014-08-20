@@ -149,7 +149,7 @@ func (self *FollowerState) Handle(
             // TODO error handling
         }
 
-        err = localHSM.ConfigManager().PushConfig(lastLogIndex+1, conf)
+        err = localHSM.ConfigManager().Push(lastLogIndex+1, conf)
         if err != nil {
             // TODO error handling
         }

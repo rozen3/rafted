@@ -156,7 +156,7 @@ func (self *FollowerOldNewConfigCommittedState) Handle(
             // TODO error handling
         }
 
-        err = localHSM.ConfigManager().PushConfig(lastLogIndex+1, conf)
+        err = localHSM.ConfigManager().Push(lastLogIndex+1, conf)
         if err != nil {
             // TODO error handling
         }
@@ -225,11 +225,16 @@ func (self *FollowerNewConfigSeenState) Handle(
             // TODO error handling
         }
 
-        err = localHSM.ConfigManager().PushConfig(lastLogIndex+1, newConf)
+        err = localHSM.ConfigManager().Push(lastLogIndex+1, newConf)
         if err != nil {
             // TODO error handling
         }
         localHSM.SetMemberChangeStatus(NotInMemeberChange)
+
+        if err = localHSM.SendMemberChangeNotify(); err != nil {
+            // TODO error handling
+        }
+
         sm.QTran(StateFollowerID)
         return nil
     }

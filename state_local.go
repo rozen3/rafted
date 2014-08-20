@@ -94,7 +94,7 @@ func (self *NeedPeersState) Entry(
     case OldNewConfigCommitted:
         fallthrough
     default:
-        conf, err := localHSM.ConfigManager().LastConfig()
+        conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
             // TODO error handling
         }

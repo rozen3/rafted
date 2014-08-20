@@ -245,6 +245,19 @@ func (self *LocalHSM) SetMemberChangeStatus(status MemberChangeStatusType) {
     self.memberChangeStatus = status
 }
 
+func (self *LocalHSM) SendMemberChangeNotify() error {
+    conf, err := self.configManager.RNth(2)
+    if err != nil {
+        return err
+    }
+    if !ps.IsOldNewConfig(conf) {
+        return errors.New("config data corrupted")
+    }
+    self.Notifier().Notify(ev.NewNotifyMemberChangeEvent(
+        conf.Servers, conf.NewServers))
+    return nil
+}
+
 func (self *LocalHSM) ConfigManager() ps.ConfigManager {
     return self.configManager
 }
