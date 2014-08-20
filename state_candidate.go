@@ -223,6 +223,6 @@ func ReplayEventAndStepdown(
 
     localHSM.SelfDispatch(event)
     localHSM.SetCurrentTerm(term)
-    localHSM.SetLeader(leader)
+    localHSM.SetLeaderWithNotify(leader)
     localHSM.SelfDispatch(ev.NewStepdownEvent())
 }

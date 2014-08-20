@@ -35,7 +35,7 @@ func (self *LeaderState) Entry(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
-    localHSM.SetLeader(localHSM.GetLocalAddr())
+    localHSM.SetLeaderWithNotify(localHSM.GetLocalAddr())
     // coordinate peer into LeaderPeerState
     localHSM.PeerManager().Broadcast(ev.NewPeerEnterLeaderEvent())
     // init status for this state

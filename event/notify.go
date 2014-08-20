@@ -113,16 +113,14 @@ func NewNotifyStateChangeEvent(
 // NotifyLeaderChangeEvent is an event to notify that leader has changed.
 type NotifyLeaderChangeEvent struct {
     *hsm.StdEvent
-    OldLeader ps.ServerAddr
     NewLeader ps.ServerAddr
 }
 
 func NewNotifyLeaderChangeEvent(
-    oldLeader, newLeader ps.ServerAddr) *NotifyLeaderChangeEvent {
+    newLeader ps.ServerAddr) *NotifyLeaderChangeEvent {
 
     return &NotifyLeaderChangeEvent{
         StdEvent:  hsm.NewStdEvent(EventNotifyLeaderChange),
-        OldLeader: oldLeader,
         NewLeader: newLeader,
     }
 }

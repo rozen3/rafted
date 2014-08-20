@@ -242,14 +242,14 @@ func (self *FollowerState) ProcessAppendEntries(
     if request.Term > term {
         localHSM.SetCurrentTerm(request.Term)
         // update leader in new term
-        localHSM.SetLeader(request.Leader)
+        localHSM.SetLeaderWithNotify(request.Leader)
         // transfer to follower state for a new term
         localHSM.QTran(StateFollowerID)
         return nil, false
     }
 
     if ps.AddrEqual(&leader, &ps.NilServerAddr) {
-        localHSM.SetLeader(request.Leader)
+        localHSM.SetLeaderWithNotify(request.Leader)
         self.UpdateLastContact(localHSM)
     } else if ps.AddrEqual(&leader, &request.Leader) {
         self.UpdateLastContact(localHSM)

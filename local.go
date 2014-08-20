@@ -222,6 +222,11 @@ func (self *LocalHSM) SetLeader(leader ps.ServerAddr) {
     self.leader = leader
 }
 
+func (self *LocalHSM) SetLeaderWithNotify(leader ps.ServerAddr) {
+    self.SetLeader(leader)
+    self.Notifier().Notify(ev.NewNotifyLeaderChangeEvent(leader))
+}
+
 func (self *LocalHSM) GetMemberChangeStatus() MemberChangeStatusType {
     self.memberChangeStatusLock.RLock()
     defer self.memberChangeStatusLock.RUnlock()
