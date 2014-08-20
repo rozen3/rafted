@@ -180,6 +180,22 @@ func (self *ClientEventListener) Stop() {
     self.group.Wait()
 }
 
+type Applier struct {
+    log          ps.Log
+    stateMachine ps.StateMachine
+}
+
+func NewApplier(log ps.Log, stateMachine ps.StateMachine) *Applier {
+    return &Applier{
+        log:          log,
+        stateMachine: stateMachine,
+    }
+}
+
+func (self *Applier) FollowerCommit(index uint64) {
+    // TODO add impl
+}
+
 // Min returns the minimum.
 func Min(a, b uint64) uint64 {
     if a <= b {

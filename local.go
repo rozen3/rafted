@@ -68,22 +68,15 @@ type LocalHSM struct {
     memberChangeStatus     MemberChangeStatusType
     memberChangeStatusLock sync.RWMutex
 
-    // configuration
     configManager ps.ConfigManager
 
-    // state machine is exclusively used only in here
-    stateMachine ps.StateMachine
-
-    // log entries
-    log ps.Log
-
-    // snapshot
+    log             ps.Log
+    stateMachine    ps.StateMachine
     snapshotManager ps.SnapshotManager
+    applier         *Applier
 
-    // peers
     peerManager *PeerManager
 
-    // notifier
     notifier *Notifier
 
     logging.Logger
@@ -105,7 +98,7 @@ func NewLocalHSM(
 
     memberChangeStatus, err := InitMemberChangeStatus(configManager, log)
     if err != nil {
-        // TODO add log
+        logger.Error("fail to initialize member change status")
         return nil, err
     }
 
@@ -282,53 +275,46 @@ func (self *LocalHSM) Notifier() *Notifier {
     return self.notifier
 }
 
-func (self *LocalHSM) CommitLogsUpTo(index uint64) {
-    // TODO add impl
-    lastAppliedIndex, err := self.log.LastAppliedIndex()
+func (self *LocalHSM) CommitLogsUpTo(index uint64) error {
+    committedIndex, err := self.log.CommittedIndex()
     if err != nil {
-        // TODO error handing
+        return err
     }
-    if index <= lastAppliedIndex {
-        // TODO add log
-        return
+    if index <= committedIndex {
+        return errors.New("index less than committed index")
     }
 
-    for i := lastAppliedIndex + 1; i <= index; i++ {
+    for i := committedIndex + 1; i <= index; i++ {
         if _, err := self.CommitLogAt(i); err != nil {
-            // TODO error handling
+            return err
         }
     }
+    return nil
 }
 
 func (self *LocalHSM) CommitLogAt(index uint64) ([]byte, error) {
     logEntry, err := self.log.GetLog(index)
     if err != nil {
-        // TODO add log
-        // TODO change panic?
         return nil, err
     }
-    return self.CommitLog(logEntry), nil
-}
-
-func (self *LocalHSM) CommitLog(logEntry *ps.LogEntry) []byte {
-    self.Notifier().Notify(ev.NewNotifyCommitEvent(
-        logEntry.Term, logEntry.Index))
+    var result []byte
     switch logEntry.Type {
+    /* TODO add other types */
     case ps.LogCommand:
-        // TODO add impl
-        return self.applyLog(logEntry)
+        result = self.applyLog(logEntry)
     case ps.LogNoop:
         // just ignore
-
-        /* TODO add other types */
     case ps.LogMemberChange:
         // nothing to do for member change
-        return nil
     default:
-        // unknown log entry type
-        // TODO add log
+        self.Error(fmt.Sprintf(
+            "unknown log entry type: %d, index: %s, term: %s",
+            logEntry.Type, logEntry.Index, logEntry.Term))
     }
-    return nil
+    self.log.StoreCommittedIndex(logEntry.Index)
+    self.Notifier().Notify(ev.NewNotifyCommitEvent(
+        logEntry.Term, logEntry.Index))
+    return result, nil
 }
 
 func (self *LocalHSM) applyLog(logEntry *ps.LogEntry) []byte {

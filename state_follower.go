@@ -313,7 +313,6 @@ func (self *FollowerState) ProcessAppendEntries(
         (request.LeaderCommitIndex > committedIndex) {
         index := Min(request.LeaderCommitIndex, lastLogIndex)
         localHSM.CommitLogsUpTo(index)
-        log.StoreCommittedIndex(index)
     }
 
     // dispatch member change events
