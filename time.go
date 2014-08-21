@@ -55,22 +55,22 @@ func NewSimpleTicker(timeout time.Duration) *SimpleTicker {
 }
 
 func (self *SimpleTicker) Start(fn func()) {
-    self.group.Add(1)
-    go self.start(fn)
-}
-
-func (self *SimpleTicker) start(fn func()) {
-    defer self.group.Done()
-    for {
-        select {
-        case <-self.stopChan:
-            return
-        case <-self.resetChan:
-            self.ticker = time.NewTicker(self.timeout)
-        case <-self.ticker.C:
-            fn()
+    routine := func() {
+        defer self.group.Done()
+        for {
+            select {
+            case <-self.stopChan:
+                return
+            case <-self.resetChan:
+                self.ticker = time.NewTicker(self.timeout)
+            case <-self.ticker.C:
+                fn()
+            }
         }
+
     }
+    self.group.Add(1)
+    go routine()
 }
 
 func (self *SimpleTicker) Reset() {
@@ -99,22 +99,21 @@ func NewRandomTicker(timeout time.Duration) *RandomTicker {
 }
 
 func (self *RandomTicker) Start(fn func()) {
-    self.group.Add(1)
-    go self.start(fn)
-}
-
-func (self *RandomTicker) start(fn func()) {
-    defer self.group.Done()
-    for {
-        timeChan := time.After(RandomDuration(self.timeout))
-        select {
-        case <-self.stopChan:
-            return
-        case <-self.resetChan:
-        case <-timeChan:
-            fn()
+    routine := func() {
+        defer self.group.Done()
+        for {
+            timeChan := time.After(RandomDuration(self.timeout))
+            select {
+            case <-self.stopChan:
+                return
+            case <-self.resetChan:
+            case <-timeChan:
+                fn()
+            }
         }
     }
+    self.group.Add(1)
+    go routine()
 }
 
 func (self *RandomTicker) Reset() {

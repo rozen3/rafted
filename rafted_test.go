@@ -13,6 +13,7 @@ const (
     HeartbeatTimeout                        = time.Millisecond * 200
     ElectionTimeout                         = time.Millisecond * 50
     ElectionTimeoutThresholdPersent float32 = 0.8
+    PersistErrorNotifyTimeout               = time.Millisecond * 100
     MaxAppendEntriesSize            uint64  = 10
     MaxSnapshotChunkSize            uint64  = 1000
     DefaultPoolSize                         = 2
@@ -32,6 +33,7 @@ func NewTestRaftNode(
         HeartbeatTimeout,
         ElectionTimeout,
         ElectionTimeoutThresholdPersent,
+        PersistErrorNotifyTimeout,
         localAddr,
         configManager,
         stateMachine,

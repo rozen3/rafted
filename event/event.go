@@ -46,6 +46,7 @@ const (
     EventLeaderUnknownResponse
     EventLeaderUnsyncResponse
     EventLeaderInMemberChangeResponse
+    EventPersistErrorResponse
     EventClientUser = hsm.EventUser + 1000 + iota
 )
 
@@ -121,6 +122,8 @@ func EventTypeString(event hsm.Event) string {
         return "LeaderUnsyncResponseEvent"
     case EventLeaderInMemberChangeResponse:
         return "LeaderInMemberChangeResponseEvent"
+    case EventPersistErrorResponse:
+        return "PersistErrorResponseEvent"
     default:
         return "Unknown Event"
     }
@@ -462,6 +465,21 @@ type LeaderInMemberChangeResponseEvent struct {
 func NewLeaderInMemberChangeResponseEvent() *LeaderInMemberChangeResponseEvent {
     return &LeaderInMemberChangeResponseEvent{
         StdEvent: hsm.NewStdEvent(EventLeaderInMemberChangeResponse),
+    }
+}
+
+// PersistErrorResponseEvent is to tell client that a persist error happened.
+// It's probably a hard disk failure. This module should be restarted and
+// the whole hsm should be re-instablished after fixing the persist error.
+type PersistErrorResponseEvent struct {
+    *hsm.StdEvent
+    Error error
+}
+
+func NewPersistErrorResponseEvent(err error) *PersistErrorResponseEvent {
+    return &PersistErrorResponseEvent{
+        StdEvent: hsm.NewStdEvent(EventPersistErrorResponse),
+        Error:    err,
     }
 }
 

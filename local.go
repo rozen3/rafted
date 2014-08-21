@@ -375,6 +375,7 @@ func NewLocal(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
     electionTimeoutThresholdPersent float32,
+    persistErrorNotifyTimeout time.Duration,
     localAddr ps.ServerAddr,
     configManager ps.ConfigManager,
     stateMachine ps.StateMachine,
@@ -397,6 +398,8 @@ func NewLocal(
     leaderState := NewLeaderState(needPeersState, logger)
     NewUnsyncState(leaderState, logger)
     NewSyncState(leaderState, logger)
+    NewPersistErrorState(localState, persistErrorNotifyTimeout, logger)
+    hsm.NewTerminal(top)
     localHSM, err := NewLocalHSM(
         top,
         initial,
