@@ -67,7 +67,7 @@ func (self *PeerManager) Broadcast(event hsm.Event) {
     }
 }
 
-func (self *PeerManager) ResetPeers(localAddr ps.ServerAddr, conf *ps.Config) {
+func (self *PeerManager) AddPeers(localAddr ps.ServerAddr, conf *ps.Config) {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
     newPeerMap := make(map[ps.ServerAddr]*Peer, 0)
@@ -105,6 +105,10 @@ func (self *PeerManager) ResetPeers(localAddr ps.ServerAddr, conf *ps.Config) {
             self.local,
             logger)
     }
+}
+
+func (self *PeerManager) RemovePeers(localAddr ps.ServerAddr, conf *ps.Config) {
+    // TODO add impl
 }
 
 type Peer struct {

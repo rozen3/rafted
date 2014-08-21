@@ -2,8 +2,11 @@ package rafted
 
 import (
     "container/list"
+    "errors"
+    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "sync"
 )
@@ -299,20 +302,23 @@ func NewClientEventListener(ch chan ev.ClientEvent) *ClientEventListener {
 }
 
 func (self *ClientEventListener) Start(fn func(ev.ClientEvent)) {
-    self.group.Add(1)
-    go self.start(fn)
-}
-
-func (self *ClientEventListener) start(fn func(ev.ClientEvent)) {
-    defer self.group.Done()
-    for {
-        select {
-        case <-self.stopChan:
-            return
-        case event := <-self.eventChan:
-            fn(event)
+    routine := func() {
+        defer self.group.Done()
+        for {
+            select {
+            case <-self.stopChan:
+                return
+            case event := <-self.eventChan:
+                fn(event)
+            }
         }
     }
+    self.group.Add(1)
+    go routine()
+}
+
+func (self *ClientEventListener) GetChan() chan ev.ClientEvent {
+    return self.eventChan
 }
 
 func (self *ClientEventListener) Stop() {
@@ -321,23 +327,212 @@ func (self *ClientEventListener) Stop() {
 }
 
 type Applier struct {
-    log          ps.Log
-    stateMachine ps.StateMachine
+    log            ps.Log
+    committedIndex uint64
+    stateMachine   ps.StateMachine
+    localHSM       *LocalHSM
 
-    followerCommitChan chan uint64
-    leaderCommitChan   chan *InflightEntry
-    stopChan           interface{}
+    followerCommitChan *ReliableUint64Channel
+    leaderCommitChan   *ReliableInflightEntryChannel
+    closeChan          chan interface{}
+    group              *sync.WaitGroup
+
+    logger logging.Logger
 }
 
-func NewApplier(log ps.Log, stateMachine ps.StateMachine) *Applier {
-    return &Applier{
-        log:          log,
-        stateMachine: stateMachine,
+func NewApplier(
+    log ps.Log,
+    committedIndex uint64,
+    stateMachine ps.StateMachine,
+    localHSM *LocalHSM,
+    logger logging.Logger) *Applier {
+
+    object := &Applier{
+        log:                log,
+        committedIndex:     committedIndex,
+        stateMachine:       stateMachine,
+        localHSM:           localHSM,
+        followerCommitChan: NewReliableUint64Channel(),
+        leaderCommitChan:   NewReliableInflightEntryChannel(),
+        closeChan:          make(chan interface{}, 1),
+        group:              &sync.WaitGroup{},
+        logger:             logger,
+    }
+    object.Start()
+    return object
+}
+
+func (self *Applier) Start() {
+    routine := func() {
+        defer self.group.Done()
+        self.ApplyCommitted()
+        followerChan := self.followerCommitChan.GetOutChan()
+        leaderChan := self.leaderCommitChan.GetOutChan()
+        for {
+            select {
+            case <-self.closeChan:
+                return
+            case logIndex := <-followerChan:
+                self.ApplyLogsUpto(logIndex)
+            case inflightEntry := <-leaderChan:
+                self.ApplyInflightLog(inflightEntry)
+            }
+        }
+    }
+    self.group.Add(1)
+    go routine()
+}
+
+func (self *Applier) FollowerCommitUpTo(logIndex uint64) {
+    self.followerCommitChan.Send(logIndex)
+}
+
+func (self *Applier) LeaderCommit(entry *InflightEntry) {
+    self.leaderCommitChan.Send(entry)
+}
+
+func (self *Applier) ApplyCommitted() {
+    // apply log up to this index if necessary
+    lastAppliedIndex, err := self.log.CommittedIndex()
+    if err != nil {
+        self.handleLogError(
+            "applier: fail to read committed index of log, error: %#v", err)
+        return
+    }
+    if self.committedIndex > lastAppliedIndex {
+        self.ApplyLogsUpto(self.committedIndex)
     }
 }
 
-func (self *Applier) FollowerCommit(index uint64) {
-    // TODO add impl
+func (self *Applier) ApplyLogsUpto(index uint64) {
+    committedIndex, err := self.log.CommittedIndex()
+    if err != nil {
+        self.handleLogError(
+            "applier: fail to read committed index of log, error: %#v", err)
+        return
+    }
+    if index > committedIndex {
+        self.logger.Warning(
+            "applier: skip application of uncommitted log, index: %d", index)
+        return
+    }
+    lastAppliedIndex, err := self.log.LastAppliedIndex()
+    if err != nil {
+        self.handleLogError(
+            "applier: fail to read last applied index of log, error: %#v", err)
+        return
+    }
+    if index <= lastAppliedIndex {
+        self.logger.Warning(
+            "applier: skip application of old log, index: %d", index)
+        return
+    }
+    for i := lastAppliedIndex + 1; i <= index; i++ {
+        entry, err := self.log.GetLog(index)
+        if err != nil {
+            self.handleLogError("applier: fail to read log at index: %d", i)
+        }
+        _, err = self.ApplyLogAt(entry.Index, entry.Type, entry.Data)
+        if err != nil {
+            self.handleLogError("applier: fail to apply log at index: %d", i)
+            return
+        }
+        self.localHSM.Notifier().Notify(ev.NewNotifyApplyEvent(
+            entry.Index, entry.Term))
+    }
+}
+
+func (self *Applier) ApplyLogAt(
+    logIndex uint64,
+    logType ps.LogType,
+    data []byte) (result []byte, err error) {
+
+    switch logType {
+    // TODO add other types
+    case ps.LogCommand:
+        result = self.stateMachine.Apply(data)
+    case ps.LogNoop:
+        // nothing to do
+    case ps.LogMemberChange:
+        // nothing to do here
+    default:
+        self.logger.Error(
+            "unknown log entry type: %d, index: %s", logType, logIndex)
+    }
+    err = self.log.StoreLastAppliedIndex(logIndex)
+    return result, err
+}
+
+func (self *Applier) ApplyInflightLog(entry *InflightEntry) {
+    committedIndex, err := self.log.CommittedIndex()
+    if err != nil {
+        self.handleLogError(
+            "applier: fail to read committed index of log, error: %#v", err)
+        return
+    }
+    if entry.LogIndex > committedIndex {
+        self.logger.Warning(
+            "applier: skip application of uncommitted log, index: %d",
+            entry.LogIndex)
+        return
+    }
+    lastAppliedIndex, err := self.log.LastAppliedIndex()
+    if err != nil {
+        self.handleLogError(
+            "applier: fail to read last applied index of log, error: %#v", err)
+        return
+    }
+    if entry.LogIndex <= lastAppliedIndex {
+        self.logger.Warning(
+            "applier: skip application of old log, index: %d", entry.LogIndex)
+        return
+    }
+    if entry.LogIndex != lastAppliedIndex+1 {
+        self.logger.Warning(
+            "applier: skip application of non-next log, index: %d",
+            entry.LogIndex)
+        return
+    }
+
+    result, err := self.ApplyLogAt(
+        entry.LogIndex, entry.Request.LogType, entry.Request.Data)
+    if err != nil {
+        self.handleLogError(
+            "applier: fail to apply log at index: %d", entry.LogIndex)
+        return
+    }
+
+    if entry.Request.LogType == ps.LogMemberChange {
+        // don't response client here
+        message := &ev.LeaderForwardMemberChangePhase{
+            Conf:       entry.Request.Conf,
+            ResultChan: entry.Request.ResultChan,
+        }
+        self.localHSM.SelfDispatch(
+            ev.NewLeaderForwardMemberChangePhaseEvent(message))
+    } else {
+        // response client immediately
+        response := &ev.ClientResponse{
+            Success: true,
+            Data:    result,
+        }
+        entry.Request.SendResponse(ev.NewClientResponseEvent(response))
+    }
+
+    self.localHSM.Notifier().Notify(ev.NewNotifyApplyEvent(
+        entry.LogIndex, entry.Request.Term))
+}
+
+func (self *Applier) handleLogError(format string, args ...interface{}) {
+    errorMessage := fmt.Sprintf(format, args...)
+    self.logger.Error(errorMessage)
+    event := ev.NewPersistErrorEvent(errors.New(errorMessage))
+    self.localHSM.SelfDispatch(event)
+}
+
+func (self *Applier) Close() {
+    self.closeChan <- self
+    self.group.Wait()
 }
 
 // Min returns the minimum.

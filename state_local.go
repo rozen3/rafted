@@ -86,7 +86,7 @@ func (self *NeedPeersState) Entry(
             // TODO error handling
         }
         conf := metas[0].Conf
-        localHSM.PeerManager().ResetPeers(localHSM.GetLocalAddr(), conf)
+        localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
     case NotInMemeberChange:
         fallthrough
     case OldNewConfigSeen:
@@ -98,7 +98,7 @@ func (self *NeedPeersState) Entry(
         if err != nil {
             // TODO error handling
         }
-        localHSM.PeerManager().ResetPeers(localHSM.GetLocalAddr(), conf)
+        localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
     }
     localHSM.PeerManager().Broadcast(ev.NewPeerActivateEvent())
     return nil

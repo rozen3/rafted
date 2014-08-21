@@ -15,6 +15,7 @@ const (
     EventNotifyLeaderChange
     EventNotifyTermChange
     EventNotifyCommit
+    EventNotifyApply
     EventNotifyMemberChange
     EventNotifyPersistError
     EventNotifyEnd
@@ -150,6 +151,21 @@ type NotifyCommitEvent struct {
 func NewNotifyCommitEvent(term, logIndex uint64) *NotifyCommitEvent {
     return &NotifyCommitEvent{
         StdEvent: hsm.NewStdEvent(EventNotifyCommit),
+        Term:     term,
+        LogIndex: logIndex,
+    }
+}
+
+// NotifyApplyEvent is an event to notify a log entry has applied.
+type NotifyApplyEvent struct {
+    *hsm.StdEvent
+    Term     uint64
+    LogIndex uint64
+}
+
+func NewNotifyApplyEvent(term, logIndex uint64) *NotifyApplyEvent {
+    return &NotifyApplyEvent{
+        StdEvent: hsm.NewStdEvent(EventNotifyApply),
         Term:     term,
         LogIndex: logIndex,
     }
