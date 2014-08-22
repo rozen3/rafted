@@ -1,6 +1,7 @@
 package rafted
 
 import (
+    "errors"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -73,7 +74,9 @@ func (self *CandidateState) Entry(
     default:
         conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last config")))
+            return nil
         }
         self.condition = NewMajorityCommitCondition(conf.Servers)
     }
@@ -119,20 +122,23 @@ func (self *CandidateState) Handle(
     case event.Type() == ev.EventRequestVoteResponse:
         e, ok := event.(*ev.RequestVoteResponseEvent)
         hsm.AssertTrue(ok)
-        if e.Response.Term < localHSM.GetCurrentTerm() {
+        term := localHSM.GetCurrentTerm()
+        if e.Response.Term < term {
             // ignore stale response for old term
             return nil
         }
 
-        if e.Response.Term > localHSM.GetCurrentTerm() {
-            // TODO add log
+        if e.Response.Term > term {
+            self.Debug("candidate receive RequestVoteRequest with term: %d"+
+                " > local term: %d", e.Response.Term, term)
             localHSM.SetCurrentTermWithNotify(e.Response.Term)
             localHSM.SelfDispatch(ev.NewStepdownEvent())
             return nil
         }
 
         if e.Response.Granted {
-            // TODO add log
+            self.Info("candidate receive Granted RequestVoteRequest from: %s",
+                e.FromAddr.String())
             self.condition.AddVote(e.FromAddr)
             if self.condition.IsCommitted() {
                 localHSM.Notifier().Notify(ev.NewNotifyStateChangeEvent(
@@ -195,7 +201,9 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
     term := localHSM.GetCurrentTerm()
     lastLogTerm, lastLogIndex, err := localHSM.Log().LastEntryInfo()
     if err != nil {
-        // TODO error handling
+        localHSM.SelfDispatch(ev.NewPersistErrorEvent(
+            errors.New("fail to read last entry info of log")))
+        return
     }
     request := &ev.RequestVoteRequest{
         Term:         term,
