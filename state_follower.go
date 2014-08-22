@@ -183,8 +183,8 @@ func (self *FollowerState) Handle(
         conf := e.Message.Conf
         if !(ps.IsOldNewConfig(conf) &&
             localHSM.GetMemberChangeStatus() == NotInMemeberChange) {
-            message := "config and member change status inconsistant"
-            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+            DispatchInconsistantError(localHSM)
+            return nil
         }
 
         lastLogIndex, err := localHSM.Log().LastIndex()
@@ -197,9 +197,8 @@ func (self *FollowerState) Handle(
         nextLogIndex := lastLogIndex + 1
         err = localHSM.ConfigManager().Push(nextLogIndex, conf)
         if err != nil {
-            message := fmt.Sprintf(
-                "fail to push new config for log at index: %d", nextLogIndex)
-            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+            DispatchPushConfigError(localHSM, nextLogIndex)
+            return nil
         }
         localHSM.SetMemberChangeStatus(OldNewConfigSeen)
         sm.QTran(StateFollowerOldNewConfigSeenID)
@@ -478,4 +477,15 @@ func (self *FollowerState) dispatchMemberChangeEvents(
         }
     }
     return true
+}
+
+func DispatchInconsistantError(localHSM *LocalHSM) {
+    message := "config and member change status inconsistant"
+    localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+}
+
+func DispatchPushConfigError(localHSM *LocalHSM, logIndex uint64) {
+    message := fmt.Sprintf(
+        "fail to push new config for log at index: %d", logIndex)
+    localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
 }

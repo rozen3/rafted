@@ -1,6 +1,8 @@
 package rafted
 
 import (
+    "errors"
+    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -91,7 +93,8 @@ func (self *FollowerOldNewConfigSeenState) Handle(
         hsm.AssertTrue(ok)
         if !(ps.IsOldNewConfig(e.Message.Conf) &&
             localHSM.GetMemberChangeStatus() == OldNewConfigSeen) {
-            // TODO error handling
+            DispatchInconsistantError(localHSM)
+            return nil
         }
 
         localHSM.SetMemberChangeStatus(OldNewConfigCommitted)
@@ -148,17 +151,22 @@ func (self *FollowerOldNewConfigCommittedState) Handle(
         conf := e.Message.Conf
         if !(ps.IsNewConfig(conf) &&
             localHSM.GetMemberChangeStatus() == OldNewConfigCommitted) {
-            // TODO error handling
+            DispatchInconsistantError(localHSM)
+            return nil
         }
 
         lastLogIndex, err := localHSM.Log().LastIndex()
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last log index of log")))
+            return nil
         }
 
-        err = localHSM.ConfigManager().Push(lastLogIndex+1, conf)
+        nextLogIndex := lastLogIndex + 1
+        err = localHSM.ConfigManager().Push(nextLogIndex, conf)
         if err != nil {
-            // TODO error handling
+            DispatchPushConfigError(localHSM, nextLogIndex)
+            return nil
         }
         localHSM.SetMemberChangeStatus(NewConfigSeen)
         sm.QTran(StateFollowerNewConfigSeenID)
@@ -212,7 +220,8 @@ func (self *FollowerNewConfigSeenState) Handle(
         hsm.AssertTrue(ok)
         if !(ps.IsNewConfig(e.Message.Conf) &&
             localHSM.GetMemberChangeStatus() == OldNewConfigCommitted) {
-            // TODO error handling
+            DispatchInconsistantError(localHSM)
+            return nil
         }
 
         newConf := &ps.Config{
@@ -222,17 +231,23 @@ func (self *FollowerNewConfigSeenState) Handle(
 
         lastLogIndex, err := localHSM.Log().LastIndex()
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last log index of log")))
+            return nil
         }
 
-        err = localHSM.ConfigManager().Push(lastLogIndex+1, newConf)
+        nextLogIndex := lastLogIndex + 1
+        err = localHSM.ConfigManager().Push(nextLogIndex, newConf)
         if err != nil {
-            // TODO error handling
+            DispatchPushConfigError(localHSM, nextLogIndex)
+            return nil
         }
         localHSM.SetMemberChangeStatus(NotInMemeberChange)
 
         if err = localHSM.SendMemberChangeNotify(); err != nil {
-            // TODO error handling
+            message := fmt.Sprintf(
+                "fail to send member change notify, error: %s", err)
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
         }
 
         sm.QTran(StateFollowerID)
