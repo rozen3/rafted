@@ -281,6 +281,7 @@ func (self *LeaderNotInMemberChangeState) Handle(
         }
 
         request := &InflightRequest{
+            Term:       localHSM.GetCurrentTerm(),
             LogType:    ps.LogMemberChange,
             Conf:       newConf,
             ResultChan: e.ClientRequestEventHead.ResultChan,
@@ -449,6 +450,7 @@ func (self *LeaderMemberChangePhase1State) Handle(
             // TODO error handling
         }
         request := &InflightRequest{
+            Term:       localHSM.GetCurrentTerm(),
             LogType:    ps.LogMemberChange,
             Conf:       newConf,
             ResultChan: e.Message.ResultChan,

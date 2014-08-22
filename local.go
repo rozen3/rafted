@@ -102,7 +102,13 @@ func NewLocalHSM(
         return nil, err
     }
 
-    return &LocalHSM{
+    committedIndex, err := log.CommittedIndex()
+    if err != nil {
+        logger.Error("fail to read committed index of log")
+        return nil, err
+    }
+
+    object := &LocalHSM{
         StdHSM:             hsm.NewStdHSM(HSMTypeLocal, top, initial),
         dispatchChan:       make(chan hsm.Event, 1),
         selfDispatchChan:   NewReliableEventChannel(),
@@ -115,7 +121,11 @@ func NewLocalHSM(
         notifier:           NewNotifier(),
         Logger:             logger,
         memberChangeStatus: memberChangeStatus,
-    }, nil
+    }
+
+    applier := NewApplier(log, committedIndex, stateMachine, object, logger)
+    object.SetApplier(applier)
+    return object, nil
 }
 
 func (self *LocalHSM) Init() {
@@ -168,6 +178,7 @@ func (self *LocalHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
     self.group.Wait()
     self.selfDispatchChan.Close()
+    self.applier.Close()
 }
 
 func (self *LocalHSM) GetCurrentTerm() uint64 {
@@ -270,6 +281,10 @@ func (self *LocalHSM) SetPeerManager(peerManager *PeerManager) {
     self.peerManager = peerManager
 }
 
+func (self *LocalHSM) SetApplier(applier *Applier) {
+    self.applier = applier
+}
+
 func (self *LocalHSM) Notifier() *Notifier {
     return self.notifier
 }
@@ -282,44 +297,29 @@ func (self *LocalHSM) CommitLogsUpTo(index uint64) error {
     if index <= committedIndex {
         return errors.New("index less than committed index")
     }
-
-    for i := committedIndex + 1; i <= index; i++ {
-        if _, err := self.CommitLogAt(i); err != nil {
-            return err
-        }
+    if err = self.log.StoreCommittedIndex(index); err != nil {
+        return err
     }
+    self.applier.FollowerCommitUpTo(index)
     return nil
 }
 
-func (self *LocalHSM) CommitLogAt(index uint64) ([]byte, error) {
-    logEntry, err := self.log.GetLog(index)
+func (self *LocalHSM) CommitInflightLog(entry *InflightEntry) error {
+    committedIndex, err := self.log.CommittedIndex()
     if err != nil {
-        return nil, err
+        return err
     }
-    var result []byte
-    switch logEntry.Type {
-    /* TODO add other types */
-    case ps.LogCommand:
-        result = self.applyLog(logEntry)
-    case ps.LogNoop:
-        // just ignore
-    case ps.LogMemberChange:
-        // nothing to do for member change
-    default:
-        self.Error(fmt.Sprintf(
-            "unknown log entry type: %d, index: %s, term: %s",
-            logEntry.Type, logEntry.Index, logEntry.Term))
+    if entry.LogIndex <= committedIndex {
+        return errors.New("index less than committed index")
     }
-    self.log.StoreCommittedIndex(logEntry.Index)
-    self.Notifier().Notify(ev.NewNotifyCommitEvent(
-        logEntry.Term, logEntry.Index))
-    return result, nil
-}
-
-func (self *LocalHSM) applyLog(logEntry *ps.LogEntry) []byte {
-    result := self.stateMachine.Apply(logEntry.Data)
-    self.log.StoreLastAppliedIndex(logEntry.Index)
-    return result
+    if entry.LogIndex != committedIndex+1 {
+        return errors.New("index not next to last committed index")
+    }
+    if err = self.log.StoreCommittedIndex(entry.LogIndex); err != nil {
+        return err
+    }
+    self.applier.LeaderCommit(entry)
+    return nil
 }
 
 func InitMemberChangeStatus(
@@ -374,6 +374,7 @@ func NewLocal(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
     electionTimeoutThresholdPersent float32,
+    persistErrorNotifyTimeout time.Duration,
     localAddr ps.ServerAddr,
     configManager ps.ConfigManager,
     stateMachine ps.StateMachine,
@@ -396,6 +397,8 @@ func NewLocal(
     leaderState := NewLeaderState(needPeersState, logger)
     NewUnsyncState(leaderState, logger)
     NewSyncState(leaderState, logger)
+    NewPersistErrorState(localState, persistErrorNotifyTimeout, logger)
+    hsm.NewTerminal(top)
     localHSM, err := NewLocalHSM(
         top,
         initial,

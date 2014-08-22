@@ -18,6 +18,7 @@ const (
     StateLeaderID                        = "leader"
     StateUnsyncID                        = "unsync"
     StateSyncID                          = "sync"
+    StatePersistErrorID                  = "persist_error"
 )
 
 const (

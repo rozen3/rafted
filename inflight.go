@@ -91,6 +91,7 @@ func (self *MemberChangeCommitCondition) IsCommitted() bool {
 
 type InflightRequest struct {
     LogType    ps.LogType
+    Term       uint64
     Data       []byte
     Conf       *ps.Config
     ResultChan chan ev.ClientEvent
@@ -110,7 +111,7 @@ func NewInflightEntry(
     logIndex uint64,
     request *InflightRequest) *InflightEntry {
 
-    if request.LogType == ps.LogMemberChange {
+    if !ps.IsNormalConfig(request.Conf) {
         return &InflightEntry{
             LogIndex:  logIndex,
             Request:   request,
@@ -159,7 +160,8 @@ func setupServerMatchIndexes(
 }
 
 func NewInflight(conf *ps.Config) *Inflight {
-    matchIndexes := setupServerMatchIndexes(conf, make(map[ps.ServerAddr]uint64))
+    defaultValue := make(map[ps.ServerAddr]uint64)
+    matchIndexes := setupServerMatchIndexes(conf, defaultValue)
     return &Inflight{
         MinIndex:           0,
         MaxIndex:           0,
@@ -254,7 +256,7 @@ func (self *Inflight) Replicate(
         if toCommit.LogIndex > newMatchIndex {
             break
         }
-        if toCommit.LogIndex <= matchIndex {
+        if toCommit.LogIndex <= newMatchIndex {
             continue
         }
         toCommit.Condition.AddVote(addr)

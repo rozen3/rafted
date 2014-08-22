@@ -4,6 +4,7 @@ import (
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
+    "time"
 )
 
 type LocalState struct {
@@ -43,8 +44,14 @@ func (self *LocalState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 func (self *LocalState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.EventTypeString(event))
-    // TODO add event handling if needed
-    return nil
+    switch event.Type() {
+    case ev.EventPersistError:
+        sm.QTranOnEvent(StatePeerID, event)
+        return nil
+    case ev.EventTerm:
+        sm.QTran(hsm.TerminalStateID)
+    }
+    return self.Super()
 }
 
 type NeedPeersState struct {
@@ -86,7 +93,7 @@ func (self *NeedPeersState) Entry(
             // TODO error handling
         }
         conf := metas[0].Conf
-        localHSM.PeerManager().ResetPeers(localHSM.GetLocalAddr(), conf)
+        localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
     case NotInMemeberChange:
         fallthrough
     case OldNewConfigSeen:
@@ -98,7 +105,7 @@ func (self *NeedPeersState) Entry(
         if err != nil {
             // TODO error handling
         }
-        localHSM.PeerManager().ResetPeers(localHSM.GetLocalAddr(), conf)
+        localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
     }
     localHSM.PeerManager().Broadcast(ev.NewPeerActivateEvent())
     return nil
@@ -121,5 +128,75 @@ func (self *NeedPeersState) Handle(
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.EventTypeString(event))
     // TODO add log
+    return self.Super()
+}
+
+type PersistErrorState struct {
+    *LogStateHead
+
+    err           error
+    notifyTimeout time.Duration
+    ticker        Ticker
+}
+
+func NewPersistErrorState(
+    super hsm.State,
+    persistErrorNotifyTimeout time.Duration,
+    logger logging.Logger) *PersistErrorState {
+
+    object := &PersistErrorState{
+        LogStateHead:  NewLogStateHead(super, logger),
+        notifyTimeout: persistErrorNotifyTimeout,
+        ticker:        NewSimpleTicker(persistErrorNotifyTimeout),
+    }
+    super.AddChild(object)
+    return object
+}
+
+func (*PersistErrorState) ID() string {
+    return StatePersistErrorID
+}
+
+func (self *PersistErrorState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Entry", self.ID())
+    localHSM, ok := sm.(*LocalHSM)
+    hsm.AssertTrue(ok)
+    e, ok := event.(*ev.PersistErrorEvent)
+    hsm.AssertTrue(ok)
+    self.err = e.Error
+    localHSM.SelfDispatch(ev.NewNotifyPersistErrorEvent(self.err))
+    dispatchTimeout := func() {
+        localHSM.SelfDispatch(ev.NewNotifyPersistErrorEvent(self.err))
+    }
+    self.ticker.Start(dispatchTimeout)
+    return nil
+}
+
+func (self *PersistErrorState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Exit", self.ID())
+    self.ticker.Stop()
+    return nil
+}
+
+func (self *PersistErrorState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.EventTypeString(event))
+    switch {
+    case event.Type() == ev.EventPersistError:
+        self.Error("already in state: %s, ignore event: %s", self.ID(),
+            ev.EventTypeString(event))
+        return nil
+    case ev.IsClientEvent(event.Type()):
+        e, ok := event.(ev.ClientRequestEvent)
+        hsm.AssertTrue(ok)
+        e.SendResponse(ev.NewPersistErrorResponseEvent(self.err))
+        return nil
+    }
     return self.Super()
 }

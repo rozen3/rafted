@@ -34,6 +34,7 @@ const (
     EventPeerEnterLeader
     EventPeerEnterSnapshotMode
     EventPeerAbortSnapshotMode
+    EventPersistError
     EventInternalEnd
     EventClientRequestBegin
     EventClientWriteRequest
@@ -45,6 +46,7 @@ const (
     EventLeaderUnknownResponse
     EventLeaderUnsyncResponse
     EventLeaderInMemberChangeResponse
+    EventPersistErrorResponse
     EventClientUser = hsm.EventUser + 1000 + iota
 )
 
@@ -102,6 +104,8 @@ func EventTypeString(event hsm.Event) string {
         return "PeerEnterSanpshotModeEvent"
     case EventPeerAbortSnapshotMode:
         return "PeerAbortSnapshotModeEvent"
+    case EventPersistError:
+        return "PersistErrorEvent"
     case EventClientWriteRequest:
         return "ClientWriteRequestEvent"
     case EventClientReadOnlyRequest:
@@ -118,6 +122,8 @@ func EventTypeString(event hsm.Event) string {
         return "LeaderUnsyncResponseEvent"
     case EventLeaderInMemberChangeResponse:
         return "LeaderInMemberChangeResponseEvent"
+    case EventPersistErrorResponse:
+        return "PersistErrorResponseEvent"
     default:
         return "Unknown Event"
     }
@@ -462,6 +468,21 @@ func NewLeaderInMemberChangeResponseEvent() *LeaderInMemberChangeResponseEvent {
     }
 }
 
+// PersistErrorResponseEvent is to tell client that a persist error happened.
+// It's probably a hard disk failure. This module should be restarted and
+// the whole hsm should be re-instablished after fixing the persist error.
+type PersistErrorResponseEvent struct {
+    *hsm.StdEvent
+    Error error
+}
+
+func NewPersistErrorResponseEvent(err error) *PersistErrorResponseEvent {
+    return &PersistErrorResponseEvent{
+        StdEvent: hsm.NewStdEvent(EventPersistErrorResponse),
+        Error:    err,
+    }
+}
+
 // ------------------------------------------------------------
 // Internal Events
 // ------------------------------------------------------------
@@ -669,5 +690,19 @@ type PeerAbortSnapshotModeEvent struct {
 func NewPeerAbortSnapshotModeEvent() *PeerAbortSnapshotModeEvent {
     return &PeerAbortSnapshotModeEvent{
         StdEvent: hsm.NewStdEvent(EventPeerAbortSnapshotMode),
+    }
+}
+
+// PersistErrorEvent is an event to signal persist error.
+// Probably a hard disk failure.
+type PersistErrorEvent struct {
+    *hsm.StdEvent
+    Error error
+}
+
+func NewPersistErrorEvent(err error) *PersistErrorEvent {
+    return &PersistErrorEvent{
+        StdEvent: hsm.NewStdEvent(EventPersistError),
+        Error:    err,
     }
 }
