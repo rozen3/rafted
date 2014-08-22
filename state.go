@@ -44,7 +44,7 @@ const (
 
 type LogState interface {
     hsm.State
-    Log() logging.Logger
+    logging.Logger
 }
 
 type LogStateHead struct {
