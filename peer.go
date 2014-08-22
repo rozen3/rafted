@@ -181,29 +181,28 @@ func NewPeerHSM(
 
 func (self *PeerHSM) Init() {
     self.StdHSM.Init2(self, hsm.NewStdEvent(hsm.EventInit))
-    self.eventLoop()
-}
-
-func (self *PeerHSM) eventLoop() {
-    self.group.Add(1)
-    go self.loop()
+    self.loop()
 }
 
 func (self *PeerHSM) loop() {
-    defer self.group.Done()
-    priorityChan := self.selfDispatchChan.GetOutChan()
-    for {
-        select {
-        case event := <-priorityChan:
-            self.StdHSM.Dispatch2(self, event)
-        default:
-            // no event in priorityChan
-        }
-        select {
-        case event := <-self.dispatchChan:
-            self.StdHSM.Dispatch2(self, event)
+    routine := func() {
+        defer self.group.Done()
+        priorityChan := self.selfDispatchChan.GetOutChan()
+        for {
+            select {
+            case event := <-priorityChan:
+                self.StdHSM.Dispatch2(self, event)
+            default:
+                // no event in priorityChan
+            }
+            select {
+            case event := <-self.dispatchChan:
+                self.StdHSM.Dispatch2(self, event)
+            }
         }
     }
+    self.group.Add(1)
+    go routine()
 }
 
 func (self *PeerHSM) Dispatch(event hsm.Event) {

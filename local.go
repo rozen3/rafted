@@ -120,31 +120,30 @@ func NewLocalHSM(
 
 func (self *LocalHSM) Init() {
     self.StdHSM.Init2(self, hsm.NewStdEvent(hsm.EventInit))
-    self.eventLoop()
-}
-
-func (self *LocalHSM) eventLoop() {
-    self.group.Add(1)
-    go self.loop()
+    self.loop()
 }
 
 func (self *LocalHSM) loop() {
-    defer self.group.Done()
-    // loop forever to process incoming event
-    priorityChan := self.selfDispatchChan.GetOutChan()
-    for {
-        // Event in selfDispatchChan has higher priority to be processed
-        select {
-        case event := <-priorityChan:
-            self.StdHSM.Dispatch2(self, event)
-        default:
-            // no event in priorityChan
-        }
-        select {
-        case event := <-self.dispatchChan:
-            self.StdHSM.Dispatch2(self, event)
+    routine := func() {
+        defer self.group.Done()
+        // loop forever to process incoming event
+        priorityChan := self.selfDispatchChan.GetOutChan()
+        for {
+            // Event in selfDispatchChan has higher priority to be processed
+            select {
+            case event := <-priorityChan:
+                self.StdHSM.Dispatch2(self, event)
+            default:
+                // no event in priorityChan
+            }
+            select {
+            case event := <-self.dispatchChan:
+                self.StdHSM.Dispatch2(self, event)
+            }
         }
     }
+    self.group.Add(1)
+    go routine()
 }
 
 func (self *LocalHSM) Dispatch(event hsm.Event) {
