@@ -19,7 +19,7 @@ type RaftNode struct {
 func NewRaftNode(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
-    electionTimeoutThresholdPersent float32,
+    electionTimeoutThresholdPersent float64,
     persistErrorNotifyTimeout time.Duration,
     maxAppendEntriesSize uint64,
     maxSnapshotChunkSize uint64,

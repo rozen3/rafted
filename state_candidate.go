@@ -147,8 +147,8 @@ func (self *CandidateState) Handle(
         // step down to follower state if local term is not greater than
         // the remote one
         if e.Request.Term >= localHSM.GetCurrentTerm() {
-            ReplayEventAndStepdown(
-                localHSM, event, e.Request.Term, e.Request.Leader)
+            localHSM.SelfDispatch(ev.NewStepdownEvent())
+            localHSM.SelfDispatch(event)
         }
         return nil
     case ev.IsClientEvent(event.Type()):
@@ -214,13 +214,4 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
 
     // broadcast RequestVote RPCs to all other servers
     localHSM.PeerManager().Broadcast(event)
-}
-
-func ReplayEventAndStepdown(
-    localHSM *LocalHSM, event hsm.Event, term uint64, leader ps.ServerAddr) {
-
-    localHSM.SelfDispatch(event)
-    localHSM.SetCurrentTermWithNotify(term)
-    localHSM.SetLeaderWithNotify(leader)
-    localHSM.SelfDispatch(ev.NewStepdownEvent())
 }

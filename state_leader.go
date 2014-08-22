@@ -92,11 +92,15 @@ func (self *LeaderState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Exit", self.ID())
+    localHSM, ok := sm.(*LocalHSM)
+    hsm.AssertTrue(ok)
     // cleanup status for this state
     self.Inflight.Init()
     self.listener.Stop()
     // deactivate member change hsm
     self.MemberChangeHSM.Dispatch(ev.NewLeaderMemberChangeDeactivateEvent())
+    // cleanup global status
+    localHSM.SetLeader(ps.NilServerAddr)
     return nil
 }
 
@@ -122,25 +126,25 @@ func (self *LeaderState) Handle(
         hsm.AssertTrue(ok)
         // step down to follower state if local term is not greater than
         // the remote one
-        if e.Request.Term >= localHSM.GetCurrentTerm() {
-            ReplayEventAndStepdown(
-                localHSM, event, e.Request.Term, e.Request.Leader)
+        if e.Request.Term > localHSM.GetCurrentTerm() {
+            localHSM.SelfDispatch(ev.NewStepdownEvent())
+            localHSM.SelfDispatch(event)
         }
         return nil
     case ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
-        if e.Request.Term >= localHSM.GetCurrentTerm() {
-            ReplayEventAndStepdown(
-                localHSM, event, e.Request.Term, e.Request.Candidate)
+        if e.Request.Term > localHSM.GetCurrentTerm() {
+            localHSM.SelfDispatch(ev.NewStepdownEvent())
+            localHSM.SelfDispatch(event)
         }
         return nil
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
-        if e.Request.Term >= localHSM.GetCurrentTerm() {
-            ReplayEventAndStepdown(
-                localHSM, event, e.Request.Term, e.Request.Leader)
+        if e.Request.Term > localHSM.GetCurrentTerm() {
+            localHSM.SelfDispatch(ev.NewStepdownEvent())
+            localHSM.SelfDispatch(event)
         }
         return nil
     case ev.EventClientReadOnlyRequest:

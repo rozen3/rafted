@@ -146,22 +146,28 @@ func (self *SnapshotRecoveryState) Handle(
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
-        if ps.AddrNotEqual(&e.Request.Leader, &self.snapshot.Leader) {
-            // Receive another leader install snapshot request.
-            // This snapshot recovery procedure is interrupted.
-            // TODO add log
-            if err := self.writer.Cancel(); err != nil {
-                // TODO add log
-            }
-            sm.QTran(StateFollowerID)
+        term := localHSM.GetCurrentTerm()
+        response := &ev.InstallSnapshotResponse{
+            Term:    term,
+            Success: false,
+        }
+        if e.Request.Term < term {
+            // ignore stale request
+            e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
             return nil
         }
-        if e.Request.Term < localHSM.GetCurrentTerm() {
-            // The request is stale with a outdated term.
-            if err := self.writer.Cancel(); err != nil {
-                // TODO add log
-            }
-            sm.QTran(StateFollowerID)
+
+        if e.Request.Term > term {
+            localHSM.SetCurrentTermWithNotify(e.Request.Term)
+            localHSM.SetLeaderWithNotify(e.Request.Leader)
+            localHSM.SelfDispatch(event)
+            localHSM.QTran(StateFollowerID)
+            return nil
+        }
+
+        if ps.AddrNotEqual(&e.Request.Leader, &self.snapshot.Leader) {
+            // Receive another leader install snapshot request. Just ignore.
+            e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
             return nil
         }
 
@@ -188,10 +194,6 @@ func (self *SnapshotRecoveryState) Handle(
             // just ignore them.
             return nil
         }
-        response := &ev.InstallSnapshotResponse{
-            Term:    localHSM.GetCurrentTerm(),
-            Success: false,
-        }
         err := self.snapshot.PersistChunk(e.Request.Offset, e.Request.Data)
         if err != nil {
             // fail to persist this chunk
@@ -211,6 +213,7 @@ func (self *SnapshotRecoveryState) Handle(
                     // TODO add log
                 }
                 self.snapshot.Release()
+                // TODO restore log from snapshot
                 sm.QTran(StateFollowerID)
             }
         }

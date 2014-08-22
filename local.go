@@ -374,7 +374,7 @@ type Local struct {
 func NewLocal(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
-    electionTimeoutThresholdPersent float32,
+    electionTimeoutThresholdPersent float64,
     persistErrorNotifyTimeout time.Duration,
     localAddr ps.ServerAddr,
     configManager ps.ConfigManager,

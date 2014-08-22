@@ -166,6 +166,7 @@ func (self *PersistErrorState) Entry(
     e, ok := event.(*ev.PersistErrorEvent)
     hsm.AssertTrue(ok)
     self.err = e.Error
+    self.Error("%#v", e.Error)
     localHSM.SelfDispatch(ev.NewNotifyPersistErrorEvent(self.err))
     dispatchTimeout := func() {
         localHSM.SelfDispatch(ev.NewNotifyPersistErrorEvent(self.err))
