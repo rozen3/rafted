@@ -1,6 +1,7 @@
 package rafted
 
 import (
+    "errors"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -25,7 +26,6 @@ func (*LocalState) ID() string {
 
 func (self *LocalState) Entry(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     self.Debug("STATE: %s, -> Entry", self.ID())
-    // ignore events
     return nil
 }
 
@@ -37,7 +37,6 @@ func (self *LocalState) Init(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
 func (self *LocalState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     self.Debug("STATE: %s, -> Exit", self.ID())
-    // ignore events
     return nil
 }
 
@@ -80,19 +79,12 @@ func (self *NeedPeersState) Entry(
     memberChangeStatus := localHSM.GetMemberChangeStatus()
     switch memberChangeStatus {
     case NewConfigSeen:
-        // TODO add impl
-        committedIndex, err := localHSM.Log().CommittedIndex()
+        conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last config")))
+            return nil
         }
-        metas, err := localHSM.ConfigManager().ListAfter(committedIndex)
-        if err != nil {
-            // TODO error handling
-        }
-        if len(metas) != 2 {
-            // TODO error handling
-        }
-        conf := metas[0].Conf
         localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
     case NotInMemeberChange:
         fallthrough
@@ -103,7 +95,8 @@ func (self *NeedPeersState) Entry(
     default:
         conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last config")))
         }
         localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
     }
@@ -127,7 +120,6 @@ func (self *NeedPeersState) Handle(
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.EventTypeString(event))
-    // TODO add log
     return self.Super()
 }
 
