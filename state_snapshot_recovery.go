@@ -2,6 +2,7 @@ package rafted
 
 import (
     "errors"
+    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -40,7 +41,6 @@ func NewRemoteSnapshot(
 
 func (self *RemoteSnapshot) PersistChunk(offset uint64, chunk []byte) error {
     if offset != self.Offset {
-        // TODO add log
         return errors.New("offset mismatch")
     }
 
@@ -106,10 +106,13 @@ func (self *SnapshotRecoveryState) Entry(
     snapshotWriter, err := localHSM.SnapshotManager().Create(
         lastIncludedTerm, lastIncludedIndex, servers)
     if err != nil {
-        // TODO add log
         self.writer = nil
         self.snapshot = nil
-        localHSM.SelfDispatch(ev.NewAbortSnapshotRecoveryEvent())
+        message := fmt.Sprintf(
+            "fail to create snapshot for term: %d, index: %d, error: %s",
+            lastIncludedTerm, lastIncludedIndex, err)
+        e := errors.New(message)
+        localHSM.SelfDispatch(ev.NewAbortSnapshotRecoveryEvent(e))
     } else {
         self.writer = snapshotWriter
         self.snapshot = NewRemoteSnapshot(
@@ -142,7 +145,6 @@ func (self *SnapshotRecoveryState) Handle(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
-    // TODO add a breakout policy for this state
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
         hsm.AssertTrue(ok)
@@ -176,54 +178,80 @@ func (self *SnapshotRecoveryState) Handle(
         hsm.AssertTrue(ok)
         followerState.UpdateLastContact(localHSM)
 
-        if ps.AddrsNotEqual(e.Request.Servers, self.snapshot.Servers) {
-            // Receive inconsistant server configurations among
-            // install snapshot requests.
-            // TODO add log
-            if err := self.writer.Cancel(); err != nil {
-                // TODO add log
-            }
-            sm.QTran(StateFollowerID)
-            return nil
-        }
-        if (e.Request.LastIncludedTerm != self.snapshot.LastIncludedTerm) ||
+        // check the infos consistant
+        if ps.AddrsNotEqual(e.Request.Servers, self.snapshot.Servers) ||
+            (e.Request.LastIncludedTerm != self.snapshot.LastIncludedTerm) ||
             (e.Request.LastIncludedIndex != self.snapshot.LastIncludedIndex) ||
             (e.Request.Size != self.snapshot.Size) ||
             (e.Request.Offset != self.snapshot.Offset) {
-            // Receive invalid request for previously transfered snapshot,
-            // just ignore them.
+            // Receive request with inconsistant infos to previous ones.
+            self.Info("receive inconsistant InstallSnapshotRequest")
+            e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
             return nil
         }
         err := self.snapshot.PersistChunk(e.Request.Offset, e.Request.Data)
         if err != nil {
             // fail to persist this chunk
+            self.Error("fail to persist snapshot chunk, offset: %s, error: %s",
+                e.Request.Offset, err)
             if e := self.writer.Cancel(); e != nil {
-                // TODO add log
+                self.Error("fail to cancel snapshot writer, error: %s", e)
             }
             self.snapshot.Release()
-            // TODO error handling, add log
             e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
             sm.QTran(StateFollowerID)
-        } else {
-            response.Success = true
-            e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
-            // check whether snapshot recovery is done
-            if self.snapshot.Offset == self.snapshot.Size {
-                if err := self.writer.Close(); err != nil {
-                    // TODO add log
-                }
-                self.snapshot.Release()
-                // TODO restore log from snapshot
+            return nil
+        }
+
+        response.Success = true
+        e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
+        // check whether snapshot recovery is done
+        if self.snapshot.Offset == self.snapshot.Size {
+            snapshotID := self.writer.ID()
+            if err := self.writer.Close(); err != nil {
+                self.Error("fail to cancel snapshot writer, error: %s", e)
+            }
+            self.snapshot.Release()
+            // Done writing a new snapshot from leader.
+            // From now restore log from snapshot.
+            _, reader, err := localHSM.SnapshotManager().Open(snapshotID)
+            if err != nil {
+                message := fmt.Sprintf(
+                    "fail to open snapshot, id: %s, error: %s", snapshotID, err)
+                e := errors.New(message)
+                localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
+                return nil
+            }
+            success := true
+            if err = localHSM.StateMachine().Restore(reader); err != nil {
+
+                // clean up latestly created snapshot
+                // NOTICE disable now
+                // localHSM.SnapshotManager().Delete(snapshotID)
+                message := fmt.Sprintf("fail to restore state machine "+
+                    "from snapshot, id: %s, error: %s", snapshotID, err)
+                e := errors.New(message)
+                localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
+                success = false
+            }
+            if err = reader.Close(); err != nil {
+                self.Error("fail to close reader of snapshot id: %s",
+                    snapshotID)
+            }
+            if success {
                 sm.QTran(StateFollowerID)
             }
         }
         return nil
     case ev.EventTimeoutElection:
+        // TODO add a breakout policy for this state
         // Ignore this event. Don't transfer to candidate state when
         // recovering from snapshot.
         return nil
     case ev.EventAbortSnapshotRecovery:
-        // TODO add log
+        e, ok := event.(*ev.AbortSnapshotRecoveryEvent)
+        hsm.AssertTrue(ok)
+        localHSM.SelfDispatch(ev.NewPersistErrorEvent(e.Error))
         sm.QTran(StateFollowerID)
         return nil
     }

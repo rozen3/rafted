@@ -351,6 +351,23 @@ func (self *MemorySnapshotManager) Open(
     return nil, nil, errors.New(fmt.Sprintf("no snapshot for id: %s", id))
 }
 
+func (self *MemorySnapshotManager) Delete(id string) error {
+    self.lock.RLock()
+    defer self.lock.RUnlock()
+
+    for e := self.snapshotList.Front(); e != nil; e = e.Next() {
+        instance, ok := e.Value.(*MemorySnapshotInstance)
+        if !ok {
+            return errors.New("corrupted format")
+        }
+        if instance.Meta.ID == id {
+            self.snapshotList.Remove(e)
+            return nil
+        }
+    }
+    return errors.New(fmt.Sprintf("no snapshot for id: %s", id))
+}
+
 type MemorySnapshotWriter struct {
     instance *MemorySnapshotInstance
     data     []byte

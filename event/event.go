@@ -516,11 +516,13 @@ func NewElectionTimeoutEvent(message *Timeout) *ElectionTimeoutEvent {
 // AbortSnapshotRecoveryEvent is an event for snapshot recovery state to exit.
 type AbortSnapshotRecoveryEvent struct {
     *hsm.StdEvent
+    Error error
 }
 
-func NewAbortSnapshotRecoveryEvent() *AbortSnapshotRecoveryEvent {
+func NewAbortSnapshotRecoveryEvent(err error) *AbortSnapshotRecoveryEvent {
     return &AbortSnapshotRecoveryEvent{
         StdEvent: hsm.NewStdEvent(EventAbortSnapshotRecovery),
+        Error:    err,
     }
 }
 

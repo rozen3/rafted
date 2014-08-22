@@ -182,7 +182,10 @@ func (self *LeaderState) Handle(
         }
         if goodToCommit {
             allCommitted := self.Inflight.GetCommitted()
-            self.CommitInflightEntries(localHSM, allCommitted)
+            err = self.CommitInflightEntries(localHSM, allCommitted)
+            if err != nil {
+                localHSM.SelfDispatch(ev.NewPersistErrorEvent(err))
+            }
         }
         return nil
     case ev.EventStepdown:
@@ -306,7 +309,6 @@ func (self *LeaderState) CommitInflightEntries(
     for _, entry := range entries {
         err := localHSM.CommitInflightLog(entry)
         if err != nil {
-            // TODO error handling
             return err
         }
     }

@@ -36,6 +36,9 @@ type SnapshotManager interface {
     // the metadata of the specified snapshot and a ReadCloser for reading it.
     // The ReadCloser must be closed if it is no longer needed.
     Open(id string) (*SnapshotMeta, io.ReadCloser, error)
+
+    // Delete removes a snapshot.
+    Delete(id string) error
 }
 
 // SnapshotWriter is the interface to persist the snapshot.

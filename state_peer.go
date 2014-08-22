@@ -89,7 +89,7 @@ func (self *DeactivatedPeerState) Handle(
         ev.EventTypeString(event))
     switch event.Type() {
     case ev.EventPeerActivate:
-        // TODO add log
+        self.Debug("about to activate peer")
         sm.QTran(StateActivatedPeerID)
         return nil
     }

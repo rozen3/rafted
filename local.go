@@ -269,6 +269,10 @@ func (self *LocalHSM) Log() ps.Log {
     return self.log
 }
 
+func (self *LocalHSM) StateMachine() ps.StateMachine {
+    return self.stateMachine
+}
+
 func (self *LocalHSM) SnapshotManager() ps.SnapshotManager {
     return self.snapshotManager
 }
@@ -307,7 +311,9 @@ func (self *LocalHSM) CommitLogsUpTo(index uint64) error {
 func (self *LocalHSM) CommitInflightLog(entry *InflightEntry) error {
     committedIndex, err := self.log.CommittedIndex()
     if err != nil {
-        return err
+        message := fmt.Sprintf(
+            "fail to read committed index of log, error: %s", err)
+        return errors.New(message)
     }
     logIndex := entry.Request.LogEntry.Index
     if logIndex <= committedIndex {
@@ -317,7 +323,9 @@ func (self *LocalHSM) CommitInflightLog(entry *InflightEntry) error {
         return errors.New("index not next to last committed index")
     }
     if err = self.log.StoreCommittedIndex(logIndex); err != nil {
-        return err
+        message := fmt.Sprintf(
+            "fail to store committed index of log, error: %s", err)
+        return errors.New(message)
     }
     self.applier.LeaderCommit(entry)
     return nil
