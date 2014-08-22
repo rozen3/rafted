@@ -1,6 +1,8 @@
 package rafted
 
 import (
+    "errors"
+    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -44,29 +46,38 @@ func (self *LeaderState) Entry(
     self.MemberChangeHSM.SetLocalHSM(localHSM)
     self.MemberChangeHSM.Dispatch(ev.NewLeaderMemberChangeActivateEvent())
     ignoreResponse := func(event ev.ClientEvent) {
-        // TODO add log
+        e, ok := event.(*ev.ClientResponseEvent)
+        hsm.AssertTrue(ok)
+        self.Info("orphan client response: %t", e.Response.Success)
     }
     self.listener.Start(ignoreResponse)
     // init status for this state
     conf, err := localHSM.ConfigManager().RNth(0)
     if err != nil {
-        // TODO error handling
+        localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+            "fail to read last config")))
+        return nil
     }
     self.Inflight = NewInflight(conf)
     committedIndex, err := localHSM.Log().CommittedIndex()
     if err != nil {
-        // TODO error handling
+        localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+            "fail to read committed index of log")))
+        return nil
     }
     lastLogIndex, err := localHSM.Log().LastIndex()
     if err != nil {
-        // TODO error handling
+        localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+            "fail to read last log index of log")))
     }
     if committedIndex < lastLogIndex {
         inflightEntries := make([]*InflightEntry, 0, lastLogIndex-committedIndex)
         for i := committedIndex + 1; i <= lastLogIndex; i++ {
             logEntry, err := localHSM.Log().GetLog(i)
             if err != nil {
-                // TODO error handling
+                message := fmt.Sprintf("fail to get log at index: %d", i)
+                e := errors.New(message)
+                localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
             }
             request := &InflightRequest{
                 LogEntry:   logEntry,
@@ -165,7 +176,8 @@ func (self *LeaderState) Handle(
         goodToCommit, err := self.Inflight.Replicate(
             e.Message.Peer, e.Message.MatchIndex)
         if err != nil {
-            // TODO add log
+            self.Error("fail to replicate, peer: %s, index: %d",
+                e.Message.Peer, e.Message.MatchIndex)
             return nil
         }
         if goodToCommit {
@@ -194,7 +206,8 @@ func (self *LeaderState) HandleClientRequest(
 
     err := self.StartFlight(localHSM, ps.LogCommand, requestData, resultChan)
     if err != nil {
-        // TODO error handling
+        localHSM.SelfDispatch(ev.NewPersistErrorEvent(err))
+        resultChan <- ev.NewPersistErrorResponseEvent(err)
     }
 }
 
@@ -205,9 +218,11 @@ func (self *LeaderState) StartFlight(
     resultChan chan ev.ClientEvent) error {
 
     term := localHSM.GetCurrentTerm()
-    lastLogIndex, err := localHSM.Log().LastIndex()
+    log := localHSM.Log()
+    lastLogIndex, err := log.LastIndex()
     if err != nil {
-        // TODO add error handling
+        message := fmt.Sprintf("fail to read last index of log, error: %s", err)
+        return errors.New(message)
     }
 
     // construct durable log entry
@@ -215,7 +230,7 @@ func (self *LeaderState) StartFlight(
     // bundled config with log entry if in member change procedure
     lastConf, err := localHSM.ConfigManager().RNth(0)
     if err != nil {
-        // TODO error handling
+        return errors.New("fail to read last config")
     }
     var conf *ps.Config
     if ps.IsInMemeberChange(lastConf) {
@@ -230,13 +245,8 @@ func (self *LeaderState) StartFlight(
     }
 
     // persist log locally
-    if err := localHSM.Log().StoreLog(logEntry); err != nil {
-        // TODO error handling
-        response := &ev.ClientResponse{
-            Success: false,
-        }
-        event := ev.NewClientResponseEvent(response)
-        resultChan <- event
+    if err := log.StoreLog(logEntry); err != nil {
+        return errors.New("fail to store log")
     }
 
     if ps.IsInMemeberChange(conf) {
@@ -252,20 +262,23 @@ func (self *LeaderState) StartFlight(
     self.Inflight.Add(request)
 
     // send AppendEntriesReqeust to all peer
-    lastLogTerm, lastLogIndex, err := localHSM.Log().LastEntryInfo()
+    lastLogTerm, lastLogIndex, err := log.LastEntryInfo()
     if err != nil {
-        // TODO error handling
+        message := fmt.Sprintf(
+            "fail to read last entry info of log, error: %s", err)
+        return errors.New(message)
     }
-    committedIndex, err := localHSM.Log().CommittedIndex()
+    committedIndex, err := log.CommittedIndex()
     if err != nil {
-        // TODO error handling
+        return errors.New("fail to read committed index of log")
     }
 
     // retrieve all uncommitted logs
-    logEntries, err := localHSM.Log().GetLogInRange(
-        committedIndex+1, lastLogIndex)
+    logEntries, err := log.GetLogInRange(committedIndex+1, lastLogIndex)
     if err != nil {
-        // TODO error handling
+        message := fmt.Sprintf("fail to read log in range [%d, %d]",
+            committedIndex+1, lastLogIndex)
+        return errors.New(message)
     }
     req := &ev.AppendEntriesRequest{
         Term:              term,
@@ -328,7 +341,8 @@ func (self *UnsyncState) Entry(
     hsm.AssertTrue(ok)
     handleNoopResponse := func(event ev.ClientEvent) {
         if event.Type() != ev.EventClientResponse {
-            // TODO add log
+            self.Error("unsync receive response event: %s",
+                ev.EventTypeString(event))
             return
         }
         localHSM.SelfDispatch(event)
@@ -392,7 +406,7 @@ func (self *UnsyncState) StartSync(localHSM *LocalHSM) error {
 
 func (self *UnsyncState) StartSyncSafe(localHSM *LocalHSM) {
     if err := self.StartSync(localHSM); err != nil {
-        // TODO add log
+        self.Error("unsync fail to start sync, error: %s", err)
         localHSM.SelfDispatch(ev.NewPersistErrorEvent(err))
     }
 }

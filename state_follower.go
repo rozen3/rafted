@@ -421,7 +421,7 @@ func (self *FollowerState) dispatchMemberChangeEvents(
     }
     logEntries, err := log.GetLogInRange(committedIndex+1, newLastLogIndex)
     if err != nil {
-        message := fmt.Sprintf("fail to read log in range[%d, %d]",
+        message := fmt.Sprintf("fail to read log in range [%d, %d]",
             committedIndex+1, newLastLogIndex)
         localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
         return false

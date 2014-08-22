@@ -56,16 +56,16 @@ func (self *CandidateState) Entry(
     case OldNewConfigCommitted:
         conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
-            self.Error("fail to read config")
-            localHSM.SelfDispatch(ev.NewPersistErrorEvent(err))
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last config")))
             return nil
         }
         self.condition = NewMemberChangeCommitCondition(conf)
     case NewConfigSeen:
         conf, err := localHSM.ConfigManager().RNth(1)
         if err != nil {
-            self.Error("fail to read config")
-            localHSM.SelfDispatch(ev.NewPersistErrorEvent(err))
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read the backward second config")))
             return nil
         }
         self.condition = NewMemberChangeCommitCondition(conf)
