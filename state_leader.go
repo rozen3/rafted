@@ -69,12 +69,10 @@ func (self *LeaderState) Entry(
                 // TODO error handling
             }
             request := &InflightRequest{
-                Term:       localHSM.GetCurrentTerm(),
-                LogType:    logEntry.Type,
-                Data:       logEntry.Data,
+                LogEntry:   logEntry,
                 ResultChan: self.listener.GetChan(),
             }
-            inflightEntry := NewInflightEntry(i, request)
+            inflightEntry := NewInflightEntry(request)
             inflightEntries = append(inflightEntries, inflightEntry)
         }
         self.Inflight.AddAll(inflightEntries)
@@ -190,24 +188,17 @@ func (self *LeaderState) Handle(
 func (self *LeaderState) HandleClientRequest(
     localHSM *LocalHSM, requestData []byte, resultChan chan ev.ClientEvent) {
 
-    conf, err := localHSM.ConfigManager().RNth(0)
+    err := self.StartFlight(localHSM, ps.LogCommand, requestData, resultChan)
     if err != nil {
-        // TODO error handling
-    }
-    requests := &InflightRequest{
-        Term:       localHSM.GetCurrentTerm(),
-        LogType:    ps.LogCommand,
-        Data:       requestData,
-        Conf:       conf,
-        ResultChan: resultChan,
-    }
-    if err := self.StartFlight(localHSM, requests); err != nil {
         // TODO error handling
     }
 }
 
 func (self *LeaderState) StartFlight(
-    localHSM *LocalHSM, request *InflightRequest) error {
+    localHSM *LocalHSM,
+    logType ps.LogType,
+    logData []byte,
+    resultChan chan ev.ClientEvent) error {
 
     term := localHSM.GetCurrentTerm()
     lastLogIndex, err := localHSM.Log().LastIndex()
@@ -218,15 +209,19 @@ func (self *LeaderState) StartFlight(
     // construct durable log entry
     logIndex := lastLogIndex + 1
     // bundled config with log entry if in member change procedure
+    lastConf, err := localHSM.ConfigManager().RNth(0)
+    if err != nil {
+        // TODO error handling
+    }
     var conf *ps.Config
-    if ps.IsInMemeberChange(request.Conf) {
-        conf = request.Conf
+    if ps.IsInMemeberChange(lastConf) {
+        conf = lastConf
     }
     logEntry := &ps.LogEntry{
         Term:  term,
         Index: logIndex,
-        Type:  request.LogType,
-        Data:  request.Data,
+        Type:  logType,
+        Data:  logData,
         Conf:  conf,
     }
 
@@ -237,15 +232,20 @@ func (self *LeaderState) StartFlight(
             Success: false,
         }
         event := ev.NewClientResponseEvent(response)
-        request.SendResponse(event)
+        resultChan <- event
     }
 
-    if ps.IsInMemeberChange(request.Conf) {
-        localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), request.Conf)
-        self.Inflight.ChangeMember(request.Conf)
+    if ps.IsInMemeberChange(conf) {
+        localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
+        self.Inflight.ChangeMember(conf)
     }
+
     //  and inflight log entry
-    self.Inflight.Add(logIndex, request)
+    request := &InflightRequest{
+        LogEntry:   logEntry,
+        ResultChan: resultChan,
+    }
+    self.Inflight.Add(request)
 
     // send AppendEntriesReqeust to all peer
     lastLogTerm, lastLogIndex, err := localHSM.Log().LastEntryInfo()
@@ -299,7 +299,6 @@ func (self *LeaderState) CommitInflightEntries(
 type UnsyncState struct {
     *LogStateHead
 
-    noop     *InflightRequest
     listener *ClientEventListener
 }
 
@@ -307,12 +306,7 @@ func NewUnsyncState(super hsm.State, logger logging.Logger) *UnsyncState {
     ch := make(chan ev.ClientEvent, 1)
     object := &UnsyncState{
         LogStateHead: NewLogStateHead(super, logger),
-        noop: &InflightRequest{
-            LogType:    ps.LogNoop,
-            Data:       make([]byte, 0),
-            ResultChan: ch,
-        },
-        listener: NewClientEventListener(ch),
+        listener:     NewClientEventListener(ch),
     }
     super.AddChild(object)
     return object
@@ -328,12 +322,6 @@ func (self *UnsyncState) Entry(
     self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
-    conf, err := localHSM.ConfigManager().RNth(0)
-    if err != nil {
-        // TODO error handling
-    }
-    self.noop.Term = localHSM.GetCurrentTerm()
-    self.noop.Conf = conf
     handleNoopResponse := func(event ev.ClientEvent) {
         if event.Type() != ev.EventClientResponse {
             // TODO add log
@@ -392,13 +380,16 @@ func (self *UnsyncState) StartSync(localHSM *LocalHSM) error {
     // commit a blank no-op entry into the log at the start of leader's term
     leaderState, ok := self.Super().(*LeaderState)
     hsm.AssertTrue(ok)
-    return leaderState.StartFlight(localHSM, self.noop)
+    logType := ps.LogNoop
+    logData := make([]byte, 0)
+    resultChan := self.listener.GetChan()
+    return leaderState.StartFlight(localHSM, logType, logData, resultChan)
 }
 
 func (self *UnsyncState) StartSyncSafe(localHSM *LocalHSM) {
     if err := self.StartSync(localHSM); err != nil {
         // TODO add log
-        localHSM.SelfDispatch(ev.NewStepdownEvent())
+        localHSM.SelfDispatch(ev.NewPersistErrorEvent(err))
     }
 }
 

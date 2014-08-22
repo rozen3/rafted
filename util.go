@@ -432,8 +432,8 @@ func (self *Applier) ApplyLogsUpto(index uint64) {
         if err != nil {
             self.handleLogError("applier: fail to read log at index: %d", i)
         }
-        _, err = self.ApplyLogAt(entry.Index, entry.Type, entry.Data)
-        if err != nil {
+
+        if _, err = self.ApplyLogEntry(entry); err != nil {
             self.handleLogError("applier: fail to apply log at index: %d", i)
             return
         }
@@ -442,24 +442,22 @@ func (self *Applier) ApplyLogsUpto(index uint64) {
     }
 }
 
-func (self *Applier) ApplyLogAt(
-    logIndex uint64,
-    logType ps.LogType,
-    data []byte) (result []byte, err error) {
+func (self *Applier) ApplyLogEntry(
+    entry *ps.LogEntry) (result []byte, err error) {
 
-    switch logType {
+    switch entry.Type {
     // TODO add other types
     case ps.LogCommand:
-        result = self.stateMachine.Apply(data)
+        result = self.stateMachine.Apply(entry.Data)
     case ps.LogNoop:
         // nothing to do
     case ps.LogMemberChange:
         // nothing to do here
     default:
         self.logger.Error(
-            "unknown log entry type: %d, index: %s", logType, logIndex)
+            "unknown log entry type: %d, index: %s", entry.Type, entry.Index)
     }
-    err = self.log.StoreLastAppliedIndex(logIndex)
+    err = self.log.StoreLastAppliedIndex(entry.Index)
     return result, err
 }
 
@@ -470,10 +468,10 @@ func (self *Applier) ApplyInflightLog(entry *InflightEntry) {
             "applier: fail to read committed index of log, error: %#v", err)
         return
     }
-    if entry.LogIndex > committedIndex {
+    logIndex := entry.Request.LogEntry.Index
+    if logIndex > committedIndex {
         self.logger.Warning(
-            "applier: skip application of uncommitted log, index: %d",
-            entry.LogIndex)
+            "applier: skip application of uncommitted log, index: %d", logIndex)
         return
     }
     lastAppliedIndex, err := self.log.LastAppliedIndex()
@@ -482,30 +480,28 @@ func (self *Applier) ApplyInflightLog(entry *InflightEntry) {
             "applier: fail to read last applied index of log, error: %#v", err)
         return
     }
-    if entry.LogIndex <= lastAppliedIndex {
+    if logIndex <= lastAppliedIndex {
         self.logger.Warning(
-            "applier: skip application of old log, index: %d", entry.LogIndex)
+            "applier: skip application of old log, index: %d", logIndex)
         return
     }
-    if entry.LogIndex != lastAppliedIndex+1 {
+    if logIndex != lastAppliedIndex+1 {
         self.logger.Warning(
-            "applier: skip application of non-next log, index: %d",
-            entry.LogIndex)
+            "applier: skip application of non-next log, index: %d", logIndex)
         return
     }
 
-    result, err := self.ApplyLogAt(
-        entry.LogIndex, entry.Request.LogType, entry.Request.Data)
+    result, err := self.ApplyLogEntry(entry.Request.LogEntry)
     if err != nil {
         self.handleLogError(
-            "applier: fail to apply log at index: %d", entry.LogIndex)
+            "applier: fail to apply log at index: %d", logIndex)
         return
     }
 
-    if entry.Request.LogType == ps.LogMemberChange {
+    if entry.Request.LogEntry.Type == ps.LogMemberChange {
         // don't response client here
         message := &ev.LeaderForwardMemberChangePhase{
-            Conf:       entry.Request.Conf,
+            Conf:       entry.Request.LogEntry.Conf,
             ResultChan: entry.Request.ResultChan,
         }
         self.localHSM.SelfDispatch(
@@ -516,11 +512,11 @@ func (self *Applier) ApplyInflightLog(entry *InflightEntry) {
             Success: true,
             Data:    result,
         }
-        entry.Request.SendResponse(ev.NewClientResponseEvent(response))
+        entry.Request.ResultChan <- ev.NewClientResponseEvent(response)
     }
 
     self.localHSM.Notifier().Notify(ev.NewNotifyApplyEvent(
-        entry.LogIndex, entry.Request.Term))
+        logIndex, entry.Request.LogEntry.Term))
 }
 
 func (self *Applier) handleLogError(format string, args ...interface{}) {

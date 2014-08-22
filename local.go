@@ -309,13 +309,14 @@ func (self *LocalHSM) CommitInflightLog(entry *InflightEntry) error {
     if err != nil {
         return err
     }
-    if entry.LogIndex <= committedIndex {
+    logIndex := entry.Request.LogEntry.Index
+    if logIndex <= committedIndex {
         return errors.New("index less than committed index")
     }
-    if entry.LogIndex != committedIndex+1 {
+    if logIndex != committedIndex+1 {
         return errors.New("index not next to last committed index")
     }
-    if err = self.log.StoreCommittedIndex(entry.LogIndex); err != nil {
+    if err = self.log.StoreCommittedIndex(logIndex); err != nil {
         return err
     }
     self.applier.LeaderCommit(entry)

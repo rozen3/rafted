@@ -90,38 +90,29 @@ func (self *MemberChangeCommitCondition) IsCommitted() bool {
 }
 
 type InflightRequest struct {
-    LogType    ps.LogType
-    Term       uint64
-    Data       []byte
-    Conf       *ps.Config
+    LogEntry   *ps.LogEntry
     ResultChan chan ev.ClientEvent
 }
 
-func (self *InflightRequest) SendResponse(event ev.ClientEvent) {
-    self.ResultChan <- event
-}
-
 type InflightEntry struct {
-    LogIndex  uint64
     Request   *InflightRequest
     Condition CommitCondition
 }
 
-func NewInflightEntry(
-    logIndex uint64,
-    request *InflightRequest) *InflightEntry {
+func NewInflightEntry(request *InflightRequest) *InflightEntry {
 
-    if !ps.IsNormalConfig(request.Conf) {
+    if (request.LogEntry.Conf == nil) ||
+        ps.IsNormalConfig(request.LogEntry.Conf) {
+
         return &InflightEntry{
-            LogIndex:  logIndex,
-            Request:   request,
-            Condition: NewMemberChangeCommitCondition(request.Conf),
+            Request: request,
+            Condition: NewMajorityCommitCondition(
+                request.LogEntry.Conf.Servers),
         }
     }
     return &InflightEntry{
-        LogIndex:  logIndex,
         Request:   request,
-        Condition: NewMajorityCommitCondition(request.Conf.Servers),
+        Condition: NewMemberChangeCommitCondition(request.LogEntry.Conf),
     }
 }
 
@@ -192,10 +183,11 @@ func (self *Inflight) ChangeMember(conf *ps.Config) {
     self.ServerMatchIndexes = newMatchIndexes
 }
 
-func (self *Inflight) Add(logIndex uint64, request *InflightRequest) error {
+func (self *Inflight) Add(request *InflightRequest) error {
     self.Lock()
     defer self.Unlock()
 
+    logIndex := request.LogEntry.Index
     if logIndex <= self.MaxIndex {
         return errors.New("log index should be incremental")
     }
@@ -205,7 +197,7 @@ func (self *Inflight) Add(logIndex uint64, request *InflightRequest) error {
         self.MinIndex = logIndex
     }
 
-    toCommit := NewInflightEntry(logIndex, request)
+    toCommit := NewInflightEntry(request)
     self.ToCommitEntries = append(self.ToCommitEntries, toCommit)
     return nil
 }
@@ -221,15 +213,15 @@ func (self *Inflight) AddAll(toCommits []*InflightEntry) error {
     // check the indexes are incremental
     index := self.MaxIndex
     for _, entry := range toCommits {
-        if !(index < entry.LogIndex) {
+        if !(index < entry.Request.LogEntry.Index) {
             return errors.New("log index should be incremental")
         }
-        index = entry.LogIndex
+        index = entry.Request.LogEntry.Index
     }
 
     self.MaxIndex = index
     if self.MinIndex == 0 {
-        self.MinIndex = toCommits[0].LogIndex
+        self.MinIndex = toCommits[0].Request.LogEntry.Index
     }
     self.ToCommitEntries = append(self.ToCommitEntries, toCommits...)
     return nil
@@ -253,10 +245,10 @@ func (self *Inflight) Replicate(
     }
     // update vote count for new replicated log
     for _, toCommit := range self.ToCommitEntries {
-        if toCommit.LogIndex > newMatchIndex {
+        if toCommit.Request.LogEntry.Index > newMatchIndex {
             break
         }
-        if toCommit.LogIndex <= newMatchIndex {
+        if toCommit.Request.LogEntry.Index <= newMatchIndex {
             continue
         }
         toCommit.Condition.AddVote(addr)
@@ -269,7 +261,7 @@ func (self *Inflight) Replicate(
     // newMatchIndex are possible to be good to commit
     committedIndex := 0
     for _, toCommit := range self.ToCommitEntries {
-        if toCommit.LogIndex > newMatchIndex {
+        if toCommit.Request.LogEntry.Index > newMatchIndex {
             break
         }
         if !toCommit.Condition.IsCommitted() {

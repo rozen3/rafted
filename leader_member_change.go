@@ -280,13 +280,11 @@ func (self *LeaderNotInMemberChangeState) Handle(
             // TODO error handling
         }
 
-        request := &InflightRequest{
-            Term:       localHSM.GetCurrentTerm(),
-            LogType:    ps.LogMemberChange,
-            Conf:       newConf,
-            ResultChan: e.ClientRequestEventHead.ResultChan,
-        }
-        if err := leaderState.StartFlight(localHSM, request); err != nil {
+        logType := ps.LogMemberChange
+        logData := make([]byte, 0)
+        resultChan := e.ClientRequestEventHead.ResultChan
+        err = leaderState.StartFlight(localHSM, logType, logData, resultChan)
+        if err != nil {
             // TODO error handling
         }
 
@@ -449,13 +447,12 @@ func (self *LeaderMemberChangePhase1State) Handle(
         if err != nil {
             // TODO error handling
         }
-        request := &InflightRequest{
-            Term:       localHSM.GetCurrentTerm(),
-            LogType:    ps.LogMemberChange,
-            Conf:       newConf,
-            ResultChan: e.Message.ResultChan,
-        }
-        if err := leaderState.StartFlight(localHSM, request); err != nil {
+
+        logType := ps.LogMemberChange
+        logData := make([]byte, 0)
+        resultChan := e.Message.ResultChan
+        err = leaderState.StartFlight(localHSM, logType, logData, resultChan)
+        if err != nil {
             // TODO error handling
         }
 
