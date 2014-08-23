@@ -329,13 +329,13 @@ func (self *MemoryServer) Serve() {
     for {
         chunk, err := self.transport.ReadChunk()
         if err != nil {
-            // TODO add log
+            self.logger.Error(
+                "memory server fails to read first chunk, error: %s", err)
             continue
         }
         transport, ok := self.acceptedConnections[chunk.SourceCh]
         if ok {
             // connection already accepted
-
             continue
         } else {
             addr := ps.ServerAddr{
@@ -369,12 +369,14 @@ func (self *MemoryServer) handleConn(
             reader, writer, decoder, encoder); err != nil {
 
             if err != io.EOF {
-                // TODO add log
+                self.logger.Error(
+                    "memory server fails to handle command, error: %s", err)
             }
             return
         }
         if err := writer.Flush(); err != nil {
-            // TODO add log
+            self.logger.Error(
+                "memory server fails to flush writer, error: %s", err)
             return
         }
     }
