@@ -95,7 +95,6 @@ func (self *PeerManager) RemovePeers(localAddr ps.ServerAddr, conf *ps.Config) {
         peer.Close()
         delete(self.peerMap, addr)
     }
-
 }
 
 func (self *PeerManager) genNewPeerMap(

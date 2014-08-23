@@ -479,13 +479,17 @@ func (self *FollowerState) dispatchMemberChangeEvents(
     return true
 }
 
-func DispatchInconsistantError(localHSM *LocalHSM) {
+func DispatchInconsistantError(localHSM *LocalHSM) error {
     message := "config and member change status inconsistant"
-    localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+    e := errors.New(message)
+    localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
+    return e
 }
 
-func DispatchPushConfigError(localHSM *LocalHSM, logIndex uint64) {
+func DispatchPushConfigError(localHSM *LocalHSM, logIndex uint64) error {
     message := fmt.Sprintf(
         "fail to push new config for log at index: %d", logIndex)
-    localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+    e := errors.New(message)
+    localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
+    return e
 }

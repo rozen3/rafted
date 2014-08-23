@@ -1,6 +1,8 @@
 package rafted
 
 import (
+    "errors"
+    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -256,14 +258,20 @@ func (self *LeaderNotInMemberChangeState) Handle(
     case ev.EventClientMemberChangeRequest:
         e, ok := event.(*ev.ClientMemberChangeRequestEvent)
         hsm.AssertTrue(ok)
+        resultChan := e.ClientRequestEventHead.ResultChan
         conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last config")))
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
         if !(ps.IsNormalConfig(conf) &&
             ps.AddrsEqual(conf.Servers, e.Request.OldServers)) {
 
-            // TODO error handling
+            err = DispatchInconsistantError(localHSM)
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
 
         newConf := &ps.Config{
@@ -273,21 +281,29 @@ func (self *LeaderNotInMemberChangeState) Handle(
 
         lastLogIndex, err := localHSM.Log().LastIndex()
         if err != nil {
-            // TODO error handling
+            message := fmt.Sprintf(
+                "fail to read last index of log, error: %s", err)
+            e := errors.New(message)
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
+            resultChan <- ev.NewPersistErrorResponseEvent(e)
+            return nil
         }
+        nextLogIndex := lastLogIndex + 1
         err = localHSM.ConfigManager().Push(lastLogIndex+1, newConf)
         if err != nil {
-            // TODO error handling
+            pushError := DispatchPushConfigError(localHSM, nextLogIndex)
+            resultChan <- ev.NewPersistErrorResponseEvent(pushError)
+            return nil
         }
 
         logType := ps.LogMemberChange
         logData := make([]byte, 0)
-        resultChan := e.ClientRequestEventHead.ResultChan
         err = leaderState.StartFlight(localHSM, logType, logData, resultChan)
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(err))
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
-
         localHSM.SetMemberChangeStatus(OldNewConfigSeen)
         sm.QTran(StateLeaderMemberChangePhase1ID)
         return nil
@@ -334,7 +350,9 @@ func (self *LeaderInMemberChangeState) Init(
     case OldNewConfigCommitted:
         conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last config")))
+            return nil
         }
         message := &ev.LeaderForwardMemberChangePhase{
             Conf: conf,
@@ -423,12 +441,18 @@ func (self *LeaderMemberChangePhase1State) Handle(
     case ev.EventLeaderForwardMemberChangePhase:
         e, ok := event.(*ev.LeaderForwardMemberChangePhaseEvent)
         hsm.AssertTrue(ok)
+        resultChan := e.Message.ResultChan
         conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last config")))
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
         if !(ps.IsOldNewConfig(conf)) && ps.ConfigEqual(e.Message.Conf, conf) {
-            // TODO error handling
+            err = DispatchInconsistantError(localHSM)
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
 
         // update member change status
@@ -440,20 +464,29 @@ func (self *LeaderMemberChangePhase1State) Handle(
         }
         lastLogIndex, err := localHSM.Log().LastIndex()
         if err != nil {
-            // TODO error handling
+            message := fmt.Sprintf(
+                "fail to read last index of log, error: %s", err)
+            e := errors.New(message)
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
 
-        err = localHSM.ConfigManager().Push(lastLogIndex+1, newConf)
+        nextLogIndex := lastLogIndex + 1
+        err = localHSM.ConfigManager().Push(nextLogIndex, newConf)
         if err != nil {
-            // TODO error handling
+            pushError := DispatchPushConfigError(localHSM, nextLogIndex)
+            resultChan <- ev.NewPersistErrorResponseEvent(pushError)
+            return nil
         }
 
         logType := ps.LogMemberChange
         logData := make([]byte, 0)
-        resultChan := e.Message.ResultChan
         err = leaderState.StartFlight(localHSM, logType, logData, resultChan)
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(err))
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
 
         // update member change status
@@ -515,12 +548,18 @@ func (self *LeaderMemberChangePhase2State) Handle(
     case ev.EventLeaderForwardMemberChangePhase:
         e, ok := event.(*ev.LeaderForwardMemberChangePhaseEvent)
         hsm.AssertTrue(ok)
+        resultChan := e.Message.ResultChan
         conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
-            // TODO error handling
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last config")))
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
         if !(ps.IsNewConfig(conf) && ps.ConfigEqual(e.Message.Conf, conf)) {
-            // TODO error handling
+            err = DispatchInconsistantError(localHSM)
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
 
         newConf := &ps.Config{
@@ -530,12 +569,20 @@ func (self *LeaderMemberChangePhase2State) Handle(
 
         lastLogIndex, err := localHSM.Log().LastIndex()
         if err != nil {
-            // TODO error handling
+            message := fmt.Sprintf(
+                "fail to read last index of log, error: %s", err)
+            e := errors.New(message)
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
+            resultChan <- ev.NewPersistErrorResponseEvent(err)
+            return nil
         }
 
-        err = localHSM.ConfigManager().Push(lastLogIndex+1, newConf)
+        nextLogIndex := lastLogIndex + 1
+        err = localHSM.ConfigManager().Push(nextLogIndex, newConf)
         if err != nil {
-            // TODO error handling
+            pushError := DispatchPushConfigError(localHSM, nextLogIndex)
+            resultChan <- ev.NewPersistErrorResponseEvent(pushError)
+            return nil
         }
 
         // update member change status
@@ -545,14 +592,14 @@ func (self *LeaderMemberChangePhase2State) Handle(
         response := &ev.ClientResponse{
             Success: true,
         }
-        if e.Message.ResultChan != nil {
-            e.Message.ResultChan <- ev.NewClientResponseEvent(response)
-        }
+        resultChan <- ev.NewClientResponseEvent(response)
 
         // TODO stepdown if we are not part of the new cluster
 
         if err = localHSM.SendMemberChangeNotify(); err != nil {
-            // TODO error handling
+            message := fmt.Sprintf(
+                "fail to send member change notify, error: %s", err)
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
         }
 
         sm.QTran(StateLeaderNotInMemberChangeID)
