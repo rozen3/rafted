@@ -70,29 +70,9 @@ func (self *PeerManager) Broadcast(event hsm.Event) {
 func (self *PeerManager) AddPeers(localAddr ps.ServerAddr, conf *ps.Config) {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
-    newPeerMap := make(map[ps.ServerAddr]*Peer, 0)
-    if conf.Servers != nil {
-        for _, addr := range conf.Servers {
-            if ps.AddrNotEqual(&addr, &localAddr) {
-                newPeerMap[addr] = nil
-            }
-        }
-    }
-    if conf.NewServers != nil {
-        for _, addr := range conf.NewServers {
-            if ps.AddrNotEqual(&addr, &localAddr) {
-                newPeerMap[addr] = nil
-            }
-        }
-    }
-    peersToRemove := MapSetMinus(self.peerMap, newPeerMap)
+
+    newPeerMap := self.genNewPeerMap(localAddr, conf)
     peersToAdd := MapSetMinus(newPeerMap, self.peerMap)
-    for _, addr := range peersToRemove {
-        delete(self.peerMap, addr)
-        if err := self.client.CloseAll(&addr); err != nil {
-            // TODO add log
-        }
-    }
     for _, addr := range peersToAdd {
         logger := self.getLoggerForPeer(addr)
         self.peerMap[addr] = NewPeer(
@@ -108,7 +88,35 @@ func (self *PeerManager) AddPeers(localAddr ps.ServerAddr, conf *ps.Config) {
 }
 
 func (self *PeerManager) RemovePeers(localAddr ps.ServerAddr, conf *ps.Config) {
-    // TODO add impl
+    newPeerMap := self.genNewPeerMap(localAddr, conf)
+    peersToRemove := MapSetMinus(self.peerMap, newPeerMap)
+    for _, addr := range peersToRemove {
+        peer, _ := self.peerMap[addr]
+        peer.Close()
+        delete(self.peerMap, addr)
+    }
+
+}
+
+func (self *PeerManager) genNewPeerMap(
+    localAddr ps.ServerAddr, conf *ps.Config) map[ps.ServerAddr]*Peer {
+
+    newPeerMap := make(map[ps.ServerAddr]*Peer, 0)
+    if conf.Servers != nil {
+        for _, addr := range conf.Servers {
+            if ps.AddrNotEqual(&addr, &localAddr) {
+                newPeerMap[addr] = nil
+            }
+        }
+    }
+    if conf.NewServers != nil {
+        for _, addr := range conf.NewServers {
+            if ps.AddrNotEqual(&addr, &localAddr) {
+                newPeerMap[addr] = nil
+            }
+        }
+    }
+    return newPeerMap
 }
 
 type Peer struct {
@@ -135,6 +143,7 @@ func NewPeer(
     NewStandardModePeerState(leaderPeerState, maxAppendEntriesSize, logger)
     NewSnapshotModePeerState(leaderPeerState, maxSnapshotChunkSize, logger)
     NewPipelineModePeerState(leaderPeerState, logger)
+    hsm.NewTerminal(top)
     peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler, local)
     peerHSM.Init()
     return &Peer{peerHSM}

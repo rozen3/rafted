@@ -2,6 +2,7 @@ package rafted
 
 import (
     "errors"
+    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -47,6 +48,11 @@ func (self *PeerState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.EventTypeString(event))
+    switch event.Type() {
+    case ev.EventTerm:
+        sm.QTran(hsm.TerminalStateID)
+        return nil
+    }
     return self.Super()
 }
 
@@ -148,7 +154,8 @@ func (self *ActivatedPeerState) Handle(
         peerAddr := peerHSM.Addr()
         response, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
-            // TODO add log
+            self.Error("fail to call rpc RequestVoteRequest to peer: %s",
+                peerAddr.String())
             return nil
         }
         peerHSM.SelfDispatch(response)
@@ -160,7 +167,7 @@ func (self *ActivatedPeerState) Handle(
         peerHSM.EventHandler()(e)
         return nil
     case ev.EventPeerDeactivate:
-        // TODO add log
+        self.Debug("about to deactivate peer")
         sm.QTran(StateDeactivatedPeerID)
         return nil
     }
@@ -260,11 +267,14 @@ func (self *LeaderPeerState) Entry(
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     // local initialization
-    self.term = peerHSM.Local().GetCurrentTerm()
+    local := peerHSM.Local()
+    self.term = local.GetCurrentTerm()
     self.matchIndex = 0
-    lastLogIndex, err := peerHSM.Local().Log().LastIndex()
+    lastLogIndex, err := local.Log().LastIndex()
     if err != nil {
-        // TODO error handling
+        local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+            "fail to read committed index of log")))
+        return nil
     }
     self.nextIndex = lastLogIndex + 1
     self.UpdateLastContactTime()
@@ -314,18 +324,19 @@ func (self *LeaderPeerState) Handle(
             local.SelfDispatch(ev.NewStepdownEvent())
         }
         matchIndex, _ := self.GetIndexInfo()
-        if e.Response.LastLogIndex != matchIndex {
-            // TODO add log
-            if e.Response.LastLogIndex > matchIndex {
-                message := &ev.PeerReplicateLog{
-                    Peer:       peerHSM.Addr(),
-                    MatchIndex: matchIndex,
-                }
-                event := ev.NewPeerReplicateLogEvent(message)
-                local.SelfDispatch(event)
+        if e.Response.LastLogIndex > matchIndex {
+            message := &ev.PeerReplicateLog{
+                Peer:       peerHSM.Addr(),
+                MatchIndex: matchIndex,
             }
-            self.SetMatchIndex(e.Response.LastLogIndex)
+            event := ev.NewPeerReplicateLogEvent(message)
+            local.SelfDispatch(event)
+        } else {
+            peerAddr := peerHSM.Addr()
+            self.Warning("peer %s last log index backward from %d to :%d",
+                peerAddr.String(), matchIndex, e.Response.LastLogIndex)
         }
+        self.SetMatchIndex(e.Response.LastLogIndex)
         return nil
     case ev.EventTimeoutHeartbeat:
         e, ok := event.(*ev.HeartbeatTimeoutEvent)
@@ -336,7 +347,9 @@ func (self *LeaderPeerState) Handle(
         matchIndex, _ := self.GetIndexInfo()
         lastLogIndex, err := local.Log().LastIndex()
         if err != nil {
-            // TODO error handling
+            local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last log index of log")))
+            return nil
         }
         if matchIndex < lastLogIndex {
             sm.QTran(StateStandardModePeerID)
@@ -345,11 +358,15 @@ func (self *LeaderPeerState) Handle(
         // the peer is up-to-date, then send a pure heartbeat AE
         prevLogTerm, prevLogIndex, err := local.Log().LastEntryInfo()
         if err != nil {
-            // TODO error handling
+            local.SelfDispatch(ev.NewPersistErrorEvent(
+                errors.New("fail to read last entry info of log")))
+            return nil
         }
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
-            // TODO error handling
+            local.SelfDispatch(ev.NewPersistErrorEvent(
+                errors.New("fail to read committed index of log")))
+            return nil
         }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
@@ -363,11 +380,14 @@ func (self *LeaderPeerState) Handle(
         peerAddr := peerHSM.Addr()
         respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, requestEvent)
         if err != nil {
-            // TODO error handling
+            self.Error("fail to call rpc AppendEntriesRequest to peer: %s",
+                peerAddr.String())
+            return nil
         }
         appendEntriesRespEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
         if !ok {
-            // TODO error handling
+            self.Error("receive non AppendEntriesResponse for AppendEntriesRequest")
+            return nil
         }
         appendEntriesRespEvent.FromAddr = peerAddr
         // update last contact timer
@@ -470,11 +490,14 @@ func (self *StandardModePeerState) Handle(
         peerAddr := peerHSM.Addr()
         respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
-            // TODO error handling
+            self.Error("fail to call rpc AppendEntriesRequest to peer: %s",
+                peerAddr.String())
+            return nil
         }
         appendEntriesRespEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
         if !ok {
-            // TODO error handling
+            self.Error("receive non AppendEntriesResponse for AppendEntriesRequest")
+            return nil
         }
         appendEntriesRespEvent.FromAddr = peerAddr
         // update last contact timer
@@ -490,7 +513,9 @@ func (self *StandardModePeerState) Handle(
         local := peerHSM.Local()
         lastLogIndex, err := local.Log().LastIndex()
         if err != nil {
-            // TODO error handling
+            local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last log index of log")))
+            return nil
         }
         if e.Response.LastLogIndex < lastLogIndex {
             // peer log has not caught up with us leader yet
@@ -505,7 +530,7 @@ func (self *StandardModePeerState) Handle(
         event := self.SetupReplicating(peerHSM)
         peerHSM.SelfDispatch(event)
     case ev.EventPeerEnterSnapshotMode:
-        // TODO add log
+        self.Debug("about to enter snapshot mode peer")
         sm.QTran(StateSnapshotModePeerID)
         return nil
     }
@@ -521,13 +546,17 @@ func (self *StandardModePeerState) SetupReplicating(
     local := peerHSM.Local()
     _, lastSnapshotIndex, err := local.SnapshotManager().LastSnapshotInfo()
     if err != nil {
-        // TODO error handling
+        local.SelfDispatch(ev.NewPersistErrorEvent(
+            errors.New("fail to last snapshot info")))
+        return nil
     }
     switch {
     case matchIndex == 0:
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
-            // TODO add error handling
+            local.SelfDispatch(ev.NewPersistErrorEvent(
+                errors.New("fail to read committed index of log")))
+            return nil
         }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
@@ -543,14 +572,19 @@ func (self *StandardModePeerState) SetupReplicating(
     default:
         log, err := local.Log().GetLog(matchIndex)
         if err != nil {
-            // TODO error handling
+            message := fmt.Sprintf("fail to read log at index: %d, error: %s",
+                matchIndex, err)
+            local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+            return nil
         }
         prevLogIndex := log.Index
         prevLogTerm := log.Term
 
         lastLogIndex, err := local.Log().LastIndex()
         if err != nil {
-            // TODO error handling
+            local.SelfDispatch(ev.NewPersistErrorEvent(
+                errors.New("fail to read last log index of log")))
+            return nil
         }
         entriesSize := Min(uint64(self.maxAppendEntriesSize),
             (lastLogIndex - matchIndex))
@@ -558,13 +592,18 @@ func (self *StandardModePeerState) SetupReplicating(
         logEntries := make([]*ps.LogEntry, 0, entriesSize)
         for i := nextIndex; i <= maxIndex; i++ {
             if log, err = local.Log().GetLog(i); err != nil {
-                // TODO error handling
+                message := fmt.Sprintf(
+                    "fail to read log at index: %d, error: %s", i, err)
+                local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+                return nil
             }
             logEntries = append(logEntries, log)
         }
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
-            // TODO add error handling
+            local.SelfDispatch(ev.NewPersistErrorEvent(
+                errors.New("fail to read committed index of log")))
+            return nil
         }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
@@ -615,16 +654,25 @@ func (self *SnapshotModePeerState) Entry(
     local := peerHSM.Local()
     snapshotMetas, err := local.SnapshotManager().List()
     if err != nil {
-        // TODO error handling
+        local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+            "fail to list snapshot")))
+        return nil
     }
     if len(snapshotMetas) == 0 {
-        // TODO error handling
+        // no snapshot at all
+        local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+            "fail to read last log index of log")))
+        peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
+        return nil
     }
 
     id := snapshotMetas[0].ID
     meta, readCloser, err := local.SnapshotManager().Open(id)
     if err != nil {
-        // TODO error handling
+        message := fmt.Sprintf("fail to open snapshot, id: %s", id)
+        local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+        peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
+        return nil
     }
     self.snapshotMeta = meta
     self.snapshotReadCloser = readCloser
@@ -634,6 +682,9 @@ func (self *SnapshotModePeerState) Entry(
     if err := self.SendNextChunk(
         peerHSM, local.GetCurrentTerm(), local.GetLocalAddr()); err != nil {
 
+        peerAddr := peerHSM.Addr()
+        self.Error("fail to send snapshot next chunk to peer: %s, offset: %d",
+            peerAddr.String(), self.offset)
         peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
     }
     return nil
@@ -644,7 +695,8 @@ func (self *SnapshotModePeerState) Exit(
 
     self.Debug("STATE: %s, -> Exit", self.ID())
     if err := self.snapshotReadCloser.Close(); err != nil {
-        // TODO error handling
+        self.Error("fail to close snapshot reader for snapshot id: %s",
+            self.snapshotMeta.ID)
     }
     self.snapshotMeta = nil
     self.offset = 0
@@ -667,14 +719,16 @@ func (self *SnapshotModePeerState) Handle(
         peerAddr := peerHSM.Addr()
         respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
-            // TODO add log
-        }
-        if respEvent.Type() != ev.EventInstallSnapshotResponse {
-            // TODO error handling
+            self.Error("fail to call rpc InstallSnapshotRequest to peer: %s",
+                peerAddr.String())
+            // retry again
+            peerHSM.SelfDispatch(event)
         }
         snapshotRespEvent, ok := respEvent.(*ev.InstallSnapshotResponseEvent)
         if !ok {
-            // TODO error handling
+            self.Error("receive non InstallSnapshotResponse for " +
+                "InstallSnapshotRequest")
+            return nil
         }
 
         // update last contact timer
@@ -695,7 +749,8 @@ func (self *SnapshotModePeerState) Handle(
             self.offset += uint64(len(self.lastChunk))
             if self.offset == self.snapshotMeta.Size {
                 // all chunk send, snapshot replication done
-                // TODO add log
+                self.Debug("done send all chunk of snapshot, id: %s",
+                    self.snapshotMeta.ID)
                 sm.QTran(StateStandardModePeerID)
                 return nil
             }
@@ -704,7 +759,8 @@ func (self *SnapshotModePeerState) Handle(
             if err := self.SendNextChunk(
                 peerHSM, local.GetCurrentTerm(), local.GetLocalAddr()); err != nil {
 
-                // TODO add log
+                self.Error("fail to send snapshot next chunk to peer: %s, offset: %d",
+                    peerAddr.String(), self.offset)
                 peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
             }
         } else {
@@ -714,7 +770,7 @@ func (self *SnapshotModePeerState) Handle(
         }
         return nil
     case ev.EventPeerAbortSnapshotMode:
-        // TODO add log
+        self.Debug("about to exit snapshot mode peer")
         sm.QTran(StateStandardModePeerID)
         return nil
     }
@@ -750,12 +806,12 @@ func (self *SnapshotModePeerState) SendNextChunk(
         return nil
     } else {
         if err == io.EOF || err == nil {
-            // TODO add log
-            return errors.New("fail to read next chunk")
-        } else {
-            // TODO add log
-            return err
+            return nil
         }
+        message := fmt.Sprintf(
+            "fail to read next chunk of snapshot, id: %s, error: %s",
+            self.snapshotMeta.ID, err)
+        return errors.New(message)
     }
 }
 

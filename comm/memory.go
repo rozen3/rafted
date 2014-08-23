@@ -229,24 +229,6 @@ func (self *MemoryClient) CallRPCTo(
     return response, err
 }
 
-func (self *MemoryClient) CloseAll(target net.Addr) error {
-
-    self.connectionPoolLock.Lock()
-    defer self.connectionPoolLock.Unlock()
-
-    key := target.String()
-    connections, ok := self.connectionPool[key]
-    if ok {
-        var err error
-        for _, connection := range connections {
-            err = connection.Close()
-        }
-        delete(self.connectionPool, key)
-        return err
-    }
-    return nil
-}
-
 func (self *MemoryClient) getConnectionFromPool(
     target net.Addr) (*MemoryConnection, error) {
 
