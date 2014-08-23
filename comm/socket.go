@@ -5,6 +5,7 @@ import (
     "errors"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     "github.com/ugorji/go/codec"
     "io"
     "net"
@@ -189,31 +190,34 @@ type SocketServer struct {
     bindAddr     net.Addr
     listener     net.Listener
     eventHandler func(ev.RaftRequestEvent)
+    logger       logging.Logger
 }
 
 func NewSocketServer(
     bindAddr net.Addr,
-    eventHandler func(ev.RaftRequestEvent)) (*SocketServer, error) {
+    eventHandler func(ev.RaftRequestEvent),
+    logger logging.Logger) (*SocketServer, error) {
 
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
     if err != nil {
         return nil, err
     }
-    return &SocketServer{
+    object := &SocketServer{
         bindAddr:     bindAddr,
         listener:     listener,
         eventHandler: eventHandler,
-    }, nil
+        logger:       logger,
+    }
+    return object, nil
 }
 
 func (self *SocketServer) Serve() {
     for {
         conn, err := self.listener.Accept()
         if err != nil {
-            // TODO add log
+            self.logger.Error("fail to accept connection")
             continue
         }
-        // TODO add log
         go self.handleConn(conn)
     }
 }
@@ -230,12 +234,15 @@ func (self *SocketServer) handleConn(conn net.Conn) {
             reader, writer, decoder, encoder); err != nil {
 
             if err != io.EOF {
-                // TODO add log
+                self.logger.Error(
+                    "fail to handle command from connection: %s, error: %s",
+                    conn.RemoteAddr().String(), err)
             }
             return
         }
         if err := writer.Flush(); err != nil {
-            // TODO add log
+            self.logger.Error("fail to write to connection: %s, error: %s",
+                conn.RemoteAddr().String(), err)
             return
         }
     }

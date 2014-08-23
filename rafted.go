@@ -67,7 +67,7 @@ func NewRaftNode(
         eventHandler1,
         local,
         getLoggerForPeer)
-    server, err := comm.NewSocketServer(&bindAddr, eventHandler2)
+    server, err := comm.NewSocketServer(&bindAddr, eventHandler2, logger)
     if err != nil {
         // TODO add cleanup
         return nil, err
