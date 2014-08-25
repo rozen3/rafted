@@ -258,7 +258,7 @@ func (self *LeaderNotInMemberChangeState) Handle(
     case ev.EventClientMemberChangeRequest:
         e, ok := event.(*ev.ClientMemberChangeRequestEvent)
         hsm.AssertTrue(ok)
-        resultChan := e.ClientRequestEventHead.ResultChan
+        resultChan := e.ResultChan
         conf, err := localHSM.ConfigManager().RNth(0)
         if err != nil {
             localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(

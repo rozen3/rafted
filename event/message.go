@@ -101,8 +101,8 @@ type InstallSnapshotResponse struct {
 // Client Messages
 // ------------------------------------------------------------
 
-// ClientWriteRequest is the general request to be appended to raft log.
-type ClientWriteRequest struct {
+// ClientAppendRequest is the general request to be appended to raft log.
+type ClientAppendRequest struct {
     // the request content, to be applied to state machine
     Data []byte
 }
@@ -161,5 +161,5 @@ type MemberChangeNewConf struct {
 
 type LeaderForwardMemberChangePhase struct {
     Conf       *ps.Config
-    ResultChan chan ClientEvent
+    ResultChan chan RaftEvent
 }

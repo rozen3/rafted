@@ -8,4 +8,5 @@
     * the jugement of whether remote log has caught up, when to start member change
 7. pipeline mode of peer's log replication
 8. implementation of LogBarrier entry type
+9. read-only implementation
 

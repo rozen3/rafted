@@ -186,7 +186,7 @@ func (self *PersistErrorState) Handle(
             ev.EventTypeString(event))
         return nil
     case ev.IsClientEvent(event.Type()):
-        e, ok := event.(ev.ClientRequestEvent)
+        e, ok := event.(ev.RaftRequestEvent)
         hsm.AssertTrue(ok)
         e.SendResponse(ev.NewPersistErrorResponseEvent(self.err))
         return nil

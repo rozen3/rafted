@@ -37,7 +37,7 @@ const (
     EventPersistError
     EventInternalEnd
     EventClientRequestBegin
-    EventClientWriteRequest
+    EventClientAppendRequest
     EventClientReadOnlyRequest
     EventClientMemberChangeRequest
     EventClientRequestEnd
@@ -106,8 +106,8 @@ func EventTypeString(event hsm.Event) string {
         return "PeerAbortSnapshotModeEvent"
     case EventPersistError:
         return "PersistErrorEvent"
-    case EventClientWriteRequest:
-        return "ClientWriteRequestEvent"
+    case EventClientAppendRequest:
+        return "ClientAppendRequestEvent"
     case EventClientReadOnlyRequest:
         return "ClientReadOnlyRequestEvent"
     case EventClientMemberChangeRequest:
@@ -179,22 +179,22 @@ type RaftRequestEvent interface {
 
 type RaftRequestEventHead struct {
     *hsm.StdEvent
-    resultChan chan RaftEvent
+    ResultChan chan RaftEvent
 }
 
 func (self *RaftRequestEventHead) SendResponse(event RaftEvent) {
-    self.resultChan <- event
+    self.ResultChan <- event
 }
 
 func (self *RaftRequestEventHead) RecvResponse() RaftEvent {
-    response := <-self.resultChan
+    response := <-self.ResultChan
     return response
 }
 
 func NewRaftRequestEventHead(eventType hsm.EventType) *RaftRequestEventHead {
     return &RaftRequestEventHead{
         StdEvent:   hsm.NewStdEvent(eventType),
-        resultChan: make(chan RaftEvent, 1),
+        ResultChan: make(chan RaftEvent, 1),
     }
 }
 
@@ -316,59 +316,28 @@ func (self *InstallSnapshotResponseEvent) Message() interface{} {
 // ------------------------------------------------------------
 // Client Events
 // ------------------------------------------------------------
-
-type ClientEvent interface {
-    hsm.Event
+// Event for ClientAppendRequest message.
+type ClientAppendRequestEvent struct {
+    *RaftRequestEventHead
+    Request *ClientAppendRequest
 }
 
-type ClientRequestEvent interface {
-    ClientEvent
-    SendResponse(ClientEvent)
-    RecvResponse() ClientEvent
-}
+func NewClientAppendRequestEvent(
+    request *ClientAppendRequest) *ClientAppendRequestEvent {
 
-type ClientRequestEventHead struct {
-    *hsm.StdEvent
-    ResultChan chan ClientEvent
-}
-
-func (self *ClientRequestEventHead) SendResponse(event ClientEvent) {
-    self.ResultChan <- event
-}
-
-func (self *ClientRequestEventHead) RecvResponse() ClientEvent {
-    response := <-self.ResultChan
-    return response
-}
-
-func NewClientRequestEventHead(
-    eventType hsm.EventType) *ClientRequestEventHead {
-
-    return &ClientRequestEventHead{
-        StdEvent:   hsm.NewStdEvent(eventType),
-        ResultChan: make(chan ClientEvent, 1),
+    return &ClientAppendRequestEvent{
+        RaftRequestEventHead: NewRaftRequestEventHead(EventClientAppendRequest),
+        Request:              request,
     }
 }
 
-// Event for ClientWriteRequest message.
-type ClientWriteRequestEvent struct {
-    *ClientRequestEventHead
-    Request *ClientWriteRequest
-}
-
-func NewClientWriteRequestEvent(
-    request *ClientWriteRequest) *ClientWriteRequestEvent {
-
-    return &ClientWriteRequestEvent{
-        ClientRequestEventHead: NewClientRequestEventHead(
-            EventClientWriteRequest),
-        Request: request,
-    }
+func (self *ClientAppendRequestEvent) Message() interface{} {
+    return self.Request
 }
 
 // Event for ClientReadOnlyRequest message.
 type ClientReadOnlyRequestEvent struct {
-    *ClientRequestEventHead
+    *RaftRequestEventHead
     Request *ClientReadOnlyRequest
 }
 
@@ -376,15 +345,19 @@ func NewClientReadOnlyRequestEvent(
     request *ClientReadOnlyRequest) *ClientReadOnlyRequestEvent {
 
     return &ClientReadOnlyRequestEvent{
-        ClientRequestEventHead: NewClientRequestEventHead(
+        RaftRequestEventHead: NewRaftRequestEventHead(
             EventClientReadOnlyRequest),
         Request: request,
     }
 }
 
+func (self *ClientReadOnlyRequestEvent) Message() interface{} {
+    return self.Request
+}
+
 // Event for ClientMemberChangeRequest message.
 type ClientMemberChangeRequestEvent struct {
-    *ClientRequestEventHead
+    *RaftRequestEventHead
     Request *ClientMemberChangeRequest
 }
 
@@ -392,10 +365,14 @@ func NewClientMemberChangeRequestEvent(
     request *ClientMemberChangeRequest) *ClientMemberChangeRequestEvent {
 
     return &ClientMemberChangeRequestEvent{
-        ClientRequestEventHead: NewClientRequestEventHead(
+        RaftRequestEventHead: NewRaftRequestEventHead(
             EventClientMemberChangeRequest),
         Request: request,
     }
+}
+
+func (self *ClientMemberChangeRequestEvent) Message() interface{} {
+    return self.Request
 }
 
 // ClientResponseEvent is the general response event to client.
@@ -411,6 +388,10 @@ func NewClientResponseEvent(
         StdEvent: hsm.NewStdEvent(EventClientResponse),
         Response: response,
     }
+}
+
+func (self *ClientResponseEvent) Message() interface{} {
+    return self.Response
 }
 
 // LeaderUnknownResponseEvent is to tell client we are not leader and
@@ -429,6 +410,10 @@ func NewLeaderRedirectResponseEvent(
     }
 }
 
+func (self *LeaderRedirectResponseEvent) Message() interface{} {
+    return self.Response
+}
+
 // LeaderUnknownResponseEvent is to tell client we are not leader and
 // don't known which node in cluster is leader at this moment.
 type LeaderUnknownResponseEvent struct {
@@ -439,6 +424,10 @@ func NewLeaderUnknownResponseEvent() *LeaderUnknownResponseEvent {
     return &LeaderUnknownResponseEvent{
         StdEvent: hsm.NewStdEvent(EventLeaderUnknownResponse),
     }
+}
+
+func (self *LeaderUnknownResponseEvent) Message() interface{} {
+    return nil
 }
 
 // LeaderUnsyncResponseEvent is to tell client we are leader but not
@@ -455,6 +444,10 @@ func NewLeaderUnsyncResponseEvent() *LeaderUnsyncResponseEvent {
     }
 }
 
+func (self *LeaderUnsyncResponseEvent) Message() interface{} {
+    return nil
+}
+
 // LeaderInMemberChangeResponseEvent is to tell client the leader is already
 // in a member change procedure and doesn't accept another member change
 // request before finish the previous.
@@ -466,6 +459,10 @@ func NewLeaderInMemberChangeResponseEvent() *LeaderInMemberChangeResponseEvent {
     return &LeaderInMemberChangeResponseEvent{
         StdEvent: hsm.NewStdEvent(EventLeaderInMemberChangeResponse),
     }
+}
+
+func (self *LeaderInMemberChangeResponseEvent) Message() interface{} {
+    return nil
 }
 
 // PersistErrorResponseEvent is to tell client that a persist error happened.
@@ -481,6 +478,10 @@ func NewPersistErrorResponseEvent(err error) *PersistErrorResponseEvent {
         StdEvent: hsm.NewStdEvent(EventPersistErrorResponse),
         Error:    err,
     }
+}
+
+func (self *PersistErrorResponseEvent) Message() interface{} {
+    return nil
 }
 
 // ------------------------------------------------------------

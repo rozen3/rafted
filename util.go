@@ -287,21 +287,21 @@ func (self *Notifier) Close() {
 // ClientEventListener is a a helper class for listening client response
 // in independent go routine.
 type ClientEventListener struct {
-    eventChan chan ev.ClientEvent
+    eventChan chan ev.RaftEvent
     stopChan  chan interface{}
     group     *sync.WaitGroup
 }
 
-func NewClientEventListener(ch chan ev.ClientEvent) *ClientEventListener {
+func NewClientEventListener() *ClientEventListener {
 
     return &ClientEventListener{
-        eventChan: ch,
+        eventChan: make(chan ev.RaftEvent, 1),
         stopChan:  make(chan interface{}),
         group:     &sync.WaitGroup{},
     }
 }
 
-func (self *ClientEventListener) Start(fn func(ev.ClientEvent)) {
+func (self *ClientEventListener) Start(fn func(ev.RaftEvent)) {
     routine := func() {
         defer self.group.Done()
         for {
@@ -317,7 +317,7 @@ func (self *ClientEventListener) Start(fn func(ev.ClientEvent)) {
     go routine()
 }
 
-func (self *ClientEventListener) GetChan() chan ev.ClientEvent {
+func (self *ClientEventListener) GetChan() chan ev.RaftEvent {
     return self.eventChan
 }
 

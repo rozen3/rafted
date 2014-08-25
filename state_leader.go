@@ -21,7 +21,7 @@ func NewLeaderState(super hsm.State, logger logging.Logger) *LeaderState {
     object := &LeaderState{
         LogStateHead:    NewLogStateHead(super, logger),
         MemberChangeHSM: SetupLeaderMemberChangeHSM(logger),
-        listener:        NewClientEventListener(make(chan ev.ClientEvent, 1)),
+        listener:        NewClientEventListener(),
     }
     object.MemberChangeHSM.SetLeaderState(object)
     super.AddChild(object)
@@ -45,7 +45,7 @@ func (self *LeaderState) Entry(
     // activate member change hsm
     self.MemberChangeHSM.SetLocalHSM(localHSM)
     self.MemberChangeHSM.Dispatch(ev.NewLeaderMemberChangeActivateEvent())
-    ignoreResponse := func(event ev.ClientEvent) {
+    ignoreResponse := func(event ev.RaftEvent) {
         e, ok := event.(*ev.ClientResponseEvent)
         hsm.AssertTrue(ok)
         self.Info("orphan client response: %t", e.Response.Success)
@@ -161,14 +161,12 @@ func (self *LeaderState) Handle(
     case ev.EventClientReadOnlyRequest:
         e, ok := event.(*ev.ClientReadOnlyRequestEvent)
         hsm.AssertTrue(ok)
-        self.HandleClientRequest(
-            localHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
+        self.HandleClientRequest(localHSM, e.Request.Data, e.ResultChan)
         return nil
-    case ev.EventClientWriteRequest:
-        e, ok := event.(*ev.ClientWriteRequestEvent)
+    case ev.EventClientAppendRequest:
+        e, ok := event.(*ev.ClientAppendRequestEvent)
         hsm.AssertTrue(ok)
-        self.HandleClientRequest(
-            localHSM, e.Request.Data, e.ClientRequestEventHead.ResultChan)
+        self.HandleClientRequest(localHSM, e.Request.Data, e.ResultChan)
         return nil
     case ev.EventPeerReplicateLog:
         e, ok := event.(*ev.PeerReplicateLogEvent)
@@ -205,7 +203,7 @@ func (self *LeaderState) Handle(
 }
 
 func (self *LeaderState) HandleClientRequest(
-    localHSM *LocalHSM, requestData []byte, resultChan chan ev.ClientEvent) {
+    localHSM *LocalHSM, requestData []byte, resultChan chan ev.RaftEvent) {
 
     err := self.StartFlight(localHSM, ps.LogCommand, requestData, resultChan)
     if err != nil {
@@ -218,7 +216,7 @@ func (self *LeaderState) StartFlight(
     localHSM *LocalHSM,
     logType ps.LogType,
     logData []byte,
-    resultChan chan ev.ClientEvent) error {
+    resultChan chan ev.RaftEvent) error {
 
     term := localHSM.GetCurrentTerm()
     log := localHSM.Log()
@@ -322,10 +320,9 @@ type UnsyncState struct {
 }
 
 func NewUnsyncState(super hsm.State, logger logging.Logger) *UnsyncState {
-    ch := make(chan ev.ClientEvent, 1)
     object := &UnsyncState{
         LogStateHead: NewLogStateHead(super, logger),
-        listener:     NewClientEventListener(ch),
+        listener:     NewClientEventListener(),
     }
     super.AddChild(object)
     return object
@@ -341,7 +338,7 @@ func (self *UnsyncState) Entry(
     self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
-    handleNoopResponse := func(event ev.ClientEvent) {
+    handleNoopResponse := func(event ev.RaftEvent) {
         if event.Type() != ev.EventClientResponse {
             self.Error("unsync receive response event: %s",
                 ev.EventTypeString(event))
@@ -378,7 +375,7 @@ func (self *UnsyncState) Handle(
     hsm.AssertTrue(ok)
     switch event.Type() {
     case ev.EventClientReadOnlyRequest:
-        e, ok := event.(ev.ClientRequestEvent)
+        e, ok := event.(ev.RaftRequestEvent)
         hsm.AssertTrue(ok)
         e.SendResponse(ev.NewLeaderUnsyncResponseEvent())
         return nil
