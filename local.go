@@ -423,3 +423,7 @@ func NewLocal(
     localHSM.Init()
     return &Local{localHSM}, nil
 }
+
+func (self *Local) Send(event ev.RaftEvent) {
+    self.Dispatch(event)
+}

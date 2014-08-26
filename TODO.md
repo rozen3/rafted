@@ -9,4 +9,5 @@
 7. pipeline mode of peer's log replication
 8. implementation of LogBarrier entry type
 9. read-only implementation
+10. read configuration implementation
 

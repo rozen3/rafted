@@ -283,6 +283,20 @@ func (self *MemoryClient) getConnection(
     return connection, nil
 }
 
+func (self *MemoryClient) Close() error {
+    self.connectionPoolLock.Lock()
+    defer self.connectionPoolLock.Unlock()
+
+    var err error
+    for target, connections := range self.connectionPool {
+        for _, connection := range connections {
+            err = connection.Close()
+        }
+        delete(self.connectionPool, target)
+    }
+    return err
+}
+
 type MemoryServer struct {
     transport           *MemoryServerTransport
     acceptedConnections map[chan []byte]*MemoryServerTransport
@@ -381,4 +395,8 @@ func (self *MemoryServer) handleCommand(
         return err
     }
     return nil
+}
+
+func (self *MemoryServer) Close() error {
+    return self.transport.Close()
 }

@@ -175,6 +175,7 @@ type RaftRequestEvent interface {
     RaftEvent
     SendResponse(RaftEvent)
     RecvResponse() RaftEvent
+    GetResponseChan() <-chan RaftEvent
 }
 
 type RaftRequestEventHead struct {
@@ -189,6 +190,10 @@ func (self *RaftRequestEventHead) SendResponse(event RaftEvent) {
 func (self *RaftRequestEventHead) RecvResponse() RaftEvent {
     response := <-self.ResultChan
     return response
+}
+
+func (self *RaftRequestEventHead) GetResponseChan() <-chan RaftEvent {
+    return self.ResultChan
 }
 
 func NewRaftRequestEventHead(eventType hsm.EventType) *RaftRequestEventHead {

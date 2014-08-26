@@ -8,6 +8,10 @@ import (
     "time"
 )
 
+type RaftBackend interface {
+    Send(event ev.RaftRequestEvent)
+}
+
 type RaftNode struct {
     local       *Local
     peerManager *PeerManager

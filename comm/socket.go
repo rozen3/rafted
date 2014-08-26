@@ -169,21 +169,18 @@ func (self *SocketClient) getConnection(
     return connection, nil
 }
 
-func (self *SocketClient) CloseAll(target net.Addr) error {
+func (self *SocketClient) Close() error {
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
 
-    key := target.String()
-    connections, ok := self.connectionPool[key]
-    if ok {
-        var err error
+    var err error
+    for target, connections := range self.connectionPool {
         for _, connection := range connections {
             err = connection.Close()
         }
-        delete(self.connectionPool, key)
-        return err
+        delete(self.connectionPool, target)
     }
-    return nil
+    return err
 }
 
 type SocketServer struct {
@@ -269,6 +266,10 @@ func (self *SocketServer) handleCommand(
         return err
     }
     return nil
+}
+
+func (self *SocketServer) Close() error {
+    return self.listener.Close()
 }
 
 type SocketNetworkLayer struct {

@@ -130,7 +130,7 @@ type ClientResponse struct {
 // LeaderRedirectResponse contains the leader info for client to redirect.
 type LeaderRedirectResponse struct {
     // The network address of leader
-    LeaderAddr ps.ServerAddr
+    Leader ps.ServerAddr
 }
 
 // ------------------------------------------------------------
