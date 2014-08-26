@@ -64,6 +64,23 @@ func TestSimpleClient(t *testing.T) {
     assert.Equal(t, err, nil)
 }
 
+type MockRaftBackend2 struct {
+    sendFunc func(event ev.RaftRequestEvent) ev.RaftEvent
+}
+
+func NewMockRaftBackend2(
+    sendFunc func(event ev.RaftRequestEvent) ev.RaftEvent) *MockRaftBackend2 {
+
+    return &MockRaftBackend2{
+        sendFunc: sendFunc,
+    }
+}
+
+func (self *MockRaftBackend2) Send(event ev.RaftRequestEvent) {
+    respEvent := self.sendFunc(event)
+    event.SendResponse(respEvent)
+}
+
 // func TestClient(t *testing.T) {
 //     allAddrs := []ps.ServerAddr{
 //         ps.ServerAddr{
