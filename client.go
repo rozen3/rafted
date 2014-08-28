@@ -7,6 +7,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
+    rt "github.com/hhkbp2/rafted/retry"
     "time"
 )
 
@@ -31,12 +32,16 @@ type Client interface {
 type SimpleClient struct {
     backend RaftBackend
     timeout time.Duration
+    retry   rt.Retry
 }
 
-func NewSimpleClient(backend RaftBackend, timeout time.Duration) *SimpleClient {
+func NewSimpleClient(
+    backend RaftBackend, timeout time.Duration, retry rt.Retry) *SimpleClient {
+
     return &SimpleClient{
         backend: backend,
         timeout: timeout,
+        retry:   retry,
     }
 }
 
@@ -45,8 +50,8 @@ func (self *SimpleClient) Append(data []byte) (result []byte, err error) {
         Data: data,
     }
     reqEvent := ev.NewClientAppendRequestEvent(request)
-    return doRequest(self.backend, reqEvent, self.timeout,
-        dummyRedirectHandler, dummyInavaliableHandler)
+    return doRequest(self.backend, reqEvent, self.timeout, self.retry,
+        self.retry, dummyRedirectHandler)
 }
 
 func (self *SimpleClient) ReadOnly(data []byte) (result []byte, err error) {
@@ -54,8 +59,8 @@ func (self *SimpleClient) ReadOnly(data []byte) (result []byte, err error) {
         Data: data,
     }
     reqEvent := ev.NewClientReadOnlyRequestEvent(request)
-    return doRequest(self.backend, reqEvent, self.timeout,
-        dummyRedirectHandler, dummyInavaliableHandler)
+    return doRequest(self.backend, reqEvent, self.timeout, self.retry,
+        self.retry, dummyRedirectHandler)
 
 }
 
@@ -72,14 +77,15 @@ func (self *SimpleClient) ChangeConfig(
         NewServers: newServers,
     }
     reqEvent := ev.NewClientMemberChangeRequestEvent(request)
-    _, err := doRequest(self.backend, reqEvent, self.timeout,
-        dummyRedirectHandler, dummyInavaliableHandler)
+    _, err := doRequest(self.backend, reqEvent, self.timeout, self.retry,
+        self.retry, dummyRedirectHandler)
     return err
 }
 
 type RedirectClient struct {
-    timeout time.Duration
-    delay   time.Duration
+    timeout       time.Duration
+    retry         rt.Retry
+    redirectRetry rt.Retry
 
     backend RaftBackend
     client  cm.Client
@@ -89,19 +95,21 @@ type RedirectClient struct {
 
 func NewRedirectClient(
     timeout time.Duration,
-    delay time.Duration,
+    retry rt.Retry,
+    redirectRetry rt.Retry,
     backend RaftBackend,
     client cm.Client,
     server cm.Server,
     logger logging.Logger) *RedirectClient {
 
     return &RedirectClient{
-        timeout: timeout,
-        delay:   delay,
-        backend: backend,
-        client:  client,
-        server:  server,
-        logger:  logger,
+        timeout:       timeout,
+        retry:         retry,
+        redirectRetry: redirectRetry,
+        backend:       backend,
+        client:        client,
+        server:        server,
+        logger:        logger,
     }
 }
 
@@ -114,26 +122,22 @@ func (self *RedirectClient) Close() error {
     return self.server.Close()
 }
 
-func (self *RedirectClient) Append(data []byte) (result []byte, err error) {
-    request := &ev.ClientAppendRequest{
-        Data: data,
-    }
-    reqEvent := ev.NewClientAppendRequestEvent(request)
-    redirectHandler := func(
+func (self *RedirectClient) genRedirectHandler() RedirectResponseHandler {
+    return func(
         respEvent *ev.LeaderRedirectResponseEvent,
         reqEvent ev.RaftRequestEvent) (ev.RaftEvent, error) {
 
         return self.client.CallRPCTo(&respEvent.Response.Leader, reqEvent)
     }
-    inavaliableHandler := func(
-        respEvent ev.RaftEvent,
-        reqEvent ev.RaftRequestEvent) ([]byte, error) {
+}
 
-        time.Sleep(self.delay)
-        return nil, nil
+func (self *RedirectClient) Append(data []byte) (result []byte, err error) {
+    request := &ev.ClientAppendRequest{
+        Data: data,
     }
-    return doRequest(self.backend, reqEvent, self.timeout,
-        redirectHandler, inavaliableHandler)
+    reqEvent := ev.NewClientAppendRequestEvent(request)
+    return doRequest(self.backend, reqEvent, self.timeout, self.retry,
+        self.redirectRetry, self.genRedirectHandler())
 }
 
 func (self *RedirectClient) ReadOnly(data []byte) (result []byte, err error) {
@@ -141,21 +145,8 @@ func (self *RedirectClient) ReadOnly(data []byte) (result []byte, err error) {
         Data: data,
     }
     reqEvent := ev.NewClientReadOnlyRequestEvent(request)
-    redirectHandler := func(
-        respEvent *ev.LeaderRedirectResponseEvent,
-        reqEvent ev.RaftRequestEvent) (ev.RaftEvent, error) {
-
-        return self.client.CallRPCTo(&respEvent.Response.Leader, reqEvent)
-    }
-    inavaliableHandler := func(
-        respEvent ev.RaftEvent,
-        reqEvent ev.RaftRequestEvent) ([]byte, error) {
-
-        time.Sleep(self.delay)
-        return nil, nil
-    }
-    return doRequest(self.backend, reqEvent, self.timeout,
-        redirectHandler, inavaliableHandler)
+    return doRequest(self.backend, reqEvent, self.timeout, self.retry,
+        self.redirectRetry, self.genRedirectHandler())
 }
 
 func (self *RedirectClient) GetConfig() (servers []ps.ServerAddr, err error) {
@@ -171,21 +162,8 @@ func (self *RedirectClient) ChangeConfig(
         NewServers: newServers,
     }
     reqEvent := ev.NewClientMemberChangeRequestEvent(request)
-    redirectHandler := func(
-        respEvent *ev.LeaderRedirectResponseEvent,
-        reqEvent ev.RaftRequestEvent) (ev.RaftEvent, error) {
-
-        return self.client.CallRPCTo(&respEvent.Response.Leader, reqEvent)
-    }
-    inavaliableHandler := func(
-        respEvent ev.RaftEvent,
-        reqEvent ev.RaftRequestEvent) ([]byte, error) {
-
-        time.Sleep(self.delay)
-        return nil, nil
-    }
-    _, err := doRequest(self.backend, reqEvent, self.timeout,
-        redirectHandler, inavaliableHandler)
+    _, err := doRequest(self.backend, reqEvent, self.timeout, self.retry,
+        self.redirectRetry, self.genRedirectHandler())
     return err
 }
 
@@ -214,47 +192,56 @@ func doRequest(
     backend RaftBackend,
     reqEvent ev.RaftRequestEvent,
     timeout time.Duration,
-    redirectHandler RedirectResponseHandler,
-    inavaliableHandler InavaliableResponseHandler) ([]byte, error) {
+    retry rt.Retry,
+    redirectRetry rt.Retry,
+    redirectHandler RedirectResponseHandler) ([]byte, error) {
 
-    for {
+    resultChan := make(chan []byte, 1)
+    fn := func() error {
         respEvent, err := sendToBackend(backend, reqEvent, timeout)
         if err != nil {
-            return nil, err
+            return err
         }
-        for {
-            switch respEvent.Type() {
-            case ev.EventClientResponse:
-                e, ok := respEvent.(*ev.ClientResponseEvent)
-                hsm.AssertTrue(ok)
-                if e.Response.Success {
-                    return e.Response.Data, nil
-                }
-                return nil, Failure
-            case ev.EventLeaderRedirectResponse:
+        if respEvent.Type() == ev.EventLeaderRedirectResponse {
+            redirect := func() error {
                 e, ok := respEvent.(*ev.LeaderRedirectResponseEvent)
                 hsm.AssertTrue(ok)
                 respEvent, err = redirectHandler(e, reqEvent)
-                if err != nil {
-                    return nil, err
-                }
-            case ev.EventLeaderUnknownResponse:
-                fallthrough
-            case ev.EventLeaderUnsyncResponse:
-                result, err := inavaliableHandler(respEvent, reqEvent)
-                if err != nil {
-                    return result, err
-                }
-                break
-            case ev.EventLeaderInMemberChangeResponse:
-                return nil, InMemberChange
-            case ev.EventPersistErrorResponse:
-                return nil, PersistError
-            default:
-                return nil, InvalidResponseType
+                return err
+            }
+            err = redirectRetry.Do(redirect)
+            if err != nil {
+                return err
             }
         }
+        switch respEvent.Type() {
+        case ev.EventClientResponse:
+            e, ok := respEvent.(*ev.ClientResponseEvent)
+            hsm.AssertTrue(ok)
+            if e.Response.Success {
+                resultChan <- e.Response.Data
+                return nil
+            }
+            return Failure
+        case ev.EventLeaderUnknownResponse:
+            return LeaderUnknown
+        case ev.EventLeaderUnsyncResponse:
+            return LeaderUnsync
+        case ev.EventLeaderInMemberChangeResponse:
+            return InMemberChange
+        case ev.EventPersistErrorResponse:
+            return PersistError
+        default:
+            return InvalidResponseType
+        }
     }
+
+    err := retry.Do(fn)
+    if err != nil {
+        return nil, err
+    }
+    result := <-resultChan
+    return result, nil
 }
 
 func dummyRedirectHandler(
@@ -262,10 +249,4 @@ func dummyRedirectHandler(
     _ ev.RaftRequestEvent) (ev.RaftEvent, error) {
 
     return respEvent, nil
-}
-
-func dummyInavaliableHandler(
-    respEvent ev.RaftEvent, _ ev.RaftRequestEvent) ([]byte, error) {
-
-    return nil, nil
 }

@@ -7,6 +7,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
+    rt "github.com/hhkbp2/rafted/retry"
     "github.com/stretchr/testify/assert"
     "testing"
     "time"
@@ -53,7 +54,8 @@ func (self *MockRaftBackend) Send(event ev.RaftRequestEvent) {
 func TestSimpleClient(t *testing.T) {
     backend := NewMockRaftBackend()
     timeout := TestTimeout
-    client := NewSimpleClient(backend, timeout)
+    retry := rt.NewOnceRetry(time.Sleep, time.Second*1)
+    client := NewSimpleClient(backend, timeout, retry)
 
     result, err := client.Append(TestData)
     assert.Equal(t, err, nil)
@@ -97,8 +99,12 @@ func setupTestRedirectClient(
     client := cm.NewMemoryClient(DefaultPoolSize, register)
     server := cm.NewMemoryServer(&addr, eventHandler, register, logger)
     logger2 := logging.GetLogger("RedirectClient" + "#" + addr.String())
+    redirectRetry := rt.NewErrorRetry().
+        MaxTries(3).
+        Delay(time.Millisecond * 50)
+    retry := redirectRetry.Copy().OnError(LeaderUnknown).OnError(LeaderUnsync)
     redirectClient := NewRedirectClient(
-        TestTimeout, TestDelay, backend, client, server, logger2)
+        TestTimeout, retry, redirectRetry, backend, client, server, logger2)
     redirectClient.Start()
     return redirectClient
 }

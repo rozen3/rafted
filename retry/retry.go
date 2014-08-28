@@ -230,7 +230,7 @@ func (self *ErrorRetry) Deadline(deadline time.Duration) *ErrorRetry {
     return self
 }
 
-func (self *ErrorRetry) RetryOnError(err error) *ErrorRetry {
+func (self *ErrorRetry) OnError(err error) *ErrorRetry {
     self.retryErrors.Add(err)
     return self
 }

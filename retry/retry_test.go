@@ -284,8 +284,8 @@ func TestErrorRetryErrors(t *testing.T) {
     retry := NewErrorRetry().
         SleepFunc(sleepFunc).
         Delay(time.Second).
-        RetryOnError(e1).
-        RetryOnError(e2)
+        OnError(e1).
+        OnError(e2)
     triesBeforeSuccess := 3
     fnCount := 0
     fn := func() error {
