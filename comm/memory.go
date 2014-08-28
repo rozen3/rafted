@@ -103,6 +103,13 @@ func (self *MemoryTransportRegister) Unregister(id string) error {
     return errors.New(fmt.Sprintf("no transport for id: %v", id))
 }
 
+func (self *MemoryTransportRegister) Reset() error {
+    self.Lock()
+    defer self.Unlock()
+    self.transports = make(map[string]*MemoryServerTransport)
+    return nil
+}
+
 func (self *MemoryTransportRegister) Get(
     id string) (transport *MemoryServerTransport, ok bool) {
 
