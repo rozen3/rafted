@@ -6,11 +6,11 @@ import (
 
 func TestXMLConfig(t *testing.T) {
     filePath := "./xml_config.xml"
-    metas, err := NewXMLConfigManager(filePath)
+    manager, err := NewXMLConfigManager(filePath)
     if err != nil {
         t.Error(err)
     }
-    for _, meta := range metas {
+    for _, meta := range manager.LookupTable {
         t.Log(meta)
         t.Log(meta.Conf)
     }
