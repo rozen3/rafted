@@ -5,7 +5,9 @@ import (
     "container/list"
     "encoding/binary"
     "fmt"
+    "github.com/hhkbp2/rafted/str"
     "io"
+    "math/rand"
     "time"
 )
 
@@ -131,6 +133,45 @@ func CopyConfig(conf *Config) *Config {
         Servers:    conf.Servers[:],
         NewServers: conf.NewServers[:],
     }
+}
+
+func SetupMemoryServerAddrs(number int) []ServerAddr {
+    addrs := make([]ServerAddr, 0, number)
+    for i := 0; i < number; i++ {
+        addr := ServerAddr{
+            Protocol: "memory",
+            IP:       "127.0.0.1",
+            Port:     uint16(6152 + i),
+        }
+        addrs = append(addrs, addr)
+    }
+    return addrs
+}
+
+func RandomMemoryServerAddr() ServerAddr {
+    addr := ServerAddr{
+        Protocol: "memory",
+        IP:       str.RandomIP(),
+        Port:     uint16(rand.Intn(65536)),
+    }
+    return addr
+}
+
+func RandomMemoryServerAddrs(number int) []ServerAddr {
+    addrs := make([]ServerAddr, 0, number)
+    for i := 0; i < number; i++ {
+        addrs = append(addrs, RandomMemoryServerAddr())
+    }
+    return addrs
+}
+
+func LogEntryEqual(entry1 *LogEntry, entry2 *LogEntry) bool {
+    return (entry1.Term == entry2.Term) &&
+        (entry1.Index == entry2.Index) &&
+        (entry1.Type == entry2.Type) &&
+        (entry1.Type == entry2.Type) &&
+        (bytes.Compare(entry1.Data, entry2.Data) == 0) &&
+        ConfigEqual(entry1.Conf, entry2.Conf)
 }
 
 func IsInMemeberChange(conf *Config) bool {

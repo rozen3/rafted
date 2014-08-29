@@ -204,21 +204,21 @@ func NewRaftRequestEventHead(eventType hsm.EventType) *RaftRequestEventHead {
 }
 
 // Event for AppendEntriesRequest message.
-type AppendEntriesReqeustEvent struct {
+type AppendEntriesRequestEvent struct {
     *RaftRequestEventHead
     Request *AppendEntriesRequest
 }
 
 func NewAppendEntriesRequestEvent(
-    request *AppendEntriesRequest) *AppendEntriesReqeustEvent {
+    request *AppendEntriesRequest) *AppendEntriesRequestEvent {
 
-    return &AppendEntriesReqeustEvent{
+    return &AppendEntriesRequestEvent{
         RaftRequestEventHead: NewRaftRequestEventHead(
             EventAppendEntriesRequest),
         Request: request,
     }
 }
-func (self *AppendEntriesReqeustEvent) Message() interface{} {
+func (self *AppendEntriesRequestEvent) Message() interface{} {
     return self.Request
 }
 

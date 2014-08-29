@@ -30,13 +30,13 @@ type Client interface {
 }
 
 type SimpleClient struct {
-    backend RaftBackend
+    backend Backend
     timeout time.Duration
     retry   rt.Retry
 }
 
 func NewSimpleClient(
-    backend RaftBackend, timeout time.Duration, retry rt.Retry) *SimpleClient {
+    backend Backend, timeout time.Duration, retry rt.Retry) *SimpleClient {
 
     return &SimpleClient{
         backend: backend,
@@ -87,7 +87,7 @@ type RedirectClient struct {
     retry         rt.Retry
     redirectRetry rt.Retry
 
-    backend RaftBackend
+    backend Backend
     client  cm.Client
     server  cm.Server
     logger  logging.Logger
@@ -97,7 +97,7 @@ func NewRedirectClient(
     timeout time.Duration,
     retry rt.Retry,
     redirectRetry rt.Retry,
-    backend RaftBackend,
+    backend Backend,
     client cm.Client,
     server cm.Server,
     logger logging.Logger) *RedirectClient {
@@ -168,7 +168,7 @@ func (self *RedirectClient) ChangeConfig(
 }
 
 func sendToBackend(
-    backend RaftBackend,
+    backend Backend,
     reqEvent ev.RaftRequestEvent,
     timeout time.Duration) (event ev.RaftEvent, err error) {
 
@@ -189,7 +189,7 @@ type InavaliableResponseHandler func(
     ev.RaftEvent, ev.RaftRequestEvent) ([]byte, error)
 
 func doRequest(
-    backend RaftBackend,
+    backend Backend,
     reqEvent ev.RaftRequestEvent,
     timeout time.Duration,
     retry rt.Retry,

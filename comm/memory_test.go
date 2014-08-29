@@ -1,0 +1,244 @@
+package comm
+
+import (
+    "bufio"
+    ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
+    ps "github.com/hhkbp2/rafted/persist"
+    "github.com/hhkbp2/rafted/str"
+    "github.com/stretchr/testify/assert"
+    "github.com/ugorji/go/codec"
+    "testing"
+)
+
+var (
+    testData     []byte = []byte(str.RandomString(100))
+    testPoolSize        = 2
+)
+
+func TestMemoryServerTransport(t *testing.T) {
+    addr := ps.RandomMemoryServerAddr()
+    register := NewMemoryTransportRegister()
+    transport := NewMemoryServerTransport(&addr, register)
+    transport.Open()
+    sourceChan := make(chan []byte, 1)
+    chunk := &TransportChunk{
+        Data:     testData,
+        SourceCh: sourceChan,
+    }
+    // test WriteChunk() and ReadChunk()
+    err := transport.WriteChunk(chunk)
+    assert.Equal(t, nil, err)
+    c, err := transport.ReadChunk()
+    assert.Equal(t, nil, err)
+    assert.Equal(t, chunk, c)
+    // test Read()
+    err = transport.WriteChunk(chunk)
+    assert.Equal(t, nil, err)
+    p := make([]byte, len(testData))
+    n, err := transport.Read(p)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, n, len(testData))
+    assert.Equal(t, testData, p)
+    // test Write()
+    n, err = transport.Write(testData)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, n, len(testData))
+    select {
+    case data := <-sourceChan:
+        assert.Equal(t, testData, data)
+    default:
+        assert.True(t, false)
+    }
+    // test Close()
+    err = transport.Close()
+    assert.Equal(t, nil, err)
+}
+
+func TestMemoryTransportRegister(t *testing.T) {
+    var NilTransport *MemoryServerTransport
+    testID := str.RandomString(10)
+    register := NewMemoryTransportRegister()
+    // test Register()
+    transport, ok := register.Get(testID)
+    assert.False(t, ok)
+    register.Register(testID, NilTransport)
+    transport, ok = register.Get(testID)
+    assert.True(t, ok)
+    assert.Equal(t, NilTransport, transport)
+    // test Unregister()
+    err := register.Unregister(testID)
+    assert.Equal(t, nil, err)
+    transport, ok = register.Get(testID)
+    assert.False(t, ok)
+    // test Reset()
+    register.Register(testID, NilTransport)
+    id2 := str.RandomString(10)
+    register.Register(id2, NilTransport)
+    transport, ok = register.Get(testID)
+    assert.True(t, ok)
+    register.Reset()
+    transport, ok = register.Get(testID)
+    assert.False(t, ok)
+    transport, ok = register.Get(id2)
+    assert.False(t, ok)
+}
+
+func TestMemoryTransport(t *testing.T) {
+    serverAddr := ps.RandomMemoryServerAddr()
+    addr := &serverAddr
+    register := NewMemoryTransportRegister()
+    serverTran := NewMemoryServerTransport(addr, register)
+    err := serverTran.Open()
+    assert.Equal(t, nil, err)
+    clientTran := NewMemoryTransport(addr, register)
+    // test PeerAddr()
+    peerAddr := clientTran.PeerAddr()
+    assert.Equal(t, addr, peerAddr)
+    // test Open()
+    err = clientTran.Open()
+    assert.Equal(t, nil, err)
+    // test Write()
+    n, err := clientTran.Write(testData)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, len(testData), n)
+    p := make([]byte, len(testData))
+    n, err = serverTran.Read(p)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, len(testData), n)
+    assert.Equal(t, testData, p)
+    n, err = serverTran.Write(p)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, len(p), n)
+    // test Read()
+    r := make([]byte, len(testData))
+    n, err = clientTran.Read(r)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, len(p), n)
+    // test Close()
+    err = clientTran.Close()
+    assert.Equal(t, nil, err)
+    serverTran.Close()
+}
+
+func getTestAppendEntriesEvents(
+    addr ps.ServerAddr) (*ev.AppendEntriesRequestEvent, *ev.AppendEntriesResponseEvent) {
+    entries := []*ps.LogEntry{
+        &ps.LogEntry{
+            Term:  8,
+            Index: 200,
+            Type:  ps.LogNoop,
+            Data:  testData,
+            Conf:  nil,
+        },
+    }
+    request := &ev.AppendEntriesRequest{
+        Term:              100,
+        Leader:            addr,
+        PrevLogIndex:      199,
+        PrevLogTerm:       8,
+        Entries:           entries,
+        LeaderCommitIndex: 173,
+    }
+    reqEvent := ev.NewAppendEntriesRequestEvent(request)
+    response := &ev.AppendEntriesResponse{
+        Term:         100,
+        LastLogIndex: 165,
+        Success:      true,
+    }
+    respEvent := ev.NewAppendEntriesResponseEvent(response)
+    return reqEvent, respEvent
+}
+
+func startServerOnTran(
+    t *testing.T,
+    tran *MemoryServerTransport,
+    reqEvent *ev.AppendEntriesRequestEvent,
+    respEvent *ev.AppendEntriesResponseEvent) {
+
+    go func() {
+        reader := bufio.NewReader(tran)
+        writer := bufio.NewWriter(tran)
+        decoder := codec.NewDecoder(reader, &codec.MsgpackHandle{})
+        encoder := codec.NewEncoder(writer, &codec.MsgpackHandle{})
+        event, err := ReadRequest(reader, decoder)
+        assert.Equal(t, event.Type(), ev.EventAppendEntriesRequest)
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
+        assert.True(t, ok)
+        assert.Equal(t, reqEvent.Request, e.Request)
+        err = WriteEvent(writer, encoder, respEvent)
+        assert.Equal(t, nil, err)
+        tran.Close()
+    }()
+}
+
+func TestMemoryConnection(t *testing.T) {
+    serverAddr := ps.RandomMemoryServerAddr()
+    addr := &serverAddr
+    register := NewMemoryTransportRegister()
+    serverTran := NewMemoryServerTransport(addr, register)
+    err := serverTran.Open()
+    assert.Equal(t, nil, err)
+    reqEvent, respEvent := getTestAppendEntriesEvents(serverAddr)
+    startServerOnTran(t, serverTran, reqEvent, respEvent)
+    conn := NewMemoryConnection(addr, register)
+    // test Open()
+    err = conn.Open()
+    assert.Equal(t, nil, err)
+    // test CallRPC()
+    event, err := conn.CallRPC(reqEvent)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, event.Type(), ev.EventAppendEntriesResponse)
+    e, ok := event.(*ev.AppendEntriesResponseEvent)
+    assert.True(t, ok)
+    assert.Equal(t, respEvent.Response, e.Response)
+    // test Close()
+    err = conn.Close()
+    assert.Equal(t, nil, err)
+}
+
+func TestMemoryClient(t *testing.T) {
+    serverAddr := ps.RandomMemoryServerAddr()
+    register := NewMemoryTransportRegister()
+    serverTran := NewMemoryServerTransport(&serverAddr, register)
+    serverTran.Open()
+    reqEvent, respEvent := getTestAppendEntriesEvents(serverAddr)
+    startServerOnTran(t, serverTran, reqEvent, respEvent)
+    client := NewMemoryClient(testPoolSize, register)
+    // test CallRPCTo()
+    event, err := client.CallRPCTo(&serverAddr, reqEvent)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, event.Type(), ev.EventAppendEntriesResponse)
+    e, ok := event.(*ev.AppendEntriesResponseEvent)
+    assert.True(t, ok)
+    assert.Equal(t, respEvent.Response, e.Response)
+    // test Close()
+    err = client.Close()
+    assert.Equal(t, nil, err)
+}
+
+func TestMemoryServer(t *testing.T) {
+    serverAddr := ps.RandomMemoryServerAddr()
+    register := NewMemoryTransportRegister()
+    logger := logging.GetLogger("test")
+    reqEvent, respEvent := getTestAppendEntriesEvents(serverAddr)
+    eventHandler := func(event ev.RaftRequestEvent) {
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
+        assert.True(t, ok)
+        assert.Equal(t, reqEvent.Request, e.Request)
+        e.SendResponse(respEvent)
+    }
+    server := NewMemoryServer(&serverAddr, eventHandler, register, logger)
+    go server.Serve()
+    client := NewMemoryClient(testPoolSize, register)
+    event, err := client.CallRPCTo(&serverAddr, reqEvent)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, event.Type(), ev.EventAppendEntriesResponse)
+    e, ok := event.(*ev.AppendEntriesResponseEvent)
+    assert.True(t, ok)
+    assert.Equal(t, respEvent.Response, e.Response)
+    // test Close()
+    client.Close()
+    err = server.Close()
+    assert.Equal(t, nil, err)
+}

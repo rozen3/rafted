@@ -133,7 +133,7 @@ func (self *LeaderState) Handle(
         localHSM.SelfDispatch(ev.NewPeerReplicateLogEvent(peerUpdate))
         return nil
     case ev.EventAppendEntriesRequest:
-        e, ok := event.(*ev.AppendEntriesReqeustEvent)
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
         // step down to follower state if local term is not greater than
         // the remote one

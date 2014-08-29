@@ -148,7 +148,7 @@ func (self *CandidateState) Handle(
         }
         return nil
     case event.Type() == ev.EventAppendEntriesRequest:
-        e, ok := event.(*ev.AppendEntriesReqeustEvent)
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
         // step down to follower state if local term is not greater than
         // the remote one

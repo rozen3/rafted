@@ -8,19 +8,21 @@ import (
     "time"
 )
 
-type RaftBackend interface {
+type Backend interface {
     Send(event ev.RaftRequestEvent)
 }
 
-type RaftNode struct {
+type HSMBackend struct {
     local       *Local
     peerManager *PeerManager
-    client      comm.Client
     server      comm.Server
 }
 
-// TODO add logger
-func NewRaftNode(
+func (self *HSMBackend) Send(event ev.RaftRequestEvent) {
+    self.local.Dispatch(event)
+}
+
+func NewHSMBackend(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
     electionTimeoutThresholdPersent float64,
@@ -35,7 +37,7 @@ func NewRaftNode(
     stateMachine ps.StateMachine,
     log ps.Log,
     snapshotManager ps.SnapshotManager,
-    logger logging.Logger) (*RaftNode, error) {
+    logger logging.Logger) (*HSMBackend, error) {
 
     local, err := NewLocal(
         heartbeatTimeout,
@@ -79,10 +81,9 @@ func NewRaftNode(
     go func() {
         server.Serve()
     }()
-    return &RaftNode{
+    return &HSMBackend{
         local:       local,
         peerManager: peerManager,
-        client:      client,
         server:      server,
     }, nil
 }

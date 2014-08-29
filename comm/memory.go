@@ -33,10 +33,9 @@ func NewMemoryServerTransport(
     addr net.Addr, register *MemoryTransportRegister) *MemoryServerTransport {
 
     return &MemoryServerTransport{
-        addr:       addr,
-        ConsumeCh:  make(chan *TransportChunk, DefaultTransportBufferSize),
-        ResponseCh: make(chan []byte),
-        register:   register,
+        addr:      addr,
+        ConsumeCh: make(chan *TransportChunk, DefaultTransportBufferSize),
+        register:  register,
     }
 }
 
@@ -46,8 +45,11 @@ func (self *MemoryServerTransport) Open() error {
 }
 
 func (self *MemoryServerTransport) ReadChunk() (*TransportChunk, error) {
-    chunk := <-self.ConsumeCh
-    return chunk, nil
+    chunk, ok := <-self.ConsumeCh
+    if ok {
+        return chunk, nil
+    }
+    return nil, io.EOF
 }
 
 func (self *MemoryServerTransport) WriteChunk(chunk *TransportChunk) error {
@@ -55,18 +57,37 @@ func (self *MemoryServerTransport) WriteChunk(chunk *TransportChunk) error {
     return nil
 }
 
+func BytesCopy(dest []byte, src []byte) int {
+    i := 0
+    for ; (i < len(dest)) && (i < len(src)); i++ {
+        dest[i] = src[i]
+    }
+    return i
+}
+
 func (self *MemoryServerTransport) Read(p []byte) (int, error) {
-    chunk, _ := self.ReadChunk()
-    p = chunk.Data
-    return len(p), nil
+    chunk, err := self.ReadChunk()
+    if err != nil {
+        return 0, err
+    }
+    n := BytesCopy(p, chunk.Data)
+    self.ResponseCh = chunk.SourceCh
+    return n, nil
 }
 
 func (self *MemoryServerTransport) Write(p []byte) (int, error) {
-    self.ResponseCh <- p
-    return len(p), nil
+    if self.ResponseCh != nil {
+        self.ResponseCh <- p
+        return len(p), nil
+    }
+    return 0, errors.New("don't know where to response")
 }
 
 func (self *MemoryServerTransport) Close() error {
+    close(self.ConsumeCh)
+    if self.ResponseCh != nil {
+        close(self.ResponseCh)
+    }
     return self.register.Unregister(self.addr.String())
 }
 
@@ -153,14 +174,18 @@ func (self *MemoryTransport) Close() error {
 }
 
 func (self *MemoryTransport) Read(b []byte) (int, error) {
-    b = <-self.consumeCh
-    return len(b), nil
+    data := <-self.consumeCh
+    n := BytesCopy(b, data)
+    return n, nil
 }
 
 func (self *MemoryTransport) Write(b []byte) (int, error) {
-    chunk := &TransportChunk{b, self.consumeCh}
+    chunk := &TransportChunk{
+        Data:     b,
+        SourceCh: self.consumeCh,
+    }
     if err := self.peer.WriteChunk(chunk); err != nil {
-        return len(b), err
+        return 0, err
     }
     return len(b), nil
 }
@@ -305,12 +330,11 @@ func (self *MemoryClient) Close() error {
 }
 
 type MemoryServer struct {
+    register            *MemoryTransportRegister
     transport           *MemoryServerTransport
     acceptedConnections map[chan []byte]*MemoryServerTransport
-
-    eventHandler func(ev.RaftRequestEvent)
-    register     *MemoryTransportRegister
-    logger       logging.Logger
+    eventHandler        func(ev.RaftRequestEvent)
+    logger              logging.Logger
 }
 
 func NewMemoryServer(
@@ -320,11 +344,13 @@ func NewMemoryServer(
     logger logging.Logger) *MemoryServer {
 
     transport := NewMemoryServerTransport(bindAddr, register)
+    transport.Open()
     return &MemoryServer{
-        transport:    transport,
-        eventHandler: eventHandler,
-        register:     register,
-        logger:       logger,
+        register:            register,
+        transport:           transport,
+        acceptedConnections: make(map[chan []byte]*MemoryServerTransport),
+        eventHandler:        eventHandler,
+        logger:              logger,
     }
 }
 
@@ -339,6 +365,7 @@ func (self *MemoryServer) Serve() {
         transport, ok := self.acceptedConnections[chunk.SourceCh]
         if ok {
             // connection already accepted
+            transport.WriteChunk(chunk)
             continue
         } else {
             addr := ps.ServerAddr{
@@ -349,9 +376,9 @@ func (self *MemoryServer) Serve() {
             transport := NewMemoryServerTransport(&addr, self.register)
             transport.ResponseCh = chunk.SourceCh
             self.acceptedConnections[chunk.SourceCh] = transport
+            transport.WriteChunk(chunk)
             go self.handleConn(transport)
         }
-        transport.WriteChunk(chunk)
     }
 }
 

@@ -109,7 +109,7 @@ func (self *FollowerState) Handle(
         response := self.HandleRequestVoteRequest(localHSM, e.Request)
         e.SendResponse(ev.NewRequestVoteResponseEvent(response))
     case event.Type() == ev.EventAppendEntriesRequest:
-        e, ok := event.(*ev.AppendEntriesReqeustEvent)
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
         // Update to latest term if we see newer term
         if e.Request.Term > localHSM.GetCurrentTerm() {

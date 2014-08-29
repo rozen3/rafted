@@ -5,6 +5,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
+    "github.com/stretchr/testify/assert"
     "testing"
     "time"
 )
@@ -16,16 +17,31 @@ const (
     PersistErrorNotifyTimeout               = time.Millisecond * 100
     MaxAppendEntriesSize            uint64  = 10
     MaxSnapshotChunkSize            uint64  = 1000
-    DefaultPoolSize                         = 2
+    DefaultPoolSize                         = 10
 )
 
-func NewTestRaftNode(
-    localAddr ps.ServerAddr,
-    otherPeerAddrs []ps.ServerAddr,
-    configManager ps.ConfigManager,
-    stateMachine ps.StateMachine,
-    log ps.Log,
-    snapshotManager ps.SnapshotManager) (*RaftNode, error) {
+func RemoveAddr(addrs []ps.ServerAddr, addr ps.ServerAddr) []ps.ServerAddr {
+    result := make([]ps.ServerAddr, 0, len(addrs))
+    for _, a := range addrs {
+        if ps.AddrNotEqual(&a, &addr) {
+            result = append(result, addr)
+        }
+    }
+    return result
+}
+
+func NewTestHSMBackend(
+    localAddr ps.ServerAddr, addrs []ps.ServerAddr) (*HSMBackend, error) {
+
+    log := ps.NewMemoryLog()
+    firstLogIndex, _ := log.FirstIndex()
+    config := &ps.Config{
+        Servers:    addrs,
+        NewServers: nil,
+    }
+    configManager := ps.NewMemoryConfigManager(firstLogIndex, config)
+    stateMachine := ps.NewMemoryStateMachine()
+    snapshotManager := ps.NewMemorySnapshotManager()
 
     localLogger := logging.GetLogger(
         "leader" + "#" + localAddr.Network() + "://" + localAddr.String())
@@ -41,11 +57,9 @@ func NewTestRaftNode(
         snapshotManager,
         localLogger)
     if err != nil {
-        // TODO error handling
         return nil, err
     }
-    register := comm.NewMemoryTransportRegister()
-    client := comm.NewMemoryClient(DefaultPoolSize, register)
+    client := comm.NewMemoryClient(DefaultPoolSize, testRegister)
     eventHandler1 := func(event ev.RaftEvent) {
         local.Dispatch(event)
     }
@@ -60,7 +74,7 @@ func NewTestRaftNode(
         HeartbeatTimeout,
         MaxAppendEntriesSize,
         MaxSnapshotChunkSize,
-        otherPeerAddrs,
+        RemoveAddr(addrs, localAddr),
         client,
         eventHandler1,
         local,
@@ -68,47 +82,18 @@ func NewTestRaftNode(
     serverLogger := logging.GetLogger(
         "Server" + "#" + localAddr.Network() + "://" + localAddr.String())
     server := comm.NewMemoryServer(
-        &localAddr, eventHandler2, register, serverLogger)
+        &localAddr, eventHandler2, testRegister, serverLogger)
     go func() {
         server.Serve()
     }()
-    return &RaftNode{
+    return &HSMBackend{
         local:       local,
         peerManager: peerManager,
-        client:      client,
         server:      server,
     }, nil
 }
 
-func TestRafted(t *testing.T) {
-    allAddrs := []ps.ServerAddr{
-        ps.ServerAddr{
-            Protocol: "memory",
-            IP:       "127.0.0.1",
-            Port:     6152,
-        },
-        ps.ServerAddr{
-            Protocol: "memory",
-            IP:       "127.0.0.1",
-            Port:     6153,
-        },
-    }
-    stateMachine := ps.NewMemoryStateMachine()
-    log := ps.NewMemoryLog()
-    snapshotManager := ps.NewMemorySnapshotManager()
-    firstLogIndex, _ := log.FirstIndex()
-    config := &ps.Config{
-        Servers:    allAddrs,
-        NewServers: nil,
-    }
-    configManager := ps.NewMemoryConfigManager(firstLogIndex, config)
-    node1, err := NewTestRaftNode(allAddrs[0], allAddrs[1:],
-        configManager, stateMachine, log, snapshotManager)
-    if err != nil {
-        t.Error("fail to create test raft node, error:", err)
-    }
-    t.Log(node1)
-    // node2 := NewTestRaftNode(allAddrs[1], allAddrs[:1],
-    //     configManager, stateMachine, log, snapshotManager)
-    // t.Log(node2)
+func TestHSMBackend(t *testing.T) {
+    // TODO add impl
+    assert.Equal(t, true, true)
 }

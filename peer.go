@@ -234,6 +234,7 @@ func (self *PeerHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
     self.group.Wait()
     self.selfDispatchChan.Close()
+    self.client.Close()
 }
 
 func (self *PeerHSM) Addr() ps.ServerAddr {
