@@ -42,7 +42,10 @@ func (self *MemoryLog) FirstTerm() (uint64, error) {
 func (self *MemoryLog) FirstIndex() (uint64, error) {
     self.logLock.RLock()
     defer self.logLock.RUnlock()
+    return self.firstIndex()
+}
 
+func (self *MemoryLog) firstIndex() (uint64, error) {
     if len(self.logEntries) == 0 {
         return 0, nil
     }
@@ -131,11 +134,7 @@ func (self *MemoryLog) LastAppliedIndex() (uint64, error) {
 func (self *MemoryLog) StoreLastAppliedIndex(index uint64) error {
     self.logLock.Lock()
     defer self.logLock.Unlock()
-    firstLogIndex, err := self.FirstIndex()
-    if err != nil {
-        return err
-    }
-    if (index > firstLogIndex) && (index < self.committedIndex) {
+    if index <= self.committedIndex {
         self.lastAppliedIndex = index
         return nil
     }
@@ -280,7 +279,7 @@ func (self *MemorySnapshotInstance) SetData(data []byte) {
     self.lock.Lock()
     defer self.lock.Unlock()
     self.Data = data
-    self.SetSize(uint64(len(data)))
+    self.Meta.Size = uint64(len(data))
 }
 
 type MemorySnapshotManager struct {
@@ -300,25 +299,30 @@ func (self *MemorySnapshotManager) Create(
 
     self.lock.Lock()
     defer self.lock.Unlock()
-
     instance := NewMemorySnapshotInstance(term, index, Servers)
+    return NewMemorySnapshotWriter(self, instance), nil
+}
+
+func (self *MemorySnapshotManager) add(instance *MemorySnapshotInstance) {
+    self.lock.Lock()
+    defer self.lock.Unlock()
     self.snapshotList.PushBack(instance)
-    return NewMemorySnapshotWriter(instance), nil
 }
 
 func (self *MemorySnapshotManager) LastSnapshotInfo() (uint64, uint64, error) {
+    self.lock.RLock()
+    defer self.lock.RUnlock()
     if self.snapshotList.Len() == 0 {
         return 0, 0, nil
     }
     elem := self.snapshotList.Back()
-    meta, _ := elem.Value.(*SnapshotMeta)
-    return meta.LastIncludedTerm, meta.LastIncludedIndex, nil
+    instance, _ := elem.Value.(*MemorySnapshotInstance)
+    return instance.Meta.LastIncludedTerm, instance.Meta.LastIncludedIndex, nil
 }
 
 func (self *MemorySnapshotManager) List() ([]*SnapshotMeta, error) {
     self.lock.RLock()
     defer self.lock.RUnlock()
-
     total := self.snapshotList.Len()
     allMeta := make([]*SnapshotMeta, 0, total)
     for e := self.snapshotList.Front(); e != nil; e = e.Next() {
@@ -336,7 +340,6 @@ func (self *MemorySnapshotManager) Open(
 
     self.lock.RLock()
     defer self.lock.RUnlock()
-
     for e := self.snapshotList.Front(); e != nil; e = e.Next() {
         instance, ok := e.Value.(*MemorySnapshotInstance)
         if !ok {
@@ -354,7 +357,6 @@ func (self *MemorySnapshotManager) Open(
 func (self *MemorySnapshotManager) Delete(id string) error {
     self.lock.RLock()
     defer self.lock.RUnlock()
-
     for e := self.snapshotList.Front(); e != nil; e = e.Next() {
         instance, ok := e.Value.(*MemorySnapshotInstance)
         if !ok {
@@ -369,15 +371,18 @@ func (self *MemorySnapshotManager) Delete(id string) error {
 }
 
 type MemorySnapshotWriter struct {
+    manager  *MemorySnapshotManager
     instance *MemorySnapshotInstance
     data     []byte
     lock     sync.Mutex
 }
 
 func NewMemorySnapshotWriter(
+    manager *MemorySnapshotManager,
     instance *MemorySnapshotInstance) *MemorySnapshotWriter {
 
     return &MemorySnapshotWriter{
+        manager:  manager,
         instance: instance,
         data:     make([]byte, 0),
     }
@@ -394,6 +399,7 @@ func (self *MemorySnapshotWriter) Close() error {
     self.lock.Lock()
     defer self.lock.Unlock()
     self.instance.SetData(self.data)
+    self.manager.add(self.instance)
     return nil
 }
 
@@ -420,6 +426,12 @@ func NewMemoryStateMachine() *MemoryStateMachine {
     }
 }
 
+func (self *MemoryStateMachine) Data() *list.List {
+    self.lock.Lock()
+    defer self.lock.Unlock()
+    return self.data
+}
+
 func (self *MemoryStateMachine) Apply(p []byte) []byte {
     self.lock.Lock()
     defer self.lock.Unlock()
@@ -441,24 +453,24 @@ func (self *MemoryStateMachine) Restore(readerCloser io.ReadCloser) error {
     defer self.lock.Unlock()
     defer readerCloser.Close()
 
-    byteReader := NewByteReaderWrapper(readerCloser)
-    length, err := binary.ReadUvarint(byteReader)
+    length := int32(0)
+    err := binary.Read(readerCloser, binary.BigEndian, &length)
     if err != nil {
-        return nil
+        return err
     }
     data := list.New()
-    var i uint64 = 0
-    for ; i < length; i++ {
-        byteSize, err := binary.ReadUvarint(byteReader)
+    for i := int32(0); i < length; i++ {
+        byteSize := int32(0)
+        err := binary.Read(readerCloser, binary.BigEndian, &byteSize)
         if err != nil {
             return err
         }
         b := make([]byte, byteSize)
-        n, err := binary.ReadUvarint(byteReader)
+        n, err := readerCloser.Read(b)
         if err != nil {
             return err
         }
-        if n != uint64(len(b)) {
+        if n != len(b) {
             return errors.New("size missmatched")
         }
         data.PushBack(b)
@@ -482,9 +494,9 @@ func (self *MemorySnapshot) Persist(writer SnapshotWriter) error {
     self.lock.Lock()
     defer self.lock.Unlock()
 
-    length := uint64(self.data.Len())
-    b := Uint64ToBytes(length)
-    if _, err := writer.Write(b); err != nil {
+    length := int32(self.data.Len())
+    err := binary.Write(writer, binary.BigEndian, &length)
+    if err != nil {
         return err
     }
     for e := self.data.Front(); e != nil; e = e.Next() {
@@ -493,9 +505,9 @@ func (self *MemorySnapshot) Persist(writer SnapshotWriter) error {
             return errors.New("invalid type in data")
         }
         // write the length of data first
-        length = uint64(len(v))
-        b = Uint64ToBytes(length)
-        if _, err := writer.Write(b); err != nil {
+        length = int32(len(v))
+        err = binary.Write(writer, binary.BigEndian, &length)
+        if err != nil {
             return err
         }
         // write the data
@@ -584,15 +596,18 @@ func (self *MemoryConfigManager) ListAfter(logIndex uint64) ([]*ConfigMeta, erro
     defer self.lock.RUnlock()
     e := self.configs.Back()
     found := false
+    count := 0
     for ; e != nil; e = e.Prev() {
         meta, _ := e.Value.(*ConfigMeta)
+        count++
         if (meta.FromLogIndex <= logIndex) &&
-            (logIndex <= meta.ToLogIndex) {
+            ((meta.ToLogIndex == 0) || (logIndex <= meta.ToLogIndex)) {
             found = true
+            break
         }
     }
     if found {
-        result := make([]*ConfigMeta, 0)
+        result := make([]*ConfigMeta, 0, count)
         for el := e; el != nil; el = el.Next() {
             meta, _ := el.Value.(*ConfigMeta)
             result = append(result, meta)
