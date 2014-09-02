@@ -49,7 +49,7 @@ func AddrEqual(addr1 *ServerAddr, addr2 *ServerAddr) bool {
     }
     return ((addr1.Protocol == addr2.Protocol) &&
         (addr1.IP == addr2.IP) &&
-        (addr1.Port == addr1.Port))
+        (addr1.Port == addr2.Port))
 }
 
 func AddrNotEqual(addr1 *ServerAddr, addr2 *ServerAddr) bool {

@@ -247,7 +247,7 @@ type Notifier struct {
 func NewNotifier() *Notifier {
     object := &Notifier{
         inChan:  NewReliableEventChannel(),
-        outChan: make(chan ev.NotifyEvent, 1),
+        outChan: make(chan ev.NotifyEvent, 0),
         group:   &sync.WaitGroup{},
     }
     object.Start()
@@ -294,7 +294,6 @@ type ClientEventListener struct {
 }
 
 func NewClientEventListener() *ClientEventListener {
-
     return &ClientEventListener{
         eventChan: make(chan ev.RaftEvent, 1),
         stopChan:  make(chan interface{}),

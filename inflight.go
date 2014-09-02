@@ -100,7 +100,6 @@ type InflightEntry struct {
 }
 
 func NewInflightEntry(request *InflightRequest) *InflightEntry {
-
     if ps.IsNormalConfig(request.LogEntry.Conf) {
         return &InflightEntry{
             Request: request,
