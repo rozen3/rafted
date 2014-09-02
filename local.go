@@ -149,10 +149,13 @@ func (self *LocalHSM) loop() {
             select {
             case event := <-priorityChan:
                 self.StdHSM.Dispatch2(self, event)
-            default:
+                continue
+            case <-time.After(0):
                 // no event in priorityChan
             }
             select {
+            case event := <-priorityChan:
+                self.StdHSM.Dispatch2(self, event)
             case event := <-self.dispatchChan:
                 self.StdHSM.Dispatch2(self, event)
             }
@@ -389,6 +392,7 @@ func NewLocal(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
     electionTimeoutThresholdPersent float64,
+    maxTimeoutJitter float32,
     persistErrorNotifyTimeout time.Duration,
     localAddr ps.ServerAddr,
     log ps.Log,
@@ -401,14 +405,18 @@ func NewLocal(
     initial := hsm.NewInitial(top, StateLocalID)
     localState := NewLocalState(top, logger)
     followerState := NewFollowerState(
-        localState, heartbeatTimeout, electionTimeoutThresholdPersent, logger)
+        localState,
+        heartbeatTimeout,
+        electionTimeoutThresholdPersent,
+        maxTimeoutJitter,
+        logger)
     NewSnapshotRecoveryState(followerState, logger)
     followerMemberChangeState := NewFollowerMemberChangeState(followerState, logger)
     NewFollowerOldNewConfigSeenState(followerMemberChangeState, logger)
     NewFollowerOldNewConfigCommittedState(followerState, logger)
     NewFollowerNewConfigSeenState(followerState, logger)
     needPeersState := NewNeedPeersState(localState, logger)
-    NewCandidateState(needPeersState, electionTimeout, logger)
+    NewCandidateState(needPeersState, electionTimeout, maxTimeoutJitter, logger)
     leaderState := NewLeaderState(needPeersState, logger)
     NewUnsyncState(leaderState, logger)
     NewSyncState(leaderState, logger)
@@ -432,4 +440,14 @@ func NewLocal(
 
 func (self *Local) Send(event ev.RaftEvent) {
     self.Dispatch(event)
+}
+
+func (self *Local) QueryState() string {
+    requestEvent := ev.NewQueryStateRequestEvent()
+    self.Dispatch(requestEvent)
+    responseEvent := requestEvent.RecvResponse()
+    hsm.AssertEqual(responseEvent.Type(), ev.EventQueryStateResponse)
+    event, ok := responseEvent.(*ev.QueryStateResponseEvent)
+    hsm.AssertTrue(ok)
+    return event.Response.StateID
 }

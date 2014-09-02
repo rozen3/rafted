@@ -236,6 +236,7 @@ type LeaderPeerState struct {
     indexLock sync.RWMutex
     // heartbeat timeout and its time ticker
     heartbeatTimeout time.Duration
+    maxTimeoutJitter float32
     ticker           Ticker
     // last time we have contact from the peer
     lastContactTime     time.Time
@@ -245,12 +246,14 @@ type LeaderPeerState struct {
 func NewLeaderPeerState(
     super hsm.State,
     heartbeatTimeout time.Duration,
+    maxTimeoutJitter float32,
     logger logging.Logger) *LeaderPeerState {
 
     object := &LeaderPeerState{
         LogStateHead:     NewLogStateHead(super, logger),
         heartbeatTimeout: heartbeatTimeout,
-        ticker:           NewRandomTicker(heartbeatTimeout),
+        maxTimeoutJitter: maxTimeoutJitter,
+        ticker:           NewRandomTicker(heartbeatTimeout, maxTimeoutJitter),
     }
     super.AddChild(object)
     return object

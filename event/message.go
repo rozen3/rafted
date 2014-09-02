@@ -137,6 +137,10 @@ type LeaderRedirectResponse struct {
 // Internal Messages
 // ------------------------------------------------------------
 
+type QueryStateResponse struct {
+    StateID string
+}
+
 // Timeout is a message contains timeout info for all kinds of timeout
 // in this raft module, which includes heartbeat timeout and election timeout.
 type Timeout struct {

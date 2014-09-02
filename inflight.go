@@ -101,9 +101,7 @@ type InflightEntry struct {
 
 func NewInflightEntry(request *InflightRequest) *InflightEntry {
 
-    if (request.LogEntry.Conf == nil) ||
-        ps.IsNormalConfig(request.LogEntry.Conf) {
-
+    if ps.IsNormalConfig(request.LogEntry.Conf) {
         return &InflightEntry{
             Request: request,
             Condition: NewMajorityCommitCondition(

@@ -26,6 +26,7 @@ func NewHSMBackend(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
     electionTimeoutThresholdPersent float64,
+    maxTimeoutJitter float32,
     persistErrorNotifyTimeout time.Duration,
     maxAppendEntriesSize uint64,
     maxSnapshotChunkSize uint64,
@@ -43,6 +44,7 @@ func NewHSMBackend(
         heartbeatTimeout,
         electionTimeout,
         electionTimeoutThresholdPersent,
+        maxTimeoutJitter,
         persistErrorNotifyTimeout,
         localAddr,
         log,
@@ -66,6 +68,7 @@ func NewHSMBackend(
     }
     peerManager := NewPeerManager(
         heartbeatTimeout,
+        maxTimeoutJitter,
         maxAppendEntriesSize,
         maxSnapshotChunkSize,
         otherPeerAddrs,

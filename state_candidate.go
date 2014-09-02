@@ -14,8 +14,9 @@ type CandidateState struct {
     *LogStateHead
 
     // election timeout and its time ticker
-    electionTimeout time.Duration
-    ticker          Ticker
+    electionTimeout  time.Duration
+    maxTimeoutJitter float32
+    ticker           Ticker
     // last time we have start election
     lastElectionTime     time.Time
     lastElectionTimeLock sync.RWMutex
@@ -26,12 +27,14 @@ type CandidateState struct {
 func NewCandidateState(
     super hsm.State,
     electionTimeout time.Duration,
+    maxTimeoutJitter float32,
     logger logging.Logger) *CandidateState {
 
     object := &CandidateState{
-        LogStateHead:    NewLogStateHead(super, logger),
-        electionTimeout: electionTimeout,
-        ticker:          NewRandomTicker(electionTimeout),
+        LogStateHead:     NewLogStateHead(super, logger),
+        electionTimeout:  electionTimeout,
+        maxTimeoutJitter: maxTimeoutJitter,
+        ticker:           NewRandomTicker(electionTimeout, maxTimeoutJitter),
     }
     super.AddChild(object)
     return object

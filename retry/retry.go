@@ -248,9 +248,14 @@ func (self *ErrorRetry) Copy() *ErrorRetry {
     }
 }
 
+func RandIntN(n int) int {
+    rand.Seed(time.Now().UTC().UnixNano())
+    return rand.Intn(n)
+}
+
 func (self *ErrorRetry) jitterDelay(delay time.Duration) time.Duration {
-    jitter := float32(rand.Intn(int(self.maxJitter*100))) / 100
-    return time.Duration(int64(float32(int64(delay)) * (1 + jitter)))
+    jitter := float64(RandIntN(int(self.maxJitter*100))) / 100
+    return time.Duration(int64(float64(int64(delay)) * (1 + jitter)))
 }
 
 func (self *ErrorRetry) backoffDelay(delay time.Duration) time.Duration {

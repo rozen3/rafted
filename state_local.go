@@ -44,6 +44,16 @@ func (self *LocalState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.EventTypeString(event))
     switch event.Type() {
+    case ev.EventQueryStateRequest:
+        localHSM, ok := sm.(*LocalHSM)
+        hsm.AssertTrue(ok)
+        e, ok := event.(*ev.QueryStateRequestEvent)
+        hsm.AssertTrue(ok)
+        response := &ev.QueryStateResponse{
+            StateID: localHSM.StdHSM.State.ID(),
+        }
+        e.SendResponse(ev.NewQueryStateResponseEvent(response))
+        return nil
     case ev.EventPersistError:
         sm.QTranOnEvent(StatePeerID, event)
         return nil

@@ -4,6 +4,7 @@ import (
     "math/rand"
     "strconv"
     "strings"
+    "time"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 
 func RandomString(length uint32) string {
     chars := make([]byte, 0, length)
+    rand.Seed(time.Now().UTC().UnixNano())
     for i := uint32(0); i < length; i++ {
         chars = append(chars, ASCIILetters[rand.Intn(len(ASCIILetters))])
     }
@@ -27,6 +29,7 @@ func RandomString(length uint32) string {
 func RandomIP() string {
     fieldSize := 4
     fields := make([]string, fieldSize)
+    rand.Seed(time.Now().UTC().UnixNano())
     for i := 0; i < fieldSize; i++ {
         fields = append(fields, strconv.Itoa(rand.Intn(256)))
     }

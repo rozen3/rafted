@@ -14,6 +14,7 @@ const (
     HeartbeatTimeout                        = time.Millisecond * 200
     ElectionTimeout                         = time.Millisecond * 50
     ElectionTimeoutThresholdPersent float64 = 0.8
+    MaxTimeoutJitter                float32 = 0.1
     PersistErrorNotifyTimeout               = time.Millisecond * 100
     MaxAppendEntriesSize            uint64  = 10
     MaxSnapshotChunkSize            uint64  = 1000
@@ -49,6 +50,7 @@ func NewTestHSMBackend(
         HeartbeatTimeout,
         ElectionTimeout,
         ElectionTimeoutThresholdPersent,
+        MaxTimeoutJitter,
         PersistErrorNotifyTimeout,
         localAddr,
         log,
@@ -72,6 +74,7 @@ func NewTestHSMBackend(
     }
     peerManager := NewPeerManager(
         HeartbeatTimeout,
+        MaxTimeoutJitter,
         MaxAppendEntriesSize,
         MaxSnapshotChunkSize,
         RemoveAddr(addrs, localAddr),

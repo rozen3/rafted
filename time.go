@@ -1,26 +1,14 @@
 package rafted
 
 import (
-    "math/rand"
+    rt "github.com/hhkbp2/rafted/retry"
     "sync"
     "time"
 )
 
-func RandomDuration(value time.Duration) time.Duration {
-    return RandomMultipleDuration(value, 2)
-}
-
-func RandomMultipleDuration(value time.Duration, maxMultiple uint32) time.Duration {
-    return time.Duration(rand.Int63()) % MultipleDuration(value, maxMultiple)
-}
-
-func MultipleDuration(value time.Duration, multiple uint32) time.Duration {
-    sum := value
-
-    for i := uint32(0); i < multiple; i++ {
-        sum += value
-    }
-    return sum
+func RandomLessDuration(d time.Duration, maxJitter float32) time.Duration {
+    jitter := float64(rt.RandIntN(int(maxJitter*100))+1) / 100
+    return time.Duration(int64(float64(int64(d)) * (1 - jitter)))
 }
 
 func TimeExpire(lastTime time.Time, timeout time.Duration) bool {
@@ -38,7 +26,6 @@ type Ticker interface {
 
 type SimpleTicker struct {
     timeout   time.Duration
-    ticker    *time.Ticker
     stopChan  chan interface{}
     resetChan chan interface{}
     group     *sync.WaitGroup
@@ -47,7 +34,6 @@ type SimpleTicker struct {
 func NewSimpleTicker(timeout time.Duration) *SimpleTicker {
     return &SimpleTicker{
         timeout:   timeout,
-        ticker:    time.NewTicker(timeout),
         stopChan:  make(chan interface{}),
         resetChan: make(chan interface{}),
         group:     &sync.WaitGroup{},
@@ -57,13 +43,14 @@ func NewSimpleTicker(timeout time.Duration) *SimpleTicker {
 func (self *SimpleTicker) Start(fn func()) {
     routine := func() {
         defer self.group.Done()
+        ticker := time.NewTicker(self.timeout)
         for {
             select {
             case <-self.stopChan:
                 return
             case <-self.resetChan:
-                self.ticker = time.NewTicker(self.timeout)
-            case <-self.ticker.C:
+                ticker = time.NewTicker(self.timeout)
+            case <-ticker.C:
                 fn()
             }
         }
@@ -84,14 +71,16 @@ func (self *SimpleTicker) Stop() {
 
 type RandomTicker struct {
     timeout   time.Duration
+    maxJitter float32
     stopChan  chan interface{}
     resetChan chan interface{}
     group     *sync.WaitGroup
 }
 
-func NewRandomTicker(timeout time.Duration) *RandomTicker {
+func NewRandomTicker(timeout time.Duration, maxJitter float32) *RandomTicker {
     return &RandomTicker{
         timeout:   timeout,
+        maxJitter: maxJitter,
         stopChan:  make(chan interface{}),
         resetChan: make(chan interface{}),
         group:     &sync.WaitGroup{},
@@ -102,7 +91,8 @@ func (self *RandomTicker) Start(fn func()) {
     routine := func() {
         defer self.group.Done()
         for {
-            timeChan := time.After(RandomDuration(self.timeout))
+            timeChan := time.After(
+                RandomLessDuration(self.timeout, self.maxJitter))
             select {
             case <-self.stopChan:
                 return

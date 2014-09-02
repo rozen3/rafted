@@ -30,9 +30,10 @@ type ReliableEventChannel struct {
 
 func NewReliableEventChannel() *ReliableEventChannel {
     object := &ReliableEventChannel{
-        inChan:    make(chan hsm.Event, 1),
-        outChan:   make(chan hsm.Event, 1),
-        closeChan: make(chan interface{}, 1),
+        // all underlaid channals should not buffer.
+        inChan:    make(chan hsm.Event, 0),
+        outChan:   make(chan hsm.Event, 0),
+        closeChan: make(chan interface{}, 0),
         queue:     list.New(),
         group:     &sync.WaitGroup{},
     }
@@ -103,9 +104,9 @@ type ReliableUint64Channel struct {
 
 func NewReliableUint64Channel() *ReliableUint64Channel {
     object := &ReliableUint64Channel{
-        inChan:    make(chan uint64, 1),
-        outChan:   make(chan uint64, 1),
-        closeChan: make(chan interface{}, 1),
+        inChan:    make(chan uint64, 0),
+        outChan:   make(chan uint64, 0),
+        closeChan: make(chan interface{}, 0),
         queue:     list.New(),
         group:     &sync.WaitGroup{},
     }
@@ -174,9 +175,9 @@ type ReliableInflightEntryChannel struct {
 
 func NewReliableInflightEntryChannel() *ReliableInflightEntryChannel {
     object := &ReliableInflightEntryChannel{
-        inChan:    make(chan *InflightEntry, 1),
-        outChan:   make(chan *InflightEntry, 1),
-        closeChan: make(chan interface{}, 1),
+        inChan:    make(chan *InflightEntry, 0),
+        outChan:   make(chan *InflightEntry, 0),
+        closeChan: make(chan interface{}, 0),
         queue:     list.New(),
         group:     &sync.WaitGroup{},
     }

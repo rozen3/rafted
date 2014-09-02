@@ -20,6 +20,8 @@ const (
     EventTimeoutElection
     EventTimeoutEnd
     EventInternalBegin
+    EventQueryStateRequest
+    EventQueryStateResponse
     EventAbortSnapshotRecovery
     EventStepdown
     EventMemberChangeNextStep
@@ -76,6 +78,10 @@ func EventTypeString(event hsm.Event) string {
         return "HearbeatTiemoutEvent"
     case EventTimeoutElection:
         return "ElectionTimeoutEvent"
+    case EventQueryStateRequest:
+        return "QueryStateRequestEvent"
+    case EventQueryStateResponse:
+        return "QueryStateResponseEvent"
     case EventAbortSnapshotRecovery:
         return "AbortSnapshotRecoveryEvent"
     case EventStepdown:
@@ -492,6 +498,38 @@ func (self *PersistErrorResponseEvent) Message() interface{} {
 // ------------------------------------------------------------
 // Internal Events
 // ------------------------------------------------------------
+
+type QueryStateRequestEvent struct {
+    *RaftRequestEventHead
+}
+
+func NewQueryStateRequestEvent() *QueryStateRequestEvent {
+    return &QueryStateRequestEvent{
+        RaftRequestEventHead: NewRaftRequestEventHead(EventQueryStateRequest),
+    }
+}
+
+func (self *QueryStateRequestEvent) Message() interface{} {
+    return nil
+}
+
+type QueryStateResponseEvent struct {
+    *hsm.StdEvent
+    Response *QueryStateResponse
+}
+
+func NewQueryStateResponseEvent(
+    response *QueryStateResponse) *QueryStateResponseEvent {
+
+    return &QueryStateResponseEvent{
+        StdEvent: hsm.NewStdEvent(EventQueryStateResponse),
+        Response: response,
+    }
+}
+
+func (self *QueryStateResponseEvent) Message() interface{} {
+    return self.Response
+}
 
 // HeartbeatTimeoutEvent is the event for heartbeat timeout.
 type HeartbeatTimeoutEvent struct {

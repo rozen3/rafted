@@ -18,6 +18,7 @@ type FollowerState struct {
     electionTimeout                 time.Duration
     electionTimeoutThresholdPersent float64
     electionTimeoutThreshold        time.Duration
+    maxTimeoutJitter                float32
     ticker                          Ticker
     // last time we have contact from the leader
     lastContactTime     time.Time
@@ -28,6 +29,7 @@ func NewFollowerState(
     super hsm.State,
     electionTimeout time.Duration,
     electionTimeoutThresholdPersent float64,
+    maxTimeoutJitter float32,
     logger logging.Logger) *FollowerState {
 
     threshold := time.Duration(
@@ -37,7 +39,7 @@ func NewFollowerState(
         electionTimeout:                 electionTimeout,
         electionTimeoutThresholdPersent: electionTimeoutThresholdPersent,
         electionTimeoutThreshold:        threshold,
-        ticker: NewRandomTicker(electionTimeout),
+        ticker: NewRandomTicker(electionTimeout, maxTimeoutJitter),
     }
     super.AddChild(object)
     return object
@@ -58,17 +60,16 @@ func (self *FollowerState) Entry(
     // init status for this status
     self.UpdateLastContactTime()
     // start heartbeat timeout ticker
-    dispatchTimeout := func() {
+    onTimeout := func() {
+        self.Debug("follower election timeout")
         lastContactTime := self.LastContactTime()
-        if TimeExpire(lastContactTime, self.electionTimeout) {
-            timeout := &ev.Timeout{
-                LastTime: lastContactTime,
-                Timeout:  self.electionTimeout,
-            }
-            localHSM.SelfDispatch(ev.NewElectionTimeoutEvent(timeout))
+        timeout := &ev.Timeout{
+            LastTime: lastContactTime,
+            Timeout:  self.electionTimeout,
         }
+        localHSM.SelfDispatch(ev.NewElectionTimeoutEvent(timeout))
     }
-    self.ticker.Start(dispatchTimeout)
+    self.ticker.Start(onTimeout)
     return nil
 }
 

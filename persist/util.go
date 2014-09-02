@@ -119,6 +119,7 @@ func SetupMemoryServerAddrs(number int) []ServerAddr {
 }
 
 func RandomMemoryServerAddr() ServerAddr {
+    rand.Seed(time.Now().UTC().UnixNano())
     addr := ServerAddr{
         Protocol: "memory",
         IP:       str.RandomIP(),

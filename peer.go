@@ -21,6 +21,7 @@ type PeerManager struct {
     peerLock sync.RWMutex
 
     heartbeatTimeout     time.Duration
+    maxTimeoutJitter     float32
     maxAppendEntriesSize uint64
     maxSnapshotChunkSize uint64
     client               comm.Client
@@ -31,6 +32,7 @@ type PeerManager struct {
 
 func NewPeerManager(
     heartbeatTimeout time.Duration,
+    maxTimeoutJitter float32,
     maxAppendEntriesSize uint64,
     maxSnapshotChunkSize uint64,
     peerAddrs []ps.ServerAddr,
@@ -44,6 +46,7 @@ func NewPeerManager(
         logger := getLoggerForPeer(addr)
         peerMap[addr] = NewPeer(
             heartbeatTimeout,
+            maxTimeoutJitter,
             maxAppendEntriesSize,
             maxSnapshotChunkSize,
             addr,
@@ -55,6 +58,7 @@ func NewPeerManager(
     object := &PeerManager{
         peerMap:              peerMap,
         heartbeatTimeout:     heartbeatTimeout,
+        maxTimeoutJitter:     maxTimeoutJitter,
         maxAppendEntriesSize: maxAppendEntriesSize,
         maxSnapshotChunkSize: maxSnapshotChunkSize,
         client:               client,
@@ -82,6 +86,7 @@ func (self *PeerManager) AddPeers(peerAddrs []ps.ServerAddr) {
         logger := self.getLoggerForPeer(addr)
         self.peerMap[addr] = NewPeer(
             self.heartbeatTimeout,
+            self.maxTimeoutJitter,
             self.maxAppendEntriesSize,
             self.maxSnapshotChunkSize,
             addr,
@@ -110,6 +115,7 @@ type Peer struct {
 
 func NewPeer(
     heartbeatTimeout time.Duration,
+    maxTimeoutJitter float32,
     maxAppendEntriesSize uint64,
     maxSnapshotChunkSize uint64,
     addr ps.ServerAddr,
@@ -124,7 +130,8 @@ func NewPeer(
     NewDeactivatedPeerState(peerState, logger)
     activatedPeerState := NewActivatedPeerState(peerState, logger)
     NewCandidatePeerState(activatedPeerState, logger)
-    leaderPeerState := NewLeaderPeerState(activatedPeerState, heartbeatTimeout, logger)
+    leaderPeerState := NewLeaderPeerState(
+        activatedPeerState, heartbeatTimeout, maxTimeoutJitter, logger)
     NewStandardModePeerState(leaderPeerState, maxAppendEntriesSize, logger)
     NewSnapshotModePeerState(leaderPeerState, maxSnapshotChunkSize, logger)
     NewPipelineModePeerState(leaderPeerState, logger)
@@ -190,10 +197,13 @@ func (self *PeerHSM) loop() {
             select {
             case event := <-priorityChan:
                 self.StdHSM.Dispatch2(self, event)
-            default:
+                continue
+            case <-time.After(0):
                 // no event in priorityChan
             }
             select {
+            case event := <-priorityChan:
+                self.StdHSM.Dispatch2(self, event)
             case event := <-self.dispatchChan:
                 self.StdHSM.Dispatch2(self, event)
             }
