@@ -51,10 +51,10 @@ func NewTestHSMBackend(
         ElectionTimeoutThresholdPersent,
         PersistErrorNotifyTimeout,
         localAddr,
-        configManager,
-        stateMachine,
         log,
+        stateMachine,
         snapshotManager,
+        configManager,
         localLogger)
     if err != nil {
         return nil, err
@@ -87,9 +87,9 @@ func NewTestHSMBackend(
         server.Serve()
     }()
     return &HSMBackend{
-        local:       local,
-        peerManager: peerManager,
-        server:      server,
+        local:  local,
+        peers:  peerManager,
+        server: server,
     }, nil
 }
 

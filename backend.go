@@ -13,9 +13,9 @@ type Backend interface {
 }
 
 type HSMBackend struct {
-    local       *Local
-    peerManager *PeerManager
-    server      comm.Server
+    local  *Local
+    peers  Peers
+    server comm.Server
 }
 
 func (self *HSMBackend) Send(event ev.RaftRequestEvent) {
@@ -45,10 +45,10 @@ func NewHSMBackend(
         electionTimeoutThresholdPersent,
         persistErrorNotifyTimeout,
         localAddr,
-        configManager,
-        stateMachine,
         log,
+        stateMachine,
         snapshotManager,
+        configManager,
         logger)
     if err != nil {
         return nil, err
@@ -82,8 +82,8 @@ func NewHSMBackend(
         server.Serve()
     }()
     return &HSMBackend{
-        local:       local,
-        peerManager: peerManager,
-        server:      server,
+        local:  local,
+        peers:  peerManager,
+        server: server,
     }, nil
 }

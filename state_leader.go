@@ -41,7 +41,7 @@ func (self *LeaderState) Entry(
     // init global status
     localHSM.SetLeaderWithNotify(localHSM.GetLocalAddr())
     // coordinate peer into LeaderPeerState
-    localHSM.PeerManager().Broadcast(ev.NewPeerEnterLeaderEvent())
+    localHSM.Peers().Broadcast(ev.NewPeerEnterLeaderEvent())
     // activate member change hsm
     self.MemberChangeHSM.SetLocalHSM(localHSM)
     self.MemberChangeHSM.Dispatch(ev.NewLeaderMemberChangeActivateEvent())
@@ -251,7 +251,7 @@ func (self *LeaderState) StartFlight(
     }
 
     if ps.IsInMemeberChange(conf) {
-        localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
+        localHSM.Peers().AddPeers(GetPeers(localHSM.GetLocalAddr(), conf))
         self.Inflight.ChangeMember(conf)
     }
 
@@ -297,7 +297,7 @@ func (self *LeaderState) StartFlight(
         Success:      true,
     }
     localHSM.SelfDispatch(ev.NewAppendEntriesResponseEvent(selfResponse))
-    localHSM.PeerManager().Broadcast(event)
+    localHSM.Peers().Broadcast(event)
     return nil
 }
 

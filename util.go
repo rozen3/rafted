@@ -547,6 +547,33 @@ func Max(a, b uint64) uint64 {
     return b
 }
 
+func GetPeers(localAddr ps.ServerAddr, conf *ps.Config) []ps.ServerAddr {
+    peers := make([]ps.ServerAddr, 0, (len(conf.Servers) + len(conf.NewServers)))
+    if conf.Servers != nil {
+        for _, addr := range conf.Servers {
+            if ps.AddrNotEqual(&addr, &localAddr) {
+                peers = append(peers, addr)
+            }
+        }
+    }
+    if conf.NewServers != nil {
+        for _, addr := range conf.NewServers {
+            if ps.AddrNotEqual(&addr, &localAddr) {
+                peers = append(peers, addr)
+            }
+        }
+    }
+    return peers
+}
+
+func AddrsToMap(addrs []ps.ServerAddr) map[ps.ServerAddr]*Peer {
+    Map := make(map[ps.ServerAddr]*Peer, len(addrs))
+    for _, addr := range addrs {
+        Map[addr] = nil
+    }
+    return Map
+}
+
 // MapSetMinus calculates the difference of two map, and returns
 // the result of s1 - s2.
 func MapSetMinus(

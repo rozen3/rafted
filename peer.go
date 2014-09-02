@@ -10,6 +10,12 @@ import (
     "time"
 )
 
+type Peers interface {
+    Broadcast(event hsm.Event)
+    AddPeers(peerAddrs []ps.ServerAddr)
+    RemovePeers(peerAddrs []ps.ServerAddr)
+}
+
 type PeerManager struct {
     peerMap  map[ps.ServerAddr]*Peer
     peerLock sync.RWMutex
@@ -55,7 +61,7 @@ func NewPeerManager(
         eventHandler:         eventHandler,
         local:                local,
     }
-    local.SetPeerManager(object)
+    local.SetPeers(object)
     return object
 }
 
@@ -67,11 +73,10 @@ func (self *PeerManager) Broadcast(event hsm.Event) {
     }
 }
 
-func (self *PeerManager) AddPeers(localAddr ps.ServerAddr, conf *ps.Config) {
+func (self *PeerManager) AddPeers(peerAddrs []ps.ServerAddr) {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
-
-    newPeerMap := self.genNewPeerMap(localAddr, conf)
+    newPeerMap := AddrsToMap(peerAddrs)
     peersToAdd := MapSetMinus(newPeerMap, self.peerMap)
     for _, addr := range peersToAdd {
         logger := self.getLoggerForPeer(addr)
@@ -87,35 +92,16 @@ func (self *PeerManager) AddPeers(localAddr ps.ServerAddr, conf *ps.Config) {
     }
 }
 
-func (self *PeerManager) RemovePeers(localAddr ps.ServerAddr, conf *ps.Config) {
-    newPeerMap := self.genNewPeerMap(localAddr, conf)
+func (self *PeerManager) RemovePeers(peerAddrs []ps.ServerAddr) {
+    self.peerLock.Lock()
+    defer self.peerLock.Unlock()
+    newPeerMap := AddrsToMap(peerAddrs)
     peersToRemove := MapSetMinus(self.peerMap, newPeerMap)
     for _, addr := range peersToRemove {
         peer, _ := self.peerMap[addr]
         peer.Close()
         delete(self.peerMap, addr)
     }
-}
-
-func (self *PeerManager) genNewPeerMap(
-    localAddr ps.ServerAddr, conf *ps.Config) map[ps.ServerAddr]*Peer {
-
-    newPeerMap := make(map[ps.ServerAddr]*Peer, 0)
-    if conf.Servers != nil {
-        for _, addr := range conf.Servers {
-            if ps.AddrNotEqual(&addr, &localAddr) {
-                newPeerMap[addr] = nil
-            }
-        }
-    }
-    if conf.NewServers != nil {
-        for _, addr := range conf.NewServers {
-            if ps.AddrNotEqual(&addr, &localAddr) {
-                newPeerMap[addr] = nil
-            }
-        }
-    }
-    return newPeerMap
 }
 
 type Peer struct {

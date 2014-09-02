@@ -68,17 +68,14 @@ type LocalHSM struct {
     memberChangeStatus     MemberChangeStatusType
     memberChangeStatusLock sync.RWMutex
 
-    configManager ps.ConfigManager
-
     log             ps.Log
     stateMachine    ps.StateMachine
     snapshotManager ps.SnapshotManager
-    applier         *Applier
+    configManager   ps.ConfigManager
 
-    peerManager *PeerManager
-
+    applier  *Applier
+    peers    Peers
     notifier *Notifier
-
     logging.Logger
 }
 
@@ -108,19 +105,28 @@ func NewLocalHSM(
         return nil, err
     }
 
+    term, err := log.LastTerm()
+    if err != nil {
+        logger.Error("fail to read last entry term of log")
+        return nil, err
+    }
+
     object := &LocalHSM{
-        StdHSM:             hsm.NewStdHSM(HSMTypeLocal, top, initial),
-        dispatchChan:       make(chan hsm.Event, 1),
-        selfDispatchChan:   NewReliableEventChannel(),
-        group:              sync.WaitGroup{},
+        // hsm
+        StdHSM:           hsm.NewStdHSM(HSMTypeLocal, top, initial),
+        dispatchChan:     make(chan hsm.Event, 1),
+        selfDispatchChan: NewReliableEventChannel(),
+        group:            sync.WaitGroup{},
+        // additional fields
+        currentTerm:        term,
         localAddr:          localAddr,
-        configManager:      configManager,
-        stateMachine:       stateMachine,
+        memberChangeStatus: memberChangeStatus,
         log:                log,
+        stateMachine:       stateMachine,
         snapshotManager:    snapshotManager,
+        configManager:      configManager,
         notifier:           NewNotifier(),
         Logger:             logger,
-        memberChangeStatus: memberChangeStatus,
     }
 
     applier := NewApplier(log, committedIndex, stateMachine, object, logger)
@@ -277,12 +283,12 @@ func (self *LocalHSM) SnapshotManager() ps.SnapshotManager {
     return self.snapshotManager
 }
 
-func (self *LocalHSM) PeerManager() *PeerManager {
-    return self.peerManager
+func (self *LocalHSM) Peers() Peers {
+    return self.peers
 }
 
-func (self *LocalHSM) SetPeerManager(peerManager *PeerManager) {
-    self.peerManager = peerManager
+func (self *LocalHSM) SetPeers(peers Peers) {
+    self.peers = peers
 }
 
 func (self *LocalHSM) SetApplier(applier *Applier) {
@@ -385,10 +391,10 @@ func NewLocal(
     electionTimeoutThresholdPersent float64,
     persistErrorNotifyTimeout time.Duration,
     localAddr ps.ServerAddr,
-    configManager ps.ConfigManager,
-    stateMachine ps.StateMachine,
     log ps.Log,
+    stateMachine ps.StateMachine,
     snapshotManager ps.SnapshotManager,
+    configManager ps.ConfigManager,
     logger logging.Logger) (*Local, error) {
 
     top := hsm.NewTop()

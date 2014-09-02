@@ -85,7 +85,7 @@ func (self *NeedPeersState) Entry(
                 "fail to read last config")))
             return nil
         }
-        localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
+        localHSM.Peers().AddPeers(GetPeers(localHSM.GetLocalAddr(), conf))
     case NotInMemeberChange:
         fallthrough
     case OldNewConfigSeen:
@@ -98,9 +98,9 @@ func (self *NeedPeersState) Entry(
             localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
                 "fail to read last config")))
         }
-        localHSM.PeerManager().AddPeers(localHSM.GetLocalAddr(), conf)
+        localHSM.Peers().AddPeers(GetPeers(localHSM.GetLocalAddr(), conf))
     }
-    localHSM.PeerManager().Broadcast(ev.NewPeerActivateEvent())
+    localHSM.Peers().Broadcast(ev.NewPeerActivateEvent())
     return nil
 }
 
@@ -111,7 +111,7 @@ func (self *NeedPeersState) Exit(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // coordinate peer into DeactivatePeerState
-    localHSM.PeerManager().Broadcast(ev.NewPeerDeactivateEvent())
+    localHSM.Peers().Broadcast(ev.NewPeerDeactivateEvent())
     return nil
 }
 

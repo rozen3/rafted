@@ -118,7 +118,7 @@ func (self *MemoryLog) StoreCommittedIndex(index uint64) error {
     if err != nil {
         return err
     }
-    if (index > self.lastAppliedIndex) && (index < lastLogIndex) {
+    if (index > self.lastAppliedIndex) && (index <= lastLogIndex) {
         self.committedIndex = index
         return nil
     }

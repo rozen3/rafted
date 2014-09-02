@@ -221,5 +221,5 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
     localHSM.SetVotedFor(localHSM.GetLocalAddr())
 
     // broadcast RequestVote RPCs to all other servers
-    localHSM.PeerManager().Broadcast(event)
+    localHSM.Peers().Broadcast(event)
 }
