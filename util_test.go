@@ -1,10 +1,15 @@
 package rafted
 
 import (
+    "fmt"
+    hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "github.com/hhkbp2/rafted/str"
     "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/mock"
+    "io"
     "testing"
     "time"
 )
@@ -155,8 +160,234 @@ func TestClientEventListener(t *testing.T) {
     listener.Stop()
 }
 
-// func TestApplier(t *testing.T) {
-// }
+func argUint64(args mock.Arguments, index int) uint64 {
+    var s uint64
+    var ok bool
+    if s, ok = args.Get(index).(uint64); !ok {
+        panic(fmt.Sprintf("assert: arguemnts: Uint64(%d) failed "+
+            "because object wasn't correct type: %s", index, args.Get(index)))
+    }
+    return s
+}
+
+type MockLog struct {
+    mock.Mock
+    logger logging.Logger
+}
+
+func NewMockLog(logger logging.Logger) *MockLog {
+    return &MockLog{
+        logger: logger,
+    }
+}
+
+func (self *MockLog) FirstTerm() (uint64, error) {
+    args := self.Mock.Called()
+    return argUint64(args, 0), args.Error(1)
+}
+
+func (self *MockLog) FirstIndex() (uint64, error) {
+    args := self.Mock.Called()
+    return argUint64(args, 0), args.Error(1)
+}
+
+func (self *MockLog) FirstEntryInfo() (term uint64, index uint64, err error) {
+    args := self.Mock.Called()
+    return argUint64(args, 0), argUint64(args, 1), args.Error(2)
+}
+
+func (self *MockLog) LastTerm() (uint64, error) {
+    args := self.Mock.Called()
+    return argUint64(args, 0), args.Error(1)
+}
+
+func (self *MockLog) LastIndex() (uint64, error) {
+    args := self.Mock.Called()
+    return argUint64(args, 0), args.Error(1)
+}
+
+func (self *MockLog) LastEntryInfo() (term uint64, index uint64, err error) {
+    args := self.Mock.Called()
+    return argUint64(args, 0), argUint64(args, 1), args.Error(2)
+}
+
+func (self *MockLog) CommittedIndex() (uint64, error) {
+    args := self.Mock.Called()
+    return argUint64(args, 0), args.Error(1)
+}
+
+func (self *MockLog) StoreCommittedIndex(index uint64) error {
+    args := self.Mock.Called(index)
+    return args.Error(0)
+}
+
+func (self *MockLog) LastAppliedIndex() (uint64, error) {
+    args := self.Mock.Called()
+    return argUint64(args, 0), args.Error(1)
+}
+
+func (self *MockLog) StoreLastAppliedIndex(index uint64) error {
+    args := self.Mock.Called(index)
+    return args.Error(0)
+}
+
+func (self *MockLog) GetLog(index uint64) (*ps.LogEntry, error) {
+    args := self.Mock.Called(index)
+    var entry *ps.LogEntry
+    var ok bool
+    if entry, ok = args.Get(0).(*ps.LogEntry); !ok {
+        panic("fail because object isn't *LogEntry")
+    }
+    return entry, args.Error(1)
+}
+
+func (self *MockLog) GetLogInRange(
+    fromIndex uint64, toIndex uint64) ([]*ps.LogEntry, error) {
+
+    args := self.Mock.Called(fromIndex, toIndex)
+    var entries []*ps.LogEntry
+    var ok bool
+    if entries, ok = args.Get(0).([]*ps.LogEntry); !ok {
+        panic("fail because object isn't []*LogEntry")
+    }
+    return entries, args.Error(1)
+}
+
+func (self *MockLog) StoreLog(log *ps.LogEntry) error {
+    args := self.Mock.Called(log)
+    return args.Error(0)
+}
+
+func (self *MockLog) StoreLogs(logs []*ps.LogEntry) error {
+    args := self.Mock.Called(logs)
+    return args.Error(0)
+}
+
+func (self *MockLog) TruncateBefore(index uint64) error {
+    args := self.Mock.Called(index)
+    return args.Error(0)
+}
+
+func (self *MockLog) TruncateAfter(index uint64) error {
+    args := self.Mock.Called(index)
+    return args.Error(0)
+}
+
+type MockSnapshot struct {
+    mock.Mock
+}
+
+func NewMockSnapshot() *MockSnapshot {
+    return &MockSnapshot{}
+}
+
+func (self *MockSnapshot) Persist(writer ps.SnapshotWriter) error {
+    args := self.Mock.Called(writer)
+    return args.Error(0)
+}
+
+func (self *MockSnapshot) Release() {
+    self.Mock.Called()
+}
+
+type MockStateMachine struct {
+    mock.Mock
+}
+
+func NewMockStateMachine() *MockStateMachine {
+    return &MockStateMachine{}
+}
+
+func (self *MockStateMachine) Apply(data []byte) []byte {
+    args := self.Mock.Called(data)
+    var s []byte
+    var ok bool
+    if s, ok = args.Get(0).([]byte); !ok {
+        panic("fail because object isn't []byte")
+    }
+    return s
+}
+
+func (self *MockStateMachine) MakeSnapshot() (ps.Snapshot, error) {
+    args := self.Mock.Called()
+    var snapshot ps.Snapshot
+    var ok bool
+    if snapshot, ok = args.Get(0).(ps.Snapshot); !ok {
+        panic("fail because object isn't Snapshot")
+    }
+    return snapshot, args.Error(1)
+}
+
+func (self *MockStateMachine) Restore(reader io.ReadCloser) error {
+    args := self.Mock.Called(reader)
+    return args.Error(0)
+}
+
+func TestApplierConstruction(t *testing.T) {
+    lastAppliedIndex := uint64(10)
+    committedIndex := uint64(12)
+    number := int(committedIndex - lastAppliedIndex)
+    logger := logging.GetLogger("test")
+    log := NewMockLog(logger)
+    log.On("CommittedIndex").Return(committedIndex, nil).Twice()
+    log.On("LastAppliedIndex").Return(lastAppliedIndex, nil).Once()
+    term := uint64(9)
+    data := testData
+    for i := lastAppliedIndex + 1; i <= committedIndex; i++ {
+        entry := &ps.LogEntry{
+            Term:  term,
+            Index: i,
+            Type:  ps.LogCommand,
+            Data:  data,
+            Conf: &ps.Config{
+                Servers:    ps.RandomMemoryServerAddrs(5),
+                NewServers: nil,
+            },
+        }
+        log.On("GetLog", uint64(i)).Return(entry, nil).Once()
+        log.On("StoreLastAppliedIndex", i).Return(nil).Once()
+    }
+    stateMachine := NewMockStateMachine()
+    stateMachine.On("Apply", mock.AnythingOfType("[]uint8")).Return(
+        []byte(""), nil).Times(number)
+    dispatchCount := 0
+    dispatcher := func(_ hsm.Event) {
+        dispatchCount++
+    }
+    notifier := NewNotifier()
+
+    stopChan := make(chan int)
+    waitChan := make(chan int)
+    notifyCount := 0
+    go func() {
+        ch := notifier.GetNotifyChan()
+        for {
+            select {
+            case <-stopChan:
+                return
+            case event := <-ch:
+                assert.Equal(t, ev.EventNotifyApply, event.Type())
+                e, ok := event.(*ev.NotifyApplyEvent)
+                assert.True(t, ok)
+                assert.Equal(t, term, e.Term)
+                index := lastAppliedIndex + uint64(notifyCount) + 1
+                assert.Equal(t, index, e.LogIndex)
+                notifyCount++
+                if notifyCount >= number {
+                    waitChan <- 1
+                }
+            }
+        }
+    }()
+    applier := NewApplier(
+        log, stateMachine, dispatcher, notifier, logger)
+    <-waitChan
+    stopChan <- 0
+    assert.Equal(t, 0, dispatchCount)
+    assert.Equal(t, number, notifyCount)
+    applier.Close()
+    notifier.Close()
+}
 
 func TestMin(t *testing.T) {
     v1 := uint64(5)
@@ -188,5 +419,39 @@ func TestGetPeers(t *testing.T) {
     assert.Equal(t, len(servers)-1, len(peers))
     for _, peerAddr := range peers {
         assert.True(t, ps.AddrNotEqual(&localAddr, &peerAddr))
+    }
+}
+
+func TestAddrsToMap(t *testing.T) {
+    size := 10
+    addrs := ps.RandomMemoryServerAddrs(size)
+    m := AddrsToMap(addrs)
+    assert.Equal(t, size, len(m))
+    for _, v := range m {
+        assert.Nil(t, v)
+    }
+}
+
+func TestMapSetMinus(t *testing.T) {
+    size := 10
+    m1 := AddrsToMap(ps.RandomMemoryServerAddrs(size))
+    m2 := AddrsToMap(ps.RandomMemoryServerAddrs(size))
+    addrs := MapSetMinus(m1, m2)
+    assert.Equal(t, size, len(addrs))
+    for _, addr := range addrs {
+        _, ok := m1[addr]
+        assert.True(t, ok)
+        _, ok = m2[addr]
+        assert.False(t, ok)
+    }
+    m2[addrs[0]] = m1[addrs[0]]
+    m2[addrs[3]] = m1[addrs[3]]
+    addrs = MapSetMinus(m1, m2)
+    assert.Equal(t, size-2, len(addrs))
+    for _, addr := range addrs {
+        _, ok := m1[addr]
+        assert.True(t, ok)
+        _, ok = m2[addr]
+        assert.False(t, ok)
     }
 }

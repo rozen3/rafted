@@ -99,18 +99,13 @@ func NewLocalHSM(
         return nil, err
     }
 
-    committedIndex, err := log.CommittedIndex()
-    if err != nil {
-        logger.Error("fail to read committed index of log")
-        return nil, err
-    }
-
     term, err := log.LastTerm()
     if err != nil {
         logger.Error("fail to read last entry term of log")
         return nil, err
     }
 
+    notifier := NewNotifier()
     object := &LocalHSM{
         // hsm
         StdHSM:           hsm.NewStdHSM(HSMTypeLocal, top, initial),
@@ -125,11 +120,14 @@ func NewLocalHSM(
         stateMachine:       stateMachine,
         snapshotManager:    snapshotManager,
         configManager:      configManager,
-        notifier:           NewNotifier(),
+        notifier:           notifier,
         Logger:             logger,
     }
 
-    applier := NewApplier(log, committedIndex, stateMachine, object, logger)
+    dispatcher := func(event hsm.Event) {
+        object.SelfDispatch(event)
+    }
+    applier := NewApplier(log, stateMachine, dispatcher, notifier, logger)
     object.SetApplier(applier)
     return object, nil
 }

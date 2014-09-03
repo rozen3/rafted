@@ -246,9 +246,10 @@ type Notifier struct {
 
 func NewNotifier() *Notifier {
     object := &Notifier{
-        inChan:  NewReliableEventChannel(),
-        outChan: make(chan ev.NotifyEvent, 0),
-        group:   &sync.WaitGroup{},
+        inChan:    NewReliableEventChannel(),
+        outChan:   make(chan ev.NotifyEvent, 0),
+        closeChan: make(chan interface{}, 1),
+        group:     &sync.WaitGroup{},
     }
     object.Start()
     return object
@@ -327,10 +328,10 @@ func (self *ClientEventListener) Stop() {
 }
 
 type Applier struct {
-    log            ps.Log
-    committedIndex uint64
-    stateMachine   ps.StateMachine
-    localHSM       *LocalHSM
+    log          ps.Log
+    stateMachine ps.StateMachine
+    dispatcher   func(event hsm.Event)
+    notifier     *Notifier
 
     followerCommitChan *ReliableUint64Channel
     leaderCommitChan   *ReliableInflightEntryChannel
@@ -342,16 +343,16 @@ type Applier struct {
 
 func NewApplier(
     log ps.Log,
-    committedIndex uint64,
     stateMachine ps.StateMachine,
-    localHSM *LocalHSM,
+    dispatcher func(event hsm.Event),
+    notifier *Notifier,
     logger logging.Logger) *Applier {
 
     object := &Applier{
         log:                log,
-        committedIndex:     committedIndex,
         stateMachine:       stateMachine,
-        localHSM:           localHSM,
+        dispatcher:         dispatcher,
+        notifier:           notifier,
         followerCommitChan: NewReliableUint64Channel(),
         leaderCommitChan:   NewReliableInflightEntryChannel(),
         closeChan:          make(chan interface{}, 1),
@@ -393,15 +394,13 @@ func (self *Applier) LeaderCommit(entry *InflightEntry) {
 
 func (self *Applier) ApplyCommitted() {
     // apply log up to this index if necessary
-    lastAppliedIndex, err := self.log.CommittedIndex()
+    committedIndex, err := self.log.CommittedIndex()
     if err != nil {
         self.handleLogError(
             "applier: fail to read committed index of log, error: %#v", err)
         return
     }
-    if self.committedIndex > lastAppliedIndex {
-        self.ApplyLogsUpto(self.committedIndex)
-    }
+    self.ApplyLogsUpto(committedIndex)
 }
 
 func (self *Applier) ApplyLogsUpto(index uint64) {
@@ -428,7 +427,7 @@ func (self *Applier) ApplyLogsUpto(index uint64) {
         return
     }
     for i := lastAppliedIndex + 1; i <= index; i++ {
-        entry, err := self.log.GetLog(index)
+        entry, err := self.log.GetLog(i)
         if err != nil {
             self.handleLogError("applier: fail to read log at index: %d", i)
         }
@@ -437,8 +436,7 @@ func (self *Applier) ApplyLogsUpto(index uint64) {
             self.handleLogError("applier: fail to apply log at index: %d", i)
             return
         }
-        self.localHSM.Notifier().Notify(ev.NewNotifyApplyEvent(
-            entry.Index, entry.Term))
+        self.notifier.Notify(ev.NewNotifyApplyEvent(entry.Term, entry.Index))
     }
 }
 
@@ -504,8 +502,7 @@ func (self *Applier) ApplyInflightLog(entry *InflightEntry) {
             Conf:       entry.Request.LogEntry.Conf,
             ResultChan: entry.Request.ResultChan,
         }
-        self.localHSM.SelfDispatch(
-            ev.NewLeaderForwardMemberChangePhaseEvent(message))
+        self.dispatcher(ev.NewLeaderForwardMemberChangePhaseEvent(message))
     } else {
         // response client immediately
         response := &ev.ClientResponse{
@@ -515,15 +512,15 @@ func (self *Applier) ApplyInflightLog(entry *InflightEntry) {
         entry.Request.ResultChan <- ev.NewClientResponseEvent(response)
     }
 
-    self.localHSM.Notifier().Notify(ev.NewNotifyApplyEvent(
-        logIndex, entry.Request.LogEntry.Term))
+    self.notifier.Notify(
+        ev.NewNotifyApplyEvent(entry.Request.LogEntry.Term, logIndex))
 }
 
 func (self *Applier) handleLogError(format string, args ...interface{}) {
     errorMessage := fmt.Sprintf(format, args...)
     self.logger.Error(errorMessage)
     event := ev.NewPersistErrorEvent(errors.New(errorMessage))
-    self.localHSM.SelfDispatch(event)
+    self.dispatcher(event)
 }
 
 func (self *Applier) Close() {
