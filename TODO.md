@@ -1,4 +1,4 @@
-1. redirectable client
+*1. redirectable client
 2. simple function test
 3. log compaction/snapshot compaction routine
 4. full feature test

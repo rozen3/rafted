@@ -172,13 +172,10 @@ func argUint64(args mock.Arguments, index int) uint64 {
 
 type MockLog struct {
     mock.Mock
-    logger logging.Logger
 }
 
-func NewMockLog(logger logging.Logger) *MockLog {
-    return &MockLog{
-        logger: logger,
-    }
+func NewMockLog() *MockLog {
+    return &MockLog{}
 }
 
 func (self *MockLog) FirstTerm() (uint64, error) {
@@ -327,8 +324,7 @@ func TestApplierConstruction(t *testing.T) {
     lastAppliedIndex := uint64(10)
     committedIndex := uint64(12)
     number := int(committedIndex - lastAppliedIndex)
-    logger := logging.GetLogger("test")
-    log := NewMockLog(logger)
+    log := NewMockLog()
     log.On("CommittedIndex").Return(committedIndex, nil).Twice()
     log.On("LastAppliedIndex").Return(lastAppliedIndex, nil).Once()
     term := uint64(9)
@@ -344,7 +340,7 @@ func TestApplierConstruction(t *testing.T) {
                 NewServers: nil,
             },
         }
-        log.On("GetLog", uint64(i)).Return(entry, nil).Once()
+        log.On("GetLog", i).Return(entry, nil).Once()
         log.On("StoreLastAppliedIndex", i).Return(nil).Once()
     }
     stateMachine := NewMockStateMachine()
@@ -355,7 +351,7 @@ func TestApplierConstruction(t *testing.T) {
         dispatchCount++
     }
     notifier := NewNotifier()
-
+    logger := logging.GetLogger("test")
     stopChan := make(chan int)
     waitChan := make(chan int)
     notifyCount := 0
@@ -379,12 +375,151 @@ func TestApplierConstruction(t *testing.T) {
             }
         }
     }()
-    applier := NewApplier(
-        log, stateMachine, dispatcher, notifier, logger)
+    applier := NewApplier(log, stateMachine, dispatcher, notifier, logger)
     <-waitChan
     stopChan <- 0
     assert.Equal(t, 0, dispatchCount)
     assert.Equal(t, number, notifyCount)
+    applier.Close()
+    notifier.Close()
+}
+
+func TestApplierFollowerCommit(t *testing.T) {
+    lastAppliedIndex := uint64(1874)
+    committedIndex := lastAppliedIndex
+    number := 2
+    log := NewMockLog()
+    log.On("CommittedIndex").Return(committedIndex, nil).Twice()
+    log.On("LastAppliedIndex").Return(lastAppliedIndex, nil).Once()
+    stateMachine := NewMockStateMachine()
+    dispatchCount := 0
+    dispatcher := func(_ hsm.Event) {
+        dispatchCount++
+    }
+    notifier := NewNotifier()
+    logger := logging.GetLogger("test")
+    stopChan := make(chan int)
+    waitChan := make(chan int)
+    notifyCount := 0
+    go func() {
+        ch := notifier.GetNotifyChan()
+        for {
+            select {
+            case <-stopChan:
+                return
+            case event := <-ch:
+                assert.Equal(t, ev.EventNotifyApply, event.Type())
+                _, ok := event.(*ev.NotifyApplyEvent)
+                assert.True(t, ok)
+                notifyCount++
+                if notifyCount >= number {
+                    waitChan <- 1
+                }
+            }
+        }
+    }()
+    applier := NewApplier(log, stateMachine, dispatcher, notifier, logger)
+    nextIndex := committedIndex + uint64(number)
+    log.On("CommittedIndex").Return(nextIndex, nil).Twice()
+    log.On("LastAppliedIndex").Return(lastAppliedIndex, nil).Once()
+    term := uint64(103)
+    data := testData
+    for i := lastAppliedIndex + 1; i <= nextIndex; i++ {
+        entry := &ps.LogEntry{
+            Term:  term,
+            Index: i,
+            Type:  ps.LogMemberChange,
+            Data:  data,
+            Conf: &ps.Config{
+                Servers:    ps.RandomMemoryServerAddrs(5),
+                NewServers: ps.RandomMemoryServerAddrs(5),
+            },
+        }
+        log.On("GetLog", i).Return(entry, nil).Once()
+        log.On("StoreLastAppliedIndex", i).Return(nil).Once()
+    }
+    applier.FollowerCommitUpTo(nextIndex)
+    <-waitChan
+    stopChan <- 0
+    assert.Equal(t, 0, dispatchCount)
+    assert.Equal(t, number, notifyCount)
+    applier.Close()
+    notifier.Close()
+}
+
+func TestApplierLeaderCommit(t *testing.T) {
+    lastAppliedIndex := uint64(1874)
+    committedIndex := lastAppliedIndex
+    log := NewMockLog()
+    log.On("CommittedIndex").Return(committedIndex, nil).Twice()
+    log.On("LastAppliedIndex").Return(lastAppliedIndex, nil).Once()
+    stateMachine := NewMockStateMachine()
+    dispatchCount := 0
+    dispatcher := func(event hsm.Event) {
+        assert.Equal(t, ev.EventClientResponse, event.Type())
+        e, ok := event.(*ev.ClientResponseEvent)
+        assert.True(t, ok)
+        assert.Equal(t, true, e.Response.Success)
+        assert.Equal(t, testData, e.Response.Data)
+        dispatchCount++
+    }
+    notifier := NewNotifier()
+    logger := logging.GetLogger("test")
+    stopChan := make(chan int)
+    waitChan := make(chan int)
+    notifyCount := 0
+    term := uint64(103)
+    nextIndex := committedIndex + 1
+    go func() {
+        ch := notifier.GetNotifyChan()
+        for {
+            select {
+            case <-stopChan:
+                return
+            case event := <-ch:
+                assert.Equal(t, ev.EventNotifyApply, event.Type())
+                e, ok := event.(*ev.NotifyApplyEvent)
+                assert.True(t, ok)
+                assert.Equal(t, term, e.Term)
+                assert.Equal(t, nextIndex, e.LogIndex)
+                notifyCount++
+                waitChan <- 1
+            }
+        }
+    }()
+    applier := NewApplier(log, stateMachine, dispatcher, notifier, logger)
+    log.On("CommittedIndex").Return(nextIndex, nil).Once()
+    log.On("LastAppliedIndex").Return(lastAppliedIndex, nil).Once()
+    log.On("StoreLastAppliedIndex", nextIndex).Return(nil).Once()
+    stateMachine.On("Apply", mock.AnythingOfType("[]uint8")).Return(
+        testData, nil).Once()
+    logEntry := &ps.LogEntry{
+        Term:  term,
+        Index: nextIndex,
+        Type:  ps.LogCommand,
+        Data:  testData,
+        Conf: &ps.Config{
+            Servers:    ps.RandomMemoryServerAddrs(5),
+            NewServers: nil,
+        },
+    }
+    resultChan := make(chan ev.RaftEvent)
+    inflightRequest := &InflightRequest{
+        LogEntry:   logEntry,
+        ResultChan: resultChan,
+    }
+    inflightEntry := NewInflightEntry(inflightRequest)
+    applier.LeaderCommit(inflightEntry)
+    event := <-resultChan
+    assert.Equal(t, ev.EventClientResponse, event.Type())
+    e, ok := event.(*ev.ClientResponseEvent)
+    assert.True(t, ok)
+    assert.True(t, e.Response.Success)
+    assert.Equal(t, testData, e.Response.Data)
+    <-waitChan
+    stopChan <- 0
+    assert.Equal(t, 0, dispatchCount)
+    assert.Equal(t, 1, notifyCount)
     applier.Close()
     notifier.Close()
 }
