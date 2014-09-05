@@ -48,6 +48,7 @@ type LocalHSM struct {
     *hsm.StdHSM
     dispatchChan     chan hsm.Event
     selfDispatchChan *ReliableEventChannel
+    stopChan         chan interface{}
     group            sync.WaitGroup
 
     // the current term
@@ -111,6 +112,7 @@ func NewLocalHSM(
         StdHSM:           hsm.NewStdHSM(HSMTypeLocal, top, initial),
         dispatchChan:     make(chan hsm.Event, 1),
         selfDispatchChan: NewReliableEventChannel(),
+        stopChan:         make(chan interface{}, 1),
         group:            sync.WaitGroup{},
         // additional fields
         currentTerm:        term,
@@ -145,6 +147,8 @@ func (self *LocalHSM) loop() {
         for {
             // Event in selfDispatchChan has higher priority to be processed
             select {
+            case <-self.stopChan:
+                return
             case event := <-priorityChan:
                 self.StdHSM.Dispatch2(self, event)
                 continue
@@ -152,6 +156,8 @@ func (self *LocalHSM) loop() {
                 // no event in priorityChan
             }
             select {
+            case <-self.stopChan:
+                return
             case event := <-priorityChan:
                 self.StdHSM.Dispatch2(self, event)
             case event := <-self.dispatchChan:
@@ -183,6 +189,7 @@ func (self *LocalHSM) SelfDispatch(event hsm.Event) {
 
 func (self *LocalHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
+    self.stopChan <- self
     self.group.Wait()
     self.selfDispatchChan.Close()
     self.applier.Close()
@@ -404,7 +411,7 @@ func NewLocal(
     localState := NewLocalState(top, logger)
     followerState := NewFollowerState(
         localState,
-        heartbeatTimeout,
+        electionTimeout,
         electionTimeoutThresholdPersent,
         maxTimeoutJitter,
         logger)

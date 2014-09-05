@@ -55,7 +55,7 @@ func (self *LocalState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
         e.SendResponse(ev.NewQueryStateResponseEvent(response))
         return nil
     case ev.EventPersistError:
-        sm.QTranOnEvent(StatePeerID, event)
+        sm.QTranOnEvent(StatePersistErrorID, event)
         return nil
     case ev.EventTerm:
         sm.QTran(hsm.TerminalStateID)

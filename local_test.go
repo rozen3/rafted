@@ -13,9 +13,10 @@ import (
 )
 
 var (
-    testData         = []byte(str.RandomString(100))
-    testIndex uint64 = 100
-    testTerm  uint64 = 10
+    testData           = []byte(str.RandomString(100))
+    testIndex   uint64 = 100
+    testTerm    uint64 = 10
+    testServers        = ps.SetupMemoryServerAddrs(3)
 )
 
 func getTestLog(
@@ -36,7 +37,7 @@ func getTestLog(
 }
 
 func getTestLocal() (*Local, error) {
-    servers := ps.SetupMemoryServerAddrs(3)
+    servers := testServers
     localAddr := servers[0]
     index := testIndex
     term := testTerm
@@ -77,6 +78,12 @@ func getTestLocal() (*Local, error) {
     return local, nil
 }
 
+func BeforeTimeout(timeout time.Duration, startTime time.Time) time.Duration {
+    d := time.Duration(
+        int64(float32(int64(timeout)) * (1 - MaxTimeoutJitter)))
+    return (d - time.Now().Sub(startTime))
+}
+
 type MockPeers struct {
     mock.Mock
 }
@@ -99,20 +106,107 @@ func (self *MockPeers) RemovePeers(peerAddrs []ps.ServerAddr) {
     self.Mock.Called(peerAddrs)
 }
 
-func TestLocal(t *testing.T) {
+func getTestLocalSafe(t *testing.T) *Local {
     local, err := getTestLocal()
     assert.Nil(t, err)
-    NewMockPeers(local)
-    assert.Equal(t, local.GetCurrentTerm(), testTerm)
-    stateID := local.QueryState()
-    assert.Equal(t, StateFollowerID, stateID)
-    //time.Sleep(ElectionTimeout)
-    //assert.Equal(t, StateCandidateID, stateID)
-    nchan := local.Notifier().GetNotifyChan()
+    return local
+}
+
+func getTestLocalAndPeers(t *testing.T) (*Local, *MockPeers) {
+    local := getTestLocalSafe(t)
+    return local, NewMockPeers(local)
+}
+
+func assertGetRequestVoteResponseEvent(
+    t *testing.T, reqEvent ev.RaftRequestEvent, granted bool, term uint64) {
+
+    respEvent := reqEvent.RecvResponse()
+    assert.Equal(t, ev.EventRequestVoteResponse, respEvent.Type())
+    event, ok := respEvent.(*ev.RequestVoteResponseEvent)
+    assert.True(t, ok)
+    assert.Equal(t, granted, event.Response.Granted)
+    assert.Equal(t, term, event.Response.Term)
+}
+
+func assertGetAppendEntriesResponseEvent(t *testing.T,
+    reqEvent ev.RaftRequestEvent, success bool, term, index uint64) {
+
+    respEvent := reqEvent.RecvResponse()
+    assert.Equal(t, ev.EventAppendEntriesResponse, respEvent.Type())
+    event, ok := respEvent.(*ev.AppendEntriesResponseEvent)
+    assert.True(t, ok)
+    assert.Equal(t, success, event.Response.Success)
+    assert.Equal(t, term, event.Response.Term)
+    assert.Equal(t, index, event.Response.LastLogIndex)
+}
+
+func assertGetElectionTimeoutNotify(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration) {
+
     select {
-    case e := <-nchan:
+    case e := <-notifyChan:
         assert.Equal(t, e.Type(), ev.EventNotifyElectionTimeout)
-    case <-time.After(time.Hour * 1):
+    case <-time.After(afterTime):
         assert.True(t, false)
     }
+}
+
+func assertNotGetElectionTimeoutNotify(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration) {
+
+    select {
+    case <-notifyChan:
+        assert.True(t, false)
+    case <-time.After(afterTime):
+        // Do nothing
+    }
+}
+
+func assertGetLeaderChangeNotify(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
+    leader ps.ServerAddr) {
+
+    select {
+    case event := <-notifyChan:
+        assert.Equal(t, event.Type(), ev.EventNotifyLeaderChange)
+        e, ok := event.(*ev.NotifyLeaderChangeEvent)
+        assert.True(t, ok)
+        assert.Equal(t, leader, e.NewLeader)
+    case <-time.After(afterTime):
+        assert.True(t, false)
+    }
+}
+
+func assertGetTermChangeNotify(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
+    oldTerm, newTerm uint64) {
+
+    select {
+    case event := <-notifyChan:
+        assert.Equal(t, event.Type(), ev.EventNotifyTermChange)
+        e, ok := event.(*ev.NotifyTermChangeEvent)
+        assert.True(t, ok)
+        assert.Equal(t, oldTerm, e.OldTerm)
+        assert.Equal(t, newTerm, e.NewTerm)
+    case <-time.After(afterTime):
+        assert.True(t, false)
+    }
+}
+
+func assertLogLastIndex(t *testing.T, log ps.Log, index uint64) {
+    lastLogIndex, err := log.LastIndex()
+    assert.Nil(t, err)
+    assert.Equal(t, index, lastLogIndex)
+}
+
+func assertLogLastTerm(t *testing.T, log ps.Log, term uint64) {
+    lastTerm, err := log.LastTerm()
+    assert.Nil(t, err)
+    assert.Equal(t, term, lastTerm)
+}
+
+func assertLogCommittedIndex(t *testing.T, log ps.Log, index uint64) {
+    committedIndex, err := log.CommittedIndex()
+    assert.Nil(t, err)
+    assert.Equal(t, index, committedIndex)
 }

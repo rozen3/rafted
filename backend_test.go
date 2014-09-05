@@ -11,8 +11,8 @@ import (
 )
 
 const (
-    HeartbeatTimeout                        = time.Millisecond * 200
-    ElectionTimeout                         = time.Millisecond * 50
+    HeartbeatTimeout                        = time.Millisecond * 50
+    ElectionTimeout                         = time.Millisecond * 200
     ElectionTimeoutThresholdPersent float64 = 0.8
     MaxTimeoutJitter                float32 = 0.1
     PersistErrorNotifyTimeout               = time.Millisecond * 100

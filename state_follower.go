@@ -61,7 +61,6 @@ func (self *FollowerState) Entry(
     self.UpdateLastContactTime()
     // start heartbeat timeout ticker
     onTimeout := func() {
-        self.Debug("follower election timeout")
         lastContactTime := self.LastContactTime()
         timeout := &ev.Timeout{
             LastTime: lastContactTime,
@@ -109,6 +108,7 @@ func (self *FollowerState) Handle(
         }
         response := self.HandleRequestVoteRequest(localHSM, e.Request)
         e.SendResponse(ev.NewRequestVoteResponseEvent(response))
+        return nil
     case event.Type() == ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
@@ -118,6 +118,7 @@ func (self *FollowerState) Handle(
             localHSM.SetLeaderWithNotify(e.Request.Leader)
             localHSM.SelfDispatch(event)
             localHSM.QTran(StateFollowerID)
+            return nil
         }
         lastLogIndex, err := localHSM.Log().LastIndex()
         if err != nil {
@@ -220,6 +221,8 @@ func (self *FollowerState) HandleRequestVoteRequest(
 
     // Ignore any older term
     if request.Term < term {
+        self.Debug("ignore RequestVoteRequest with older term: %d, "+
+            "current term: %d", request.Term, term)
         return response
     }
 
@@ -272,6 +275,8 @@ func (self *FollowerState) HandleAppendEntriesRequest(
 
     // Ignore any older term
     if request.Term < term {
+        self.Debug("ignore RequestVoteRequest with older term: %d, "+
+            "current term: %d", request.Term, term)
         return response
     }
 
