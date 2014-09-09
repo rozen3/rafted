@@ -229,13 +229,9 @@ func (self *LeaderState) StartFlight(
     // construct durable log entry
     logIndex := lastLogIndex + 1
     // bundled config with log entry if in member change procedure
-    lastConf, err := localHSM.ConfigManager().RNth(0)
+    conf, err := localHSM.ConfigManager().RNth(0)
     if err != nil {
         return errors.New("fail to read last config")
-    }
-    var conf *ps.Config
-    if ps.IsInMemeberChange(lastConf) {
-        conf = lastConf
     }
     logEntry := &ps.LogEntry{
         Term:  term,

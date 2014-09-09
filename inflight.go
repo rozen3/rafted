@@ -34,7 +34,11 @@ func NewMajorityCommitCondition(
 }
 
 func (self *MajorityCommitCondition) AddVote(addr ps.ServerAddr) error {
-    if _, ok := self.VoteStatus[addr]; ok {
+    voteStatus, ok := self.VoteStatus[addr]
+    if !ok {
+        return errors.New(fmt.Sprintf("%s not in cluster", addr.String()))
+    }
+    if voteStatus {
         return errors.New(fmt.Sprintf("%s already voted", addr.String()))
     }
     self.VoteStatus[addr] = true

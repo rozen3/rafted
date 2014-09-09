@@ -130,3 +130,40 @@ func TestCandidateHandleClientRequest(t *testing.T) {
     //
     local.Terminate()
 }
+
+func TestCandidateHandleRequestVoteResponse(t *testing.T) {
+    require.Nil(t, assert.SetCallerInfoLevelNumber(3))
+    local, peers := getTestLocalAndPeersForCandidate(t)
+    time.Sleep(ElectionTimeout)
+    nchan := local.Notifier().GetNotifyChan()
+    SwallowNotifyNow(t, nchan, 3)
+    assert.Equal(t, testTerm+1, local.GetCurrentTerm())
+    // test this scenario: not enough vote, retrigger another round of election
+    assertGetElectionTimeoutNotify(t, nchan, ElectionTimeout)
+    assertGetTermChangeNotify(t, nchan, 0, testTerm+1, testTerm+2)
+    assert.Equal(t, StateCandidateID, local.QueryState())
+    assert.Equal(t, testTerm+2, local.GetCurrentTerm())
+    // test this scenario: enough vote to transfer to leader
+    // peer enter leader state
+    peers.On("Broadcast", mock.Anything).Return().Once()
+    // enter unsync state
+    peers.On("Broadcast", mock.Anything).Return()
+    response := &ev.RequestVoteResponse{
+        Term:    testTerm + 2,
+        Granted: true,
+    }
+    respEvent := ev.NewRequestVoteResponseEvent(response)
+    leader := testServers[0]
+    voter := testServers[1]
+    respEvent.FromAddr = voter
+    local.Dispatch(respEvent)
+    assertGetStateChangeNotify(t, nchan, ElectionTimeout,
+        ev.RaftStateCandidate, ev.RaftStateLeader)
+    // enter leader state
+    assertGetLeaderChangeNotify(t, nchan, 0, leader)
+    // test internal status
+    assert.Equal(t, StateUnsyncID, local.QueryState())
+    assert.Equal(t, testTerm+2, local.GetCurrentTerm())
+    //
+    local.Terminate()
+}

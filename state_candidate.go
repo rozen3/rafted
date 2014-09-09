@@ -140,7 +140,11 @@ func (self *CandidateState) Handle(
         if e.Response.Granted {
             self.Info("candidate receive Granted RequestVoteRequest from: %s",
                 e.FromAddr.String())
-            self.condition.AddVote(e.FromAddr)
+            if err := self.condition.AddVote(e.FromAddr); err != nil {
+                self.Error("candidate fail to add vote for addr: %s",
+                    e.FromAddr.String())
+                return nil
+            }
             if self.condition.IsCommitted() {
                 localHSM.Notifier().Notify(ev.NewNotifyStateChangeEvent(
                     ev.RaftStateCandidate, ev.RaftStateLeader))
@@ -149,7 +153,6 @@ func (self *CandidateState) Handle(
         }
         return nil
     case event.Type() == ev.EventAppendEntriesRequest:
-        self.Debug("receive AE request")
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
         // step down to follower state if local term is not greater than
@@ -189,7 +192,6 @@ func (self *CandidateState) Handle(
         sm.QTran(StateCandidateID)
         return nil
     case event.Type() == ev.EventStepdown:
-        self.Debug("about to stepdown")
         localHSM.Notifier().Notify(ev.NewNotifyStateChangeEvent(
             ev.RaftStateCandidate, ev.RaftStateFollower))
         sm.QTran(StateFollowerID)
