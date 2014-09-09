@@ -4,7 +4,7 @@ import (
     "bytes"
     "encoding/binary"
     "github.com/deckarep/golang-set"
-    "github.com/stretchr/testify/assert"
+    "github.com/hhkbp2/testify/assert"
     "testing"
 )
 

@@ -1,7 +1,7 @@
 package str
 
 import (
-    "github.com/stretchr/testify/assert"
+    "github.com/hhkbp2/testify/assert"
     "regexp"
     "testing"
 )

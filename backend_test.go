@@ -5,7 +5,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
-    "github.com/stretchr/testify/assert"
+    "github.com/hhkbp2/testify/assert"
     "testing"
     "time"
 )

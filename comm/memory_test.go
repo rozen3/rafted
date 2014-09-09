@@ -6,7 +6,7 @@ import (
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "github.com/hhkbp2/rafted/str"
-    "github.com/stretchr/testify/assert"
+    "github.com/hhkbp2/testify/assert"
     "github.com/ugorji/go/codec"
     "testing"
 )

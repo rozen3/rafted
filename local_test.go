@@ -6,8 +6,8 @@ import (
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "github.com/hhkbp2/rafted/str"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/mock"
+    "github.com/hhkbp2/testify/assert"
+    "github.com/hhkbp2/testify/mock"
     "testing"
     "time"
 )
@@ -145,7 +145,7 @@ func assertGetElectionTimeoutNotify(
 
     select {
     case e := <-notifyChan:
-        assert.Equal(t, e.Type(), ev.EventNotifyElectionTimeout)
+        assert.Equal(t, ev.EventNotifyElectionTimeout, e.Type())
     case <-time.After(afterTime):
         assert.True(t, false)
     }
@@ -162,13 +162,29 @@ func assertNotGetElectionTimeoutNotify(
     }
 }
 
+func assertGetStateChangeNotify(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
+    oldState, newState ev.RaftStateType) {
+
+    select {
+    case event := <-notifyChan:
+        assert.Equal(t, ev.EventNotifyStateChange, event.Type())
+        e, ok := event.(*ev.NotifyStateChangeEvent)
+        assert.True(t, ok)
+        assert.Equal(t, oldState, e.OldState)
+        assert.Equal(t, newState, e.NewState)
+    case <-time.After(afterTime):
+        assert.True(t, false)
+    }
+}
+
 func assertGetLeaderChangeNotify(
     t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
     leader ps.ServerAddr) {
 
     select {
     case event := <-notifyChan:
-        assert.Equal(t, event.Type(), ev.EventNotifyLeaderChange)
+        assert.Equal(t, ev.EventNotifyLeaderChange, event.Type())
         e, ok := event.(*ev.NotifyLeaderChangeEvent)
         assert.True(t, ok)
         assert.Equal(t, leader, e.NewLeader)
@@ -188,6 +204,22 @@ func assertGetTermChangeNotify(
         assert.True(t, ok)
         assert.Equal(t, oldTerm, e.OldTerm)
         assert.Equal(t, newTerm, e.NewTerm)
+    case <-time.After(afterTime):
+        assert.True(t, false)
+    }
+}
+
+func assertGetApplyNotify(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
+    term, index uint64) {
+
+    select {
+    case event := <-notifyChan:
+        assert.Equal(t, ev.EventNotifyApply, event.Type())
+        e, ok := event.(*ev.NotifyApplyEvent)
+        assert.True(t, ok)
+        assert.Equal(t, term, e.Term)
+        assert.Equal(t, index, e.LogIndex)
     case <-time.After(afterTime):
         assert.True(t, false)
     }

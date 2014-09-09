@@ -8,7 +8,7 @@ import (
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     rt "github.com/hhkbp2/rafted/retry"
-    "github.com/stretchr/testify/assert"
+    "github.com/hhkbp2/testify/assert"
     "testing"
     "time"
 )

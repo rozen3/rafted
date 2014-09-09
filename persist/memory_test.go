@@ -2,7 +2,7 @@ package persist
 
 import (
     "github.com/hhkbp2/rafted/str"
-    "github.com/stretchr/testify/assert"
+    "github.com/hhkbp2/testify/assert"
     "io"
     "testing"
 )

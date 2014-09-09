@@ -3,13 +3,15 @@ package rafted
 import (
     ev "github.com/hhkbp2/rafted/event"
     ps "github.com/hhkbp2/rafted/persist"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/mock"
+    "github.com/hhkbp2/testify/assert"
+    "github.com/hhkbp2/testify/mock"
+    "github.com/hhkbp2/testify/require"
     "testing"
     "time"
 )
 
 func TestFollowerElectionTimeout(t *testing.T) {
+    require.Nil(t, assert.SetCallerInfoLevelNumber(2))
     local, peers := getTestLocalAndPeers(t)
     peers.On("Broadcast", mock.AnythingOfType("*event.PeerActivateEvent")).
         Return().Once()
@@ -31,6 +33,7 @@ func TestFollowerElectionTimeout(t *testing.T) {
 }
 
 func TestFollowerHandleRequestVoteRequest(t *testing.T) {
+    require.Nil(t, assert.SetCallerInfoLevelNumber(2))
     local := getTestLocalSafe(t)
     // check ignore old term request
     candidate := testServers[1]
@@ -87,6 +90,7 @@ func TestFollowerHandleRequestVoteRequest(t *testing.T) {
 }
 
 func TestFollowerHandleAppendEntriesRequest(t *testing.T) {
+    require.Nil(t, assert.SetCallerInfoLevelNumber(2))
     local := getTestLocalSafe(t)
     // check ignore old term request
     leader := testServers[1]

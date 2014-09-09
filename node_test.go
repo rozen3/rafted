@@ -2,7 +2,7 @@ package rafted
 
 import (
     ps "github.com/hhkbp2/rafted/persist"
-    "github.com/stretchr/testify/assert"
+    "github.com/hhkbp2/testify/assert"
     "testing"
 )
 
