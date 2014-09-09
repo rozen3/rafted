@@ -42,7 +42,7 @@ func (self *LocalState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
 func (self *LocalState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     switch event.Type() {
     case ev.EventQueryStateRequest:
         localHSM, ok := sm.(*LocalHSM)
@@ -129,7 +129,7 @@ func (self *NeedPeersState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     return self.Super()
 }
 
@@ -189,11 +189,11 @@ func (self *PersistErrorState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     switch {
     case event.Type() == ev.EventPersistError:
         self.Error("already in state: %s, ignore event: %s", self.ID(),
-            ev.EventTypeString(event))
+            ev.EventString(event))
         return nil
     case ev.IsClientEvent(event.Type()):
         e, ok := event.(ev.RaftRequestEvent)

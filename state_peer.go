@@ -47,7 +47,7 @@ func (self *PeerState) Exit(sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
 func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     switch event.Type() {
     case ev.EventTerm:
         sm.QTran(hsm.TerminalStateID)
@@ -92,7 +92,7 @@ func (self *DeactivatedPeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     switch event.Type() {
     case ev.EventPeerActivate:
         self.Debug("about to activate peer")
@@ -144,7 +144,7 @@ func (self *ActivatedPeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
@@ -208,7 +208,7 @@ func (self *CandidatePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     switch event.Type() {
     case ev.EventAppendEntriesRequest:
         peerHSM, ok := sm.(*PeerHSM)
@@ -315,7 +315,7 @@ func (self *LeaderPeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     local := peerHSM.Local()
@@ -483,7 +483,7 @@ func (self *StandardModePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
@@ -711,7 +711,7 @@ func (self *SnapshotModePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     local := peerHSM.Local()
@@ -854,7 +854,7 @@ func (self *PipelineModePeerState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     // TODO add impl
     return self.Super()
 }

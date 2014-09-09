@@ -115,7 +115,7 @@ func (self *CandidateState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
@@ -149,6 +149,7 @@ func (self *CandidateState) Handle(
         }
         return nil
     case event.Type() == ev.EventAppendEntriesRequest:
+        self.Debug("receive AE request")
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
         // step down to follower state if local term is not greater than
@@ -156,6 +157,20 @@ func (self *CandidateState) Handle(
         if e.Request.Term >= localHSM.GetCurrentTerm() {
             localHSM.SelfDispatch(ev.NewStepdownEvent())
             localHSM.SelfDispatch(event)
+        } else {
+            term := localHSM.GetCurrentTerm()
+            lastLogIndex, err := localHSM.Log().LastIndex()
+            if err != nil {
+                localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                    "fail to read last log index of log")))
+                return nil
+            }
+            response := &ev.AppendEntriesResponse{
+                Term:         term,
+                LastLogIndex: lastLogIndex,
+                Success:      false,
+            }
+            e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
         }
         return nil
     case ev.IsClientEvent(event.Type()):
@@ -174,6 +189,7 @@ func (self *CandidateState) Handle(
         sm.QTran(StateCandidateID)
         return nil
     case event.Type() == ev.EventStepdown:
+        self.Debug("about to stepdown")
         localHSM.Notifier().Notify(ev.NewNotifyStateChangeEvent(
             ev.RaftStateCandidate, ev.RaftStateFollower))
         sm.QTran(StateFollowerID)
@@ -206,9 +222,10 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
             errors.New("fail to read last entry info of log")))
         return
     }
+    candidate := localHSM.GetLocalAddr()
     request := &ev.RequestVoteRequest{
         Term:         term,
-        Candidate:    localHSM.GetLocalAddr(),
+        Candidate:    candidate,
         LastLogIndex: lastLogIndex,
         LastLogTerm:  lastLogTerm,
     }
@@ -218,7 +235,9 @@ func (self *CandidateState) StartElection(localHSM *LocalHSM) {
         Term:    term,
         Granted: true,
     }
-    localHSM.SelfDispatch(ev.NewRequestVoteResponseEvent(voteMyselfResponse))
+    respEvent := ev.NewRequestVoteResponseEvent(voteMyselfResponse)
+    respEvent.FromAddr = candidate
+    localHSM.SelfDispatch(respEvent)
     localHSM.SetVotedFor(localHSM.GetLocalAddr())
 
     // broadcast RequestVote RPCs to all other servers

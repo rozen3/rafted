@@ -21,6 +21,33 @@ const (
     EventNotifyEnd
 )
 
+func NotifyTypeString(event hsm.EventType) string {
+    switch event {
+    case EventNotifyHeartbeatTimeout:
+        return "HeartbeatTimeoutNotify"
+    case EventNotifyElectionTimeout:
+        return "ElectionTimeoutNotify"
+    case EventNotifyElectionTimeoutThreshold:
+        return "ElectionTimeoutThresholdNotify"
+    case EventNotifyStateChange:
+        return "StateChangeNotify"
+    case EventNotifyLeaderChange:
+        return "LeaderChangeNotify"
+    case EventNotifyTermChange:
+        return "TermChangeNotify"
+    case EventNotifyCommit:
+        return "CommitNotify"
+    case EventNotifyApply:
+        return "ApplyNotify"
+    case EventNotifyMemberChange:
+        return "MemberChangeNotify"
+    case EventNotifyPersistError:
+        return "PersistErrorNotify"
+    default:
+        return "unknown notify"
+    }
+}
+
 type RaftStateType uint8
 
 const (
@@ -29,6 +56,21 @@ const (
     RaftStateCandidate
     RaftStateLeader
 )
+
+func (state RaftStateType) String() string {
+    switch state {
+    case RaftStateUnknown:
+        return "RaftStateUnknown"
+    case RaftStateFollower:
+        return "RaftStateFollower"
+    case RaftStateCandidate:
+        return "RaftStateCandidate"
+    case RaftStateLeader:
+        return "RaftStateLeader"
+    default:
+        return "unknown state"
+    }
+}
 
 func IsNotifyEvent(eventType hsm.EventType) bool {
     return IsEventBetween(eventType, EventNotifyBegin, EventNotifyEnd)

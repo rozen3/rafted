@@ -117,6 +117,10 @@ func getTestLocalAndPeers(t *testing.T) (*Local, *MockPeers) {
     return local, NewMockPeers(local)
 }
 
+// ------------------------------------------------------------
+// raft events related
+// ------------------------------------------------------------
+
 func assertGetRequestVoteResponseEvent(
     t *testing.T, reqEvent ev.RaftRequestEvent, granted bool, term uint64) {
 
@@ -140,12 +144,52 @@ func assertGetAppendEntriesResponseEvent(t *testing.T,
     assert.Equal(t, index, event.Response.LastLogIndex)
 }
 
+// ------------------------------------------------------------
+// client events related
+// ------------------------------------------------------------
+
+func assertGetLeaderUnknownResponse(t *testing.T, reqEvent ev.RaftRequestEvent) {
+    respEvent := reqEvent.RecvResponse()
+    assert.Equal(t, ev.EventLeaderUnknownResponse, respEvent.Type(),
+        "expect %s but actual %s",
+        ev.EventTypeString(ev.EventLeaderUnknownResponse),
+        ev.EventTypeString(respEvent.Type()))
+    _, ok := respEvent.(*ev.LeaderUnknownResponseEvent)
+    assert.True(t, ok)
+}
+
+// ------------------------------------------------------------
+// notify related
+// ------------------------------------------------------------
+func SwallowNotify(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
+    number int) {
+
+    for i := 0; i < number; i++ {
+        select {
+        case event := <-notifyChan:
+            assert.True(t, ev.IsNotifyEvent(event.Type()))
+        case <-time.After(afterTime):
+            assert.True(t, false)
+        }
+    }
+}
+
+func SwallowNotifyNow(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, number int) {
+
+    SwallowNotify(t, notifyChan, 0, number)
+}
+
 func assertGetElectionTimeoutNotify(
     t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration) {
 
     select {
     case e := <-notifyChan:
-        assert.Equal(t, ev.EventNotifyElectionTimeout, e.Type())
+        assert.Equal(t, ev.EventNotifyElectionTimeout, e.Type(),
+            "expect %s, but actual %s",
+            ev.NotifyTypeString(ev.EventNotifyElectionTimeout),
+            ev.NotifyTypeString(e.Type()))
     case <-time.After(afterTime):
         assert.True(t, false)
     }
@@ -168,7 +212,10 @@ func assertGetStateChangeNotify(
 
     select {
     case event := <-notifyChan:
-        assert.Equal(t, ev.EventNotifyStateChange, event.Type())
+        assert.Equal(t, ev.EventNotifyStateChange, event.Type(),
+            "expect %s, but actual %s",
+            ev.NotifyTypeString(ev.EventNotifyStateChange),
+            ev.NotifyTypeString(event.Type()))
         e, ok := event.(*ev.NotifyStateChangeEvent)
         assert.True(t, ok)
         assert.Equal(t, oldState, e.OldState)
@@ -184,7 +231,10 @@ func assertGetLeaderChangeNotify(
 
     select {
     case event := <-notifyChan:
-        assert.Equal(t, ev.EventNotifyLeaderChange, event.Type())
+        assert.Equal(t, ev.EventNotifyLeaderChange, event.Type(),
+            "expect %s, but actual %s",
+            ev.NotifyTypeString(ev.EventNotifyLeaderChange),
+            ev.NotifyTypeString(event.Type()))
         e, ok := event.(*ev.NotifyLeaderChangeEvent)
         assert.True(t, ok)
         assert.Equal(t, leader, e.NewLeader)
@@ -199,7 +249,10 @@ func assertGetTermChangeNotify(
 
     select {
     case event := <-notifyChan:
-        assert.Equal(t, event.Type(), ev.EventNotifyTermChange)
+        assert.Equal(t, ev.EventNotifyTermChange, event.Type(),
+            "expect %s but actual %s",
+            ev.NotifyTypeString(ev.EventNotifyTermChange),
+            ev.NotifyTypeString(event.Type()))
         e, ok := event.(*ev.NotifyTermChangeEvent)
         assert.True(t, ok)
         assert.Equal(t, oldTerm, e.OldTerm)
@@ -215,7 +268,10 @@ func assertGetApplyNotify(
 
     select {
     case event := <-notifyChan:
-        assert.Equal(t, ev.EventNotifyApply, event.Type())
+        assert.Equal(t, ev.EventNotifyApply, event.Type(),
+            "expect %s but actual %s",
+            ev.NotifyTypeString(ev.EventNotifyApply),
+            ev.NotifyTypeString(event.Type()))
         e, ok := event.(*ev.NotifyApplyEvent)
         assert.True(t, ok)
         assert.Equal(t, term, e.Term)
@@ -224,6 +280,10 @@ func assertGetApplyNotify(
         assert.True(t, false)
     }
 }
+
+// ------------------------------------------------------------
+// log related
+// ------------------------------------------------------------
 
 func assertLogLastIndex(t *testing.T, log ps.Log, index uint64) {
     lastLogIndex, err := log.LastIndex()

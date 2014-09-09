@@ -141,7 +141,7 @@ func (self *SnapshotRecoveryState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {

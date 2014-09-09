@@ -119,7 +119,7 @@ func (self *LeaderState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
@@ -341,7 +341,7 @@ func (self *UnsyncState) Entry(
     handleNoopResponse := func(event ev.RaftEvent) {
         if event.Type() != ev.EventClientResponse {
             self.Error("unsync receive response event: %s",
-                ev.EventTypeString(event))
+                ev.EventString(event))
             return
         }
         localHSM.SelfDispatch(event)
@@ -370,7 +370,7 @@ func (self *UnsyncState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
@@ -444,6 +444,6 @@ func (self *SyncState) Handle(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
-        ev.EventTypeString(event))
+        ev.EventString(event))
     return self.Super()
 }
