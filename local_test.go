@@ -272,6 +272,25 @@ func assertGetTermChangeNotify(
     }
 }
 
+func assertGetCommitNotify(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
+    term, index uint64) {
+
+    select {
+    case event := <-notifyChan:
+        assert.Equal(t, ev.EventNotifyCommit, event.Type(),
+            "expect %s but actual %s",
+            ev.NotifyTypeString(ev.EventNotifyCommit),
+            ev.NotifyTypeString(event.Type()))
+        e, ok := event.(*ev.NotifyCommitEvent)
+        assert.True(t, ok)
+        assert.Equal(t, term, e.Term)
+        assert.Equal(t, index, e.LogIndex)
+    case <-time.After(afterTime):
+        assert.True(t, false)
+    }
+}
+
 func assertGetApplyNotify(
     t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
     term, index uint64) {

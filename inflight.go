@@ -4,14 +4,8 @@ import (
     "errors"
     "fmt"
     ev "github.com/hhkbp2/rafted/event"
-    logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "sync"
-)
-
-// for test
-var (
-    logger = logging.GetLogger("test")
 )
 
 type CommitCondition interface {
@@ -242,7 +236,7 @@ func (self *Inflight) Replicate(
     }
     if matchIndex >= newMatchIndex {
         return false, errors.New(
-            fmt.Sprintf("invalid new match index %#v, not greater than %#v",
+            fmt.Sprintf("invalid new match index %d, not greater than %d",
                 newMatchIndex, matchIndex))
     }
     // update vote count for new replicated log
@@ -250,7 +244,6 @@ func (self *Inflight) Replicate(
         if toCommit.Request.LogEntry.Index > newMatchIndex {
             break
         }
-        logger.Debug("addvote for addr %s", addr.String())
         toCommit.Condition.AddVote(addr)
     }
 
@@ -269,7 +262,6 @@ func (self *Inflight) Replicate(
         }
         committedIndex++
     }
-    logger.Debug("committedIndex: %d", committedIndex)
     if committedIndex > 0 {
         self.CommittedEntries = append(
             self.CommittedEntries, self.ToCommitEntries[:committedIndex]...)

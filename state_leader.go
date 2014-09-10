@@ -172,11 +172,13 @@ func (self *LeaderState) Handle(
     case ev.EventPeerReplicateLog:
         e, ok := event.(*ev.PeerReplicateLogEvent)
         hsm.AssertTrue(ok)
+        self.Debug("replicate peer %s, log index: %d",
+            e.Message.Peer.String(), e.Message.MatchIndex)
         goodToCommit, err := self.Inflight.Replicate(
             e.Message.Peer, e.Message.MatchIndex)
         if err != nil {
             self.Error("fail to replicate, peer: %s, index: %d, error: %s",
-                e.Message.Peer, e.Message.MatchIndex, err)
+                e.Message.Peer.String(), e.Message.MatchIndex, err)
             return nil
         }
         if goodToCommit {
@@ -307,6 +309,8 @@ func (self *LeaderState) CommitInflightEntries(
         if err != nil {
             return err
         }
+        localHSM.Notifier().Notify(ev.NewNotifyCommitEvent(
+            entry.Request.LogEntry.Term, entry.Request.LogEntry.Index))
     }
     return nil
 }

@@ -58,7 +58,7 @@ func getLocalAndPeersForLeader(t *testing.T) (*Local, *MockPeers) {
         Granted: true,
     }
     respEvent := ev.NewRequestVoteResponseEvent(response)
-    voter := testServers[1]
+    voter := testServers[2]
     respEvent.FromAddr = voter
     local.Dispatch(respEvent)
     SwallowNotify(t, nchan, ElectionTimeout, 2)
@@ -85,20 +85,27 @@ func TestLeaderUnsyncHandleAppendEntriesResponse(t *testing.T) {
     reqEvent, ok := event.(*ev.AppendEntriesRequestEvent)
     assert.True(t, ok)
     request := reqEvent.Request
-    response := &ev.AppendEntriesResponse{
-        Term:         request.Term,
-        LastLogIndex: request.PrevLogIndex,
-        Success:      true,
-    }
-    respEvent := ev.NewAppendEntriesResponseEvent(response)
+    // ensure log status
+    assertLogLastIndex(t, local.Log(), request.PrevLogIndex+1)
+    assertLogLastTerm(t, local.Log(), request.Term)
+    assertLogCommittedIndex(t, local.Log(), request.LeaderCommitIndex)
+    // dispatch peer update event
     follower := testServers[1]
-    respEvent.FromAddr = follower
-    local.Dispatch(respEvent)
+    peerUpdate := &ev.PeerReplicateLog{
+        Peer:       follower,
+        MatchIndex: request.PrevLogIndex + 1,
+    }
+    peerEvent := ev.NewPeerReplicateLogEvent(peerUpdate)
+    local.Dispatch(peerEvent)
     nchan := local.Notifier().GetNotifyChan()
-    assertGetApplyNotify(t, nchan, ElectionTimeout,
+    assertGetCommitNotify(t, nchan, ElectionTimeout,
         request.Term, request.PrevLogIndex+1)
     assert.Equal(t, StateSyncID, local.QueryState())
     assert.Equal(t, request.Term, local.GetCurrentTerm())
+    // check log status
+    assertLogLastIndex(t, local.Log(), request.PrevLogIndex+1)
+    assertLogLastTerm(t, local.Log(), request.Term)
+    assertLogCommittedIndex(t, local.Log(), request.PrevLogIndex+1)
     //
     local.Terminate()
 }
