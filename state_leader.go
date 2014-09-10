@@ -87,6 +87,7 @@ func (self *LeaderState) Entry(
             inflightEntries = append(inflightEntries, inflightEntry)
         }
         self.Inflight.AddAll(inflightEntries)
+        // TODO check for AddAll()
     }
     return nil
 }
@@ -257,6 +258,7 @@ func (self *LeaderState) StartFlight(
         ResultChan: resultChan,
     }
     self.Inflight.Add(request)
+    // TODO add check for Add()
 
     // send AppendEntriesReqeust to all peer
     lastLogTerm, lastLogIndex, err := log.LastEntryInfo()

@@ -4,8 +4,14 @@ import (
     "errors"
     "fmt"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "sync"
+)
+
+// for test
+var (
+    logger = logging.GetLogger("test")
 )
 
 type CommitCondition interface {
@@ -123,7 +129,6 @@ func NewInflightEntry(request *InflightRequest) *InflightEntry {
 }
 
 type Inflight struct {
-    MinIndex           uint64
     MaxIndex           uint64
     ToCommitEntries    []*InflightEntry
     CommittedEntries   []*InflightEntry
@@ -160,7 +165,6 @@ func NewInflight(conf *ps.Config) *Inflight {
     defaultValue := make(map[ps.ServerAddr]uint64)
     matchIndexes := setupServerMatchIndexes(conf, defaultValue)
     return &Inflight{
-        MinIndex:           0,
         MaxIndex:           0,
         ToCommitEntries:    make([]*InflightEntry, 0),
         CommittedEntries:   make([]*InflightEntry, 0),
@@ -172,7 +176,6 @@ func (self *Inflight) Init() {
     self.Lock()
     defer self.Unlock()
 
-    self.MinIndex = 0
     self.MaxIndex = 0
     self.ToCommitEntries = make([]*InflightEntry, 0)
     self.CommittedEntries = make([]*InflightEntry, 0)
@@ -199,10 +202,6 @@ func (self *Inflight) Add(request *InflightRequest) error {
     }
 
     self.MaxIndex = logIndex
-    if self.MinIndex == 0 {
-        self.MinIndex = logIndex
-    }
-
     toCommit := NewInflightEntry(request)
     self.ToCommitEntries = append(self.ToCommitEntries, toCommit)
     return nil
@@ -226,9 +225,6 @@ func (self *Inflight) AddAll(toCommits []*InflightEntry) error {
     }
 
     self.MaxIndex = index
-    if self.MinIndex == 0 {
-        self.MinIndex = toCommits[0].Request.LogEntry.Index
-    }
     self.ToCommitEntries = append(self.ToCommitEntries, toCommits...)
     return nil
 }
@@ -254,9 +250,7 @@ func (self *Inflight) Replicate(
         if toCommit.Request.LogEntry.Index > newMatchIndex {
             break
         }
-        if toCommit.Request.LogEntry.Index <= newMatchIndex {
-            continue
-        }
+        logger.Debug("addvote for addr %s", addr.String())
         toCommit.Condition.AddVote(addr)
     }
 
@@ -275,6 +269,7 @@ func (self *Inflight) Replicate(
         }
         committedIndex++
     }
+    logger.Debug("committedIndex: %d", committedIndex)
     if committedIndex > 0 {
         self.CommittedEntries = append(
             self.CommittedEntries, self.ToCommitEntries[:committedIndex]...)

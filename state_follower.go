@@ -327,6 +327,14 @@ func (self *FollowerState) HandleAppendEntriesRequest(
             localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
             return response
         }
+
+        newLastIndex, err := log.LastIndex()
+        if err != nil {
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+                "fail to read last log index")))
+            return response
+        }
+        response.LastLogIndex = newLastIndex
     }
 
     // Update the commit index
