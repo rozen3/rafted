@@ -174,8 +174,8 @@ func (self *LeaderState) Handle(
         goodToCommit, err := self.Inflight.Replicate(
             e.Message.Peer, e.Message.MatchIndex)
         if err != nil {
-            self.Error("fail to replicate, peer: %s, index: %d",
-                e.Message.Peer, e.Message.MatchIndex)
+            self.Error("fail to replicate, peer: %s, index: %d, error: %s",
+                e.Message.Peer, e.Message.MatchIndex, err)
             return nil
         }
         if goodToCommit {

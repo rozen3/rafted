@@ -72,20 +72,25 @@ func NewMemberChangeCommitCondition(
 }
 
 func (self *MemberChangeCommitCondition) AddVote(addr ps.ServerAddr) error {
+    voted := false
     if self.OldServersCommitCondition.IsInCluster(addr) {
         if err := self.OldServersCommitCondition.AddVote(addr); err != nil {
             return err
         }
-        return nil
+        voted = true
     }
     if self.NewServersCommitCondition.IsInCluster(addr) {
         if err := self.NewServersCommitCondition.AddVote(addr); err != nil {
             return err
         }
-        return nil
+        voted = true
     }
-    return errors.New(
-        fmt.Sprintf("addr %s not in old/new config", addr.String()))
+    if voted {
+        return nil
+    } else {
+        return errors.New(
+            fmt.Sprintf("addr %s not in old/new config", addr.String()))
+    }
 }
 
 func (self *MemberChangeCommitCondition) IsCommitted() bool {
