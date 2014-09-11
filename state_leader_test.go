@@ -79,7 +79,7 @@ func TestLeaderUnsyncHandleClientReadOnlyRequest(t *testing.T) {
     local.Terminate()
 }
 
-func TestLeaderUnsyncHandleAppendEntriesResponse(t *testing.T) {
+func TestLeaderUnsyncHandlePeerUpdate(t *testing.T) {
     local, _ := getLocalAndPeersForLeader(t)
     event := testMockPeersRequests[0]
     reqEvent, ok := event.(*ev.AppendEntriesRequestEvent)
@@ -106,6 +106,71 @@ func TestLeaderUnsyncHandleAppendEntriesResponse(t *testing.T) {
     assertLogLastIndex(t, local.Log(), request.PrevLogIndex+1)
     assertLogLastTerm(t, local.Log(), request.Term)
     assertLogCommittedIndex(t, local.Log(), request.PrevLogIndex+1)
+    //
+    local.Terminate()
+}
+
+func TestLeaderHandleAppendEntriesRequest(t *testing.T) {
+    local, _ := getLocalAndPeersForLeader(t)
+    // test handling older term request
+    leader := testServers[0]
+    entries := []*ps.LogEntry{
+        &ps.LogEntry{
+            Term:  testTerm + 1,
+            Index: testIndex + 1,
+            Type:  ps.LogCommand,
+            Data:  testData,
+            Conf: &ps.Config{
+                Servers:    testServers,
+                NewServers: nil,
+            },
+        },
+    }
+    request := &ev.AppendEntriesRequest{
+        Term:              testTerm + 1,
+        Leader:            leader,
+        PrevLogIndex:      testIndex,
+        PrevLogTerm:       testTerm,
+        Entries:           entries,
+        LeaderCommitIndex: testIndex,
+    }
+    reqEvent := ev.NewAppendEntriesRequestEvent(request)
+    local.Dispatch(reqEvent)
+    assertGetAppendEntriesResponseEvent(
+        t, reqEvent, false, testTerm+1, testIndex+1)
+    // test newer term request
+    nextTerm := testTerm + 2
+    nextIndex := testIndex + 2
+    entries = []*ps.LogEntry{
+        &ps.LogEntry{
+            Term:  nextTerm,
+            Index: nextIndex,
+            Type:  ps.LogNoop,
+            Data:  testData,
+            Conf: &ps.Config{
+                Servers:    testServers,
+                NewServers: nil,
+            },
+        },
+    }
+    request = &ev.AppendEntriesRequest{
+        Term:              nextTerm,
+        Leader:            leader,
+        PrevLogIndex:      nextIndex - 1,
+        PrevLogTerm:       nextTerm - 1,
+        Entries:           entries,
+        LeaderCommitIndex: nextIndex - 1,
+    }
+    reqEvent = ev.NewAppendEntriesRequestEvent(request)
+    local.Dispatch(reqEvent)
+    assertGetAppendEntriesResponseEvent(t, reqEvent, true, nextTerm, nextIndex)
+    nchan := local.Notifier().GetNotifyChan()
+    assertGetStateChangeNotify(t, nchan, 0,
+        ev.RaftStateLeader, ev.RaftStateFollower)
+    assertGetTermChangeNotify(t, nchan, 0, nextTerm-1, nextTerm)
+    assertGetLeaderChangeNotify(t, nchan, 0, leader)
+    assertGetCommitNotify(t, nchan, 0, nextTerm-1, nextIndex-1)
+    assertGetApplyNotify(t, nchan, 0, nextTerm-1, nextIndex-1)
     //
     local.Terminate()
 }

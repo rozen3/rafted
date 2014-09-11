@@ -141,7 +141,20 @@ func (self *LeaderState) Handle(
         if e.Request.Term > localHSM.GetCurrentTerm() {
             localHSM.SelfDispatch(ev.NewStepdownEvent())
             localHSM.SelfDispatch(event)
+            return nil
         }
+        lastLogIndex, err := localHSM.Log().LastIndex()
+        if err != nil {
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(
+                errors.New("fail to read last index of log")))
+            return nil
+        }
+        response := &ev.AppendEntriesResponse{
+            Term:         localHSM.GetCurrentTerm(),
+            LastLogIndex: lastLogIndex,
+            Success:      false,
+        }
+        e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
         return nil
     case ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
@@ -149,7 +162,13 @@ func (self *LeaderState) Handle(
         if e.Request.Term > localHSM.GetCurrentTerm() {
             localHSM.SelfDispatch(ev.NewStepdownEvent())
             localHSM.SelfDispatch(event)
+            return nil
         }
+        response := &ev.RequestVoteResponse{
+            Term:    localHSM.GetCurrentTerm(),
+            Granted: false,
+        }
+        e.SendResponse(ev.NewRequestVoteResponseEvent(response))
         return nil
     case ev.EventInstallSnapshotRequest:
         e, ok := event.(*ev.InstallSnapshotRequestEvent)
@@ -157,7 +176,13 @@ func (self *LeaderState) Handle(
         if e.Request.Term > localHSM.GetCurrentTerm() {
             localHSM.SelfDispatch(ev.NewStepdownEvent())
             localHSM.SelfDispatch(event)
+            return nil
         }
+        response := &ev.InstallSnapshotResponse{
+            Term:    localHSM.GetCurrentTerm(),
+            Success: false,
+        }
+        e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
         return nil
     case ev.EventClientReadOnlyRequest:
         e, ok := event.(*ev.ClientReadOnlyRequestEvent)

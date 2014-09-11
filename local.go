@@ -312,8 +312,11 @@ func (self *LocalHSM) CommitLogsUpTo(index uint64) error {
     if err != nil {
         return err
     }
-    if index <= committedIndex {
+    if index < committedIndex {
         return errors.New("index less than committed index")
+    }
+    if index == committedIndex {
+        return nil
     }
     if err = self.log.StoreCommittedIndex(index); err != nil {
         return err

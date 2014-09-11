@@ -123,7 +123,7 @@ func (self *FollowerState) Handle(
         lastLogIndex, err := localHSM.Log().LastIndex()
         if err != nil {
             localHSM.SelfDispatch(ev.NewPersistErrorEvent(
-                errors.New("fail to read last entry info of log")))
+                errors.New("fail to read last entry index")))
             // don't know how to response the request without lastLogIndex
             return nil
         }
@@ -347,7 +347,25 @@ func (self *FollowerState) HandleAppendEntriesRequest(
     if (request.LeaderCommitIndex > 0) &&
         (request.LeaderCommitIndex > committedIndex) {
         index := Min(request.LeaderCommitIndex, lastLogIndex)
-        localHSM.CommitLogsUpTo(index)
+        if err = localHSM.CommitLogsUpTo(index); err != nil {
+            message := fmt.Sprintf(
+                "fail to commit log up to index: %d, error: %s", index, err)
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+            return response
+        }
+        fromIndex := Min(committedIndex+1, index)
+        entries, err := localHSM.Log().GetLogInRange(fromIndex, index)
+        if err != nil {
+            message := fmt.Sprintf("fail to read log in range [%d, %d]",
+                fromIndex, index)
+            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+            return response
+        }
+        for i := fromIndex; i <= index; i++ {
+            entry := entries[i-fromIndex]
+            localHSM.Notifier().Notify(ev.NewNotifyCommitEvent(
+                entry.Term, entry.Index))
+        }
     }
 
     // dispatch member change events
