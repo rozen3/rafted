@@ -46,7 +46,7 @@ func NewTestHSMBackend(
 
     localLogger := logging.GetLogger(
         "leader" + "#" + localAddr.Network() + "://" + localAddr.String())
-    local, err := NewLocal(
+    local, err := NewLocalManager(
         HeartbeatTimeout,
         ElectionTimeout,
         ElectionTimeoutThresholdPersent,
@@ -63,10 +63,10 @@ func NewTestHSMBackend(
     }
     client := comm.NewMemoryClient(DefaultPoolSize, testRegister)
     eventHandler1 := func(event ev.RaftEvent) {
-        local.Dispatch(event)
+        local.Send(event)
     }
     eventHandler2 := func(event ev.RaftRequestEvent) {
-        local.Dispatch(event)
+        local.Send(event)
     }
     getLoggerForPeer := func(peerAddr ps.ServerAddr) logging.Logger {
         return logging.GetLogger(

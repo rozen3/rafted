@@ -392,11 +392,30 @@ func InitMemberChangeStatus(
         "corrupted config after committed index %d", committedIndex))
 }
 
-type Local struct {
-    *LocalHSM
+type Local interface {
+    Send(event hsm.Event)
+    SendPrior(event hsm.Event)
+    Terminate()
+
+    QueryState() string
+    GetCurrentTerm() uint64
+    GetLocalAddr() ps.ServerAddr
+    GetVotedFor() ps.ServerAddr
+    GetLeader() ps.ServerAddr
+
+    ConfigManager() ps.ConfigManager
+    Log() ps.Log
+    SnapshotManager() ps.SnapshotManager
+    Notifier() *Notifier
+
+    SetPeers(peers Peers)
 }
 
-func NewLocal(
+type LocalManager struct {
+    localHSM *LocalHSM
+}
+
+func NewLocalManager(
     heartbeatTimeout time.Duration,
     electionTimeout time.Duration,
     electionTimeoutThresholdPersent float64,
@@ -407,7 +426,7 @@ func NewLocal(
     stateMachine ps.StateMachine,
     snapshotManager ps.SnapshotManager,
     configManager ps.ConfigManager,
-    logger logging.Logger) (*Local, error) {
+    logger logging.Logger) (Local, error) {
 
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StateLocalID)
@@ -443,19 +462,63 @@ func NewLocal(
         return nil, err
     }
     localHSM.Init()
-    return &Local{localHSM}, nil
+    return &LocalManager{localHSM}, nil
 }
 
-func (self *Local) Send(event ev.RaftEvent) {
-    self.Dispatch(event)
+func (self *LocalManager) Send(event hsm.Event) {
+    self.localHSM.Dispatch(event)
 }
 
-func (self *Local) QueryState() string {
+func (self *LocalManager) SendPrior(event hsm.Event) {
+    self.localHSM.SelfDispatch(event)
+}
+
+func (self *LocalManager) Terminate() {
+    self.localHSM.Terminate()
+}
+
+func (self *LocalManager) QueryState() string {
     requestEvent := ev.NewQueryStateRequestEvent()
-    self.Dispatch(requestEvent)
+    self.localHSM.Dispatch(requestEvent)
     responseEvent := requestEvent.RecvResponse()
     hsm.AssertEqual(responseEvent.Type(), ev.EventQueryStateResponse)
     event, ok := responseEvent.(*ev.QueryStateResponseEvent)
     hsm.AssertTrue(ok)
     return event.Response.StateID
+}
+
+func (self *LocalManager) GetCurrentTerm() uint64 {
+    return self.localHSM.GetCurrentTerm()
+}
+
+func (self *LocalManager) GetLocalAddr() ps.ServerAddr {
+    return self.localHSM.GetLocalAddr()
+}
+
+func (self *LocalManager) GetVotedFor() ps.ServerAddr {
+    return self.localHSM.GetVotedFor()
+}
+
+func (self *LocalManager) GetLeader() ps.ServerAddr {
+    return self.localHSM.GetLeader()
+}
+
+func (self *LocalManager) ConfigManager() ps.ConfigManager {
+    return self.localHSM.ConfigManager()
+}
+
+func (self *LocalManager) Log() ps.Log {
+    return self.localHSM.Log()
+}
+
+func (self *LocalManager) SnapshotManager() ps.SnapshotManager {
+    return self.localHSM.SnapshotManager()
+}
+
+func (self *LocalManager) Notifier() *Notifier {
+    return self.localHSM.Notifier()
+}
+
+func (self *LocalManager) SetPeers(peers Peers) {
+    self.localHSM.SetPeers(peers)
 }

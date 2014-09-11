@@ -49,6 +49,16 @@ func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.EventString(event))
     switch event.Type() {
+    case ev.EventQueryStateRequest:
+        peerHSM, ok := sm.(*PeerHSM)
+        hsm.AssertTrue(ok)
+        e, ok := event.(*ev.QueryStateRequestEvent)
+        hsm.AssertTrue(ok)
+        response := &ev.QueryStateResponse{
+            StateID: peerHSM.StdHSM.State.ID(),
+        }
+        e.SendResponse(ev.NewQueryStateResponseEvent(response))
+        return nil
     case ev.EventTerm:
         sm.QTran(hsm.TerminalStateID)
         return nil
@@ -275,7 +285,7 @@ func (self *LeaderPeerState) Entry(
     self.matchIndex = 0
     lastLogIndex, err := local.Log().LastIndex()
     if err != nil {
-        local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+        local.SendPrior(ev.NewPersistErrorEvent(errors.New(
             "fail to read committed index of log")))
         return nil
     }
@@ -324,7 +334,7 @@ func (self *LeaderPeerState) Handle(
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
         if e.Response.Term > local.GetCurrentTerm() {
-            local.SelfDispatch(ev.NewStepdownEvent())
+            local.SendPrior(ev.NewStepdownEvent())
         }
         matchIndex, _ := self.GetIndexInfo()
         if e.Response.LastLogIndex > matchIndex {
@@ -333,7 +343,7 @@ func (self *LeaderPeerState) Handle(
                 MatchIndex: matchIndex,
             }
             event := ev.NewPeerReplicateLogEvent(message)
-            local.SelfDispatch(event)
+            local.SendPrior(event)
         } else {
             peerAddr := peerHSM.Addr()
             self.Warning("peer %s last log index backward from %d to :%d",
@@ -350,7 +360,7 @@ func (self *LeaderPeerState) Handle(
         matchIndex, _ := self.GetIndexInfo()
         lastLogIndex, err := local.Log().LastIndex()
         if err != nil {
-            local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+            local.SendPrior(ev.NewPersistErrorEvent(errors.New(
                 "fail to read last log index of log")))
             return nil
         }
@@ -361,13 +371,13 @@ func (self *LeaderPeerState) Handle(
         // the peer is up-to-date, then send a pure heartbeat AE
         prevLogTerm, prevLogIndex, err := local.Log().LastEntryInfo()
         if err != nil {
-            local.SelfDispatch(ev.NewPersistErrorEvent(
+            local.SendPrior(ev.NewPersistErrorEvent(
                 errors.New("fail to read last entry info of log")))
             return nil
         }
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
-            local.SelfDispatch(ev.NewPersistErrorEvent(
+            local.SendPrior(ev.NewPersistErrorEvent(
                 errors.New("fail to read committed index of log")))
             return nil
         }
@@ -516,7 +526,7 @@ func (self *StandardModePeerState) Handle(
         local := peerHSM.Local()
         lastLogIndex, err := local.Log().LastIndex()
         if err != nil {
-            local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+            local.SendPrior(ev.NewPersistErrorEvent(errors.New(
                 "fail to read last log index of log")))
             return nil
         }
@@ -549,7 +559,7 @@ func (self *StandardModePeerState) SetupReplicating(
     local := peerHSM.Local()
     _, lastSnapshotIndex, err := local.SnapshotManager().LastSnapshotInfo()
     if err != nil {
-        local.SelfDispatch(ev.NewPersistErrorEvent(
+        local.SendPrior(ev.NewPersistErrorEvent(
             errors.New("fail to last snapshot info")))
         return nil
     }
@@ -557,7 +567,7 @@ func (self *StandardModePeerState) SetupReplicating(
     case matchIndex == 0:
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
-            local.SelfDispatch(ev.NewPersistErrorEvent(
+            local.SendPrior(ev.NewPersistErrorEvent(
                 errors.New("fail to read committed index of log")))
             return nil
         }
@@ -577,7 +587,7 @@ func (self *StandardModePeerState) SetupReplicating(
         if err != nil {
             message := fmt.Sprintf("fail to read log at index: %d, error: %s",
                 matchIndex, err)
-            local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+            local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
             return nil
         }
         prevLogIndex := log.Index
@@ -585,7 +595,7 @@ func (self *StandardModePeerState) SetupReplicating(
 
         lastLogIndex, err := local.Log().LastIndex()
         if err != nil {
-            local.SelfDispatch(ev.NewPersistErrorEvent(
+            local.SendPrior(ev.NewPersistErrorEvent(
                 errors.New("fail to read last log index of log")))
             return nil
         }
@@ -597,14 +607,14 @@ func (self *StandardModePeerState) SetupReplicating(
             if log, err = local.Log().GetLog(i); err != nil {
                 message := fmt.Sprintf(
                     "fail to read log at index: %d, error: %s", i, err)
-                local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+                local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
                 return nil
             }
             logEntries = append(logEntries, log)
         }
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
-            local.SelfDispatch(ev.NewPersistErrorEvent(
+            local.SendPrior(ev.NewPersistErrorEvent(
                 errors.New("fail to read committed index of log")))
             return nil
         }
@@ -657,13 +667,13 @@ func (self *SnapshotModePeerState) Entry(
     local := peerHSM.Local()
     snapshotMetas, err := local.SnapshotManager().List()
     if err != nil {
-        local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+        local.SendPrior(ev.NewPersistErrorEvent(errors.New(
             "fail to list snapshot")))
         return nil
     }
     if len(snapshotMetas) == 0 {
         // no snapshot at all
-        local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(
+        local.SendPrior(ev.NewPersistErrorEvent(errors.New(
             "fail to read last log index of log")))
         peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
         return nil
@@ -673,7 +683,7 @@ func (self *SnapshotModePeerState) Entry(
     meta, readCloser, err := local.SnapshotManager().Open(id)
     if err != nil {
         message := fmt.Sprintf("fail to open snapshot, id: %s", id)
-        local.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+        local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
         peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())
         return nil
     }
@@ -740,7 +750,7 @@ func (self *SnapshotModePeerState) Handle(
         leaderPeerState.UpdateLastContact()
 
         if snapshotRespEvent.Response.Term > local.GetCurrentTerm() {
-            local.SelfDispatch(ev.NewStepdownEvent())
+            local.SendPrior(ev.NewStepdownEvent())
             // Stop replicating snapshot to this peer since it already
             // connected to another more up-to-date leader.
             peerHSM.SelfDispatch(ev.NewPeerAbortSnapshotModeEvent())

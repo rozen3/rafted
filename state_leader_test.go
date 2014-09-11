@@ -14,7 +14,7 @@ var (
     testMockPeersRequests []ev.RaftRequestEvent
 )
 
-func getLocalAndPeersForLeader(t *testing.T) (*Local, *MockPeers) {
+func getLocalAndPeersForLeader(t *testing.T) (Local, *MockPeers) {
     require.Nil(t, assert.SetCallerInfoLevelNumber(3))
     local, peers := getTestLocalAndPeersForCandidate(t)
     time.Sleep(ElectionTimeout)
@@ -60,14 +60,14 @@ func getLocalAndPeersForLeader(t *testing.T) (*Local, *MockPeers) {
     respEvent := ev.NewRequestVoteResponseEvent(response)
     voter := testServers[2]
     respEvent.FromAddr = voter
-    local.Dispatch(respEvent)
+    local.Send(respEvent)
     SwallowNotify(t, nchan, ElectionTimeout, 2)
     assert.Equal(t, StateUnsyncID, local.QueryState())
     assert.Equal(t, term, local.GetCurrentTerm())
     return local, peers
 }
 
-func getLocalAndPeersForSync(t *testing.T) (*Local, *MockPeers) {
+func getLocalAndPeersForSync(t *testing.T) (Local, *MockPeers) {
     local, peers := getLocalAndPeersForLeader(t)
     event := testMockPeersRequests[0]
     reqEvent, ok := event.(*ev.AppendEntriesRequestEvent)
@@ -79,7 +79,7 @@ func getLocalAndPeersForSync(t *testing.T) (*Local, *MockPeers) {
         MatchIndex: request.PrevLogIndex + 1,
     }
     peerEvent := ev.NewPeerReplicateLogEvent(peerUpdate)
-    local.Dispatch(peerEvent)
+    local.Send(peerEvent)
     nchan := local.Notifier().GetNotifyChan()
     assertGetCommitNotify(t, nchan, ElectionTimeout,
         request.Term, request.PrevLogIndex+1)
@@ -105,7 +105,7 @@ func TestLeaderUnsyncHandlePeerUpdate(t *testing.T) {
         MatchIndex: request.PrevLogIndex + 1,
     }
     peerEvent := ev.NewPeerReplicateLogEvent(peerUpdate)
-    local.Dispatch(peerEvent)
+    local.Send(peerEvent)
     nchan := local.Notifier().GetNotifyChan()
     assertGetCommitNotify(t, nchan, ElectionTimeout,
         request.Term, request.PrevLogIndex+1)
@@ -144,7 +144,7 @@ func TestLeaderHandleAppendEntriesRequest(t *testing.T) {
         LeaderCommitIndex: testIndex,
     }
     reqEvent := ev.NewAppendEntriesRequestEvent(request)
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetAppendEntriesResponseEvent(
         t, reqEvent, false, testTerm+1, testIndex+1)
     // test handling newer term request
@@ -171,7 +171,7 @@ func TestLeaderHandleAppendEntriesRequest(t *testing.T) {
         LeaderCommitIndex: nextIndex - 1,
     }
     reqEvent = ev.NewAppendEntriesRequestEvent(request)
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetAppendEntriesResponseEvent(t, reqEvent, true, nextTerm, nextIndex)
     nchan := local.Notifier().GetNotifyChan()
     assertGetStateChangeNotify(t, nchan, 0,
@@ -195,7 +195,7 @@ func TestLeaderHandleRequestVoteRequest(t *testing.T) {
         LastLogTerm:  testTerm,
     }
     reqEvent := ev.NewRequestVoteRequestEvent(request)
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetRequestVoteResponseEvent(t, reqEvent, false, testTerm+1)
     // test handling newer term request
     nextTerm := testTerm + 2
@@ -207,7 +207,7 @@ func TestLeaderHandleRequestVoteRequest(t *testing.T) {
         LastLogTerm:  nextTerm - 1,
     }
     reqEvent = ev.NewRequestVoteRequestEvent(request)
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetRequestVoteResponseEvent(t, reqEvent, true, nextTerm)
     nchan := local.Notifier().GetNotifyChan()
     assertGetStateChangeNotify(t, nchan, 0,
@@ -227,7 +227,7 @@ func TestLeaderUnsyncHandleClientReadOnlyRequest(t *testing.T) {
         Data: testData,
     }
     reqEvent := ev.NewClientReadOnlyRequestEvent(request)
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetLeaderUnsyncResponseEvent(t, reqEvent)
     //
     local.Terminate()
@@ -241,7 +241,7 @@ func TestLeaderSyncHandleClientReadOnlyRequest(t *testing.T) {
         Data: testData,
     }
     reqEvent := ev.NewClientReadOnlyRequestEvent(request)
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     // dispatch the peer update
     follower := testServers[2]
     peerUpdate := &ev.PeerReplicateLog{
@@ -249,7 +249,7 @@ func TestLeaderSyncHandleClientReadOnlyRequest(t *testing.T) {
         MatchIndex: testIndex + 2,
     }
     peerEvent := ev.NewPeerReplicateLogEvent(peerUpdate)
-    local.Dispatch(peerEvent)
+    local.Send(peerEvent)
     nchan := local.Notifier().GetNotifyChan()
     assertGetCommitNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
     assertGetApplyNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
@@ -266,7 +266,7 @@ func TestLeaderSyncHandleClientAppendRequest(t *testing.T) {
         Data: testData,
     }
     reqEvent := ev.NewClientAppendRequestEvent(request)
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     // dispatch the peer update
     follower := testServers[1]
     peerUpdate := &ev.PeerReplicateLog{
@@ -274,7 +274,7 @@ func TestLeaderSyncHandleClientAppendRequest(t *testing.T) {
         MatchIndex: testIndex + 2,
     }
     peerEvent := ev.NewPeerReplicateLogEvent(peerUpdate)
-    local.Dispatch(peerEvent)
+    local.Send(peerEvent)
     nchan := local.Notifier().GetNotifyChan()
     assertGetCommitNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
     assertGetApplyNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)

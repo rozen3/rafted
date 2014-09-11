@@ -36,7 +36,7 @@ func getTestLog(
     return log, nil
 }
 
-func getTestLocal() (*Local, error) {
+func getTestLocal() (Local, error) {
     servers := testServers
     localAddr := servers[0]
     index := testIndex
@@ -60,7 +60,7 @@ func getTestLocal() (*Local, error) {
     snapshotManager := ps.NewMemorySnapshotManager()
     configManager := ps.NewMemoryConfigManager(index, conf)
     logger := logging.GetLogger("test local")
-    local, err := NewLocal(
+    local, err := NewLocalManager(
         HeartbeatTimeout,
         ElectionTimeout,
         ElectionTimeoutThresholdPersent,
@@ -88,7 +88,7 @@ type MockPeers struct {
     mock.Mock
 }
 
-func NewMockPeers(local *Local) *MockPeers {
+func NewMockPeers(local Local) *MockPeers {
     object := &MockPeers{}
     local.SetPeers(object)
     return object
@@ -106,13 +106,13 @@ func (self *MockPeers) RemovePeers(peerAddrs []ps.ServerAddr) {
     self.Mock.Called(peerAddrs)
 }
 
-func getTestLocalSafe(t *testing.T) *Local {
+func getTestLocalSafe(t *testing.T) Local {
     local, err := getTestLocal()
     assert.Nil(t, err)
     return local
 }
 
-func getTestLocalAndPeers(t *testing.T) (*Local, *MockPeers) {
+func getTestLocalAndPeers(t *testing.T) (Local, *MockPeers) {
     local := getTestLocalSafe(t)
     return local, NewMockPeers(local)
 }

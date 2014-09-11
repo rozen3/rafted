@@ -10,7 +10,7 @@ import (
     "time"
 )
 
-func getTestLocalAndPeersForCandidate(t *testing.T) (*Local, *MockPeers) {
+func getTestLocalAndPeersForCandidate(t *testing.T) (Local, *MockPeers) {
     local, peers := getTestLocalAndPeers(t)
 
     peers.On("Broadcast", mock.Anything).Return().Once()
@@ -89,7 +89,7 @@ func TestCandidateHandleAppendEntriesRequest(t *testing.T) {
     }
     reqEvent := ev.NewAppendEntriesRequestEvent(request)
     assert.Equal(t, StateCandidateID, local.QueryState())
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetAppendEntriesResponseEvent(t, reqEvent, false, nextTerm, testIndex)
     assert.Equal(t, StateCandidateID, local.QueryState())
     // test new term request
@@ -97,7 +97,7 @@ func TestCandidateHandleAppendEntriesRequest(t *testing.T) {
     request.Term = nextTerm
     request.Entries[0].Term = nextTerm
     reqEvent = ev.NewAppendEntriesRequestEvent(request)
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetAppendEntriesResponseEvent(t, reqEvent, true, nextTerm, testIndex)
     // check notifies
     assertGetStateChangeNotify(t, nchan, 0,
@@ -125,7 +125,7 @@ func TestCandidateHandleClientRequest(t *testing.T) {
     }
     reqEvent := ev.NewClientAppendRequestEvent(request)
     assert.Equal(t, StateCandidateID, local.QueryState())
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetLeaderUnknownResponse(t, reqEvent)
     //
     local.Terminate()
@@ -156,7 +156,7 @@ func TestCandidateHandleRequestVoteResponse(t *testing.T) {
     leader := testServers[0]
     voter := testServers[1]
     respEvent.FromAddr = voter
-    local.Dispatch(respEvent)
+    local.Send(respEvent)
     assertGetStateChangeNotify(t, nchan, ElectionTimeout,
         ev.RaftStateCandidate, ev.RaftStateLeader)
     // enter leader state

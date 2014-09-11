@@ -26,7 +26,7 @@ type PeerManager struct {
     maxSnapshotChunkSize uint64
     client               comm.Client
     eventHandler         func(ev.RaftEvent)
-    local                *Local
+    local                Local
     getLoggerForPeer     func(ps.ServerAddr) logging.Logger
 }
 
@@ -38,7 +38,7 @@ func NewPeerManager(
     peerAddrs []ps.ServerAddr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
-    local *Local,
+    local Local,
     getLoggerForPeer func(ps.ServerAddr) logging.Logger) *PeerManager {
 
     peerMap := make(map[ps.ServerAddr]*Peer)
@@ -121,7 +121,7 @@ func NewPeer(
     addr ps.ServerAddr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
-    local *Local,
+    local Local,
     logger logging.Logger) *Peer {
 
     top := hsm.NewTop()
@@ -162,7 +162,7 @@ type PeerHSM struct {
     addr         ps.ServerAddr
     client       comm.Client
     eventHandler func(ev.RaftEvent)
-    local        *Local
+    local        Local
 }
 
 func NewPeerHSM(
@@ -171,7 +171,7 @@ func NewPeerHSM(
     addr ps.ServerAddr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
-    local *Local) *PeerHSM {
+    local Local) *PeerHSM {
 
     return &PeerHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypePeer, top, initial),
@@ -245,6 +245,6 @@ func (self *PeerHSM) EventHandler() func(ev.RaftEvent) {
     return self.eventHandler
 }
 
-func (self *PeerHSM) Local() *Local {
+func (self *PeerHSM) Local() Local {
     return self.local
 }

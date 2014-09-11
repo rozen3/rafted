@@ -45,14 +45,14 @@ func TestFollowerHandleRequestVoteRequest(t *testing.T) {
     }
     reqEvent := ev.NewRequestVoteRequestEvent(request)
     assert.Equal(t, StateFollowerID, local.QueryState())
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetRequestVoteResponseEvent(t, reqEvent, false, testTerm)
     // test handle new term request
     assert.Equal(t, ps.NilServerAddr, local.GetVotedFor())
     assert.Equal(t, ps.NilServerAddr, local.GetLeader())
     newTerm := testTerm + 1
     request.Term = newTerm
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetRequestVoteResponseEvent(t, reqEvent, true, newTerm)
     // check notify term change
     nchan := local.Notifier().GetNotifyChan()
@@ -63,7 +63,7 @@ func TestFollowerHandleRequestVoteRequest(t *testing.T) {
     // check the state remains
     assert.Equal(t, StateFollowerID, local.QueryState())
     // test duplicated request
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetRequestVoteResponseEvent(t, reqEvent, true, newTerm)
     // test corrupted request
     newTerm += 1
@@ -76,7 +76,7 @@ func TestFollowerHandleRequestVoteRequest(t *testing.T) {
     }
     reqEvent = ev.NewRequestVoteRequestEvent(request)
     startTime := time.Now()
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetRequestVoteResponseEvent(t, reqEvent, false, newTerm)
     assert.Equal(t, ps.NilServerAddr, local.GetVotedFor())
     assert.Equal(t, ps.NilServerAddr, local.GetLeader())
@@ -118,14 +118,14 @@ func TestFollowerHandleAppendEntriesRequest(t *testing.T) {
     }
     reqEvent := ev.NewAppendEntriesRequestEvent(request)
     assert.Equal(t, StateFollowerID, local.QueryState())
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetAppendEntriesResponseEvent(t, reqEvent, false, testTerm, testIndex)
     assert.Equal(t, ps.NilServerAddr, local.GetVotedFor())
     assert.Equal(t, ps.NilServerAddr, local.GetLeader())
     // test new term request
     request.Term = nextTerm
     reqEvent = ev.NewAppendEntriesRequestEvent(request)
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetAppendEntriesResponseEvent(t, reqEvent, true, nextTerm, testIndex)
     // check notify term change
     nchan := local.Notifier().GetNotifyChan()
@@ -141,7 +141,7 @@ func TestFollowerHandleAppendEntriesRequest(t *testing.T) {
     assertLogLastTerm(t, local.Log(), nextTerm)
     assertLogCommittedIndex(t, local.Log(), testIndex)
     // test duplicate request
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetAppendEntriesResponseEvent(t, reqEvent, true, nextTerm, nextIndex)
     // test corrupted request
     nextTerm += 1
@@ -156,7 +156,7 @@ func TestFollowerHandleAppendEntriesRequest(t *testing.T) {
     }
     reqEvent = ev.NewAppendEntriesRequestEvent(request)
     startTime := time.Now()
-    local.Dispatch(reqEvent)
+    local.Send(reqEvent)
     assertGetAppendEntriesResponseEvent(t, reqEvent, false, nextTerm, nextIndex)
     assertGetTermChangeNotify(t, nchan, 0, nextTerm-1, nextTerm)
     assertGetLeaderChangeNotify(t, nchan, 0, leader)

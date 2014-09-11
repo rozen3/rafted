@@ -13,13 +13,13 @@ type Backend interface {
 }
 
 type HSMBackend struct {
-    local  *Local
+    local  Local
     peers  Peers
     server comm.Server
 }
 
 func (self *HSMBackend) Send(event ev.RaftRequestEvent) {
-    self.local.Dispatch(event)
+    self.local.Send(event)
 }
 
 func NewHSMBackend(
@@ -40,7 +40,7 @@ func NewHSMBackend(
     snapshotManager ps.SnapshotManager,
     logger logging.Logger) (*HSMBackend, error) {
 
-    local, err := NewLocal(
+    local, err := NewLocalManager(
         heartbeatTimeout,
         electionTimeout,
         electionTimeoutThresholdPersent,
@@ -57,10 +57,10 @@ func NewHSMBackend(
     }
     client := comm.NewSocketClient(poolSize)
     eventHandler1 := func(event ev.RaftEvent) {
-        local.Dispatch(event)
+        local.Send(event)
     }
     eventHandler2 := func(event ev.RaftRequestEvent) {
-        local.Dispatch(event)
+        local.Send(event)
     }
 
     getLoggerForPeer := func(ps.ServerAddr) logging.Logger {
