@@ -168,6 +168,19 @@ func assertGetLeaderUnsyncResponseEvent(t *testing.T, reqEvent ev.RaftRequestEve
     assert.True(t, ok)
 }
 
+func assertGetClientResponseEvent(
+    t *testing.T, reqEvent ev.RaftRequestEvent, success bool, data []byte) {
+    respEvent := reqEvent.RecvResponse()
+    assert.Equal(t, ev.EventClientResponse, respEvent.Type(),
+        "expect %s but actual %s",
+        ev.EventTypeString(ev.EventClientResponse),
+        ev.EventTypeString(respEvent.Type()))
+    event, ok := respEvent.(*ev.ClientResponseEvent)
+    assert.True(t, ok)
+    assert.Equal(t, success, event.Response.Success)
+    assert.Equal(t, data, event.Response.Data)
+}
+
 // ------------------------------------------------------------
 // notify related
 // ------------------------------------------------------------

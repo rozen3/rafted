@@ -67,16 +67,25 @@ func getLocalAndPeersForLeader(t *testing.T) (*Local, *MockPeers) {
     return local, peers
 }
 
-func TestLeaderUnsyncHandleClientReadOnlyRequest(t *testing.T) {
-    local, _ := getLocalAndPeersForLeader(t)
-    request := &ev.ClientReadOnlyRequest{
-        Data: testData,
+func getLocalAndPeersForSync(t *testing.T) (*Local, *MockPeers) {
+    local, peers := getLocalAndPeersForLeader(t)
+    event := testMockPeersRequests[0]
+    reqEvent, ok := event.(*ev.AppendEntriesRequestEvent)
+    assert.True(t, ok)
+    request := reqEvent.Request
+    follower := testServers[1]
+    peerUpdate := &ev.PeerReplicateLog{
+        Peer:       follower,
+        MatchIndex: request.PrevLogIndex + 1,
     }
-    reqEvent := ev.NewClientReadOnlyRequestEvent(request)
-    local.Dispatch(reqEvent)
-    assertGetLeaderUnsyncResponseEvent(t, reqEvent)
-    //
-    local.Terminate()
+    peerEvent := ev.NewPeerReplicateLogEvent(peerUpdate)
+    local.Dispatch(peerEvent)
+    nchan := local.Notifier().GetNotifyChan()
+    assertGetCommitNotify(t, nchan, ElectionTimeout,
+        request.Term, request.PrevLogIndex+1)
+    assertGetApplyNotify(t, nchan, 0, request.Term, request.PrevLogIndex+1)
+    assert.Equal(t, StateSyncID, local.QueryState())
+    return local, peers
 }
 
 func TestLeaderUnsyncHandlePeerUpdate(t *testing.T) {
@@ -138,7 +147,7 @@ func TestLeaderHandleAppendEntriesRequest(t *testing.T) {
     local.Dispatch(reqEvent)
     assertGetAppendEntriesResponseEvent(
         t, reqEvent, false, testTerm+1, testIndex+1)
-    // test newer term request
+    // test handling newer term request
     nextTerm := testTerm + 2
     nextIndex := testIndex + 2
     entries = []*ps.LogEntry{
@@ -171,6 +180,105 @@ func TestLeaderHandleAppendEntriesRequest(t *testing.T) {
     assertGetLeaderChangeNotify(t, nchan, 0, leader)
     assertGetCommitNotify(t, nchan, 0, nextTerm-1, nextIndex-1)
     assertGetApplyNotify(t, nchan, 0, nextTerm-1, nextIndex-1)
+    //
+    local.Terminate()
+}
+
+func TestLeaderHandleRequestVoteRequest(t *testing.T) {
+    local, _ := getLocalAndPeersForSync(t)
+    // test handling older term request
+    candidate := testServers[1]
+    request := &ev.RequestVoteRequest{
+        Term:         testTerm + 1,
+        Candidate:    candidate,
+        LastLogIndex: testIndex,
+        LastLogTerm:  testTerm,
+    }
+    reqEvent := ev.NewRequestVoteRequestEvent(request)
+    local.Dispatch(reqEvent)
+    assertGetRequestVoteResponseEvent(t, reqEvent, false, testTerm+1)
+    // test handling newer term request
+    nextTerm := testTerm + 2
+    nextIndex := testIndex + 2
+    request = &ev.RequestVoteRequest{
+        Term:         nextTerm,
+        Candidate:    candidate,
+        LastLogIndex: nextIndex - 1,
+        LastLogTerm:  nextTerm - 1,
+    }
+    reqEvent = ev.NewRequestVoteRequestEvent(request)
+    local.Dispatch(reqEvent)
+    assertGetRequestVoteResponseEvent(t, reqEvent, true, nextTerm)
+    nchan := local.Notifier().GetNotifyChan()
+    assertGetStateChangeNotify(t, nchan, 0,
+        ev.RaftStateLeader, ev.RaftStateFollower)
+    assertGetTermChangeNotify(t, nchan, 0, nextTerm-1, nextTerm)
+    //
+    local.Terminate()
+}
+
+func TestLeaderHandleInstallSnapshotRequest(_ *testing.T) {
+    // TODO add impl
+}
+
+func TestLeaderUnsyncHandleClientReadOnlyRequest(t *testing.T) {
+    local, _ := getLocalAndPeersForLeader(t)
+    request := &ev.ClientReadOnlyRequest{
+        Data: testData,
+    }
+    reqEvent := ev.NewClientReadOnlyRequestEvent(request)
+    local.Dispatch(reqEvent)
+    assertGetLeaderUnsyncResponseEvent(t, reqEvent)
+    //
+    local.Terminate()
+}
+
+func TestLeaderSyncHandleClientReadOnlyRequest(t *testing.T) {
+    local, peers := getLocalAndPeersForSync(t)
+    // dispatch the client request
+    peers.On("Broadcast", mock.Anything).Return().Once()
+    request := &ev.ClientReadOnlyRequest{
+        Data: testData,
+    }
+    reqEvent := ev.NewClientReadOnlyRequestEvent(request)
+    local.Dispatch(reqEvent)
+    // dispatch the peer update
+    follower := testServers[2]
+    peerUpdate := &ev.PeerReplicateLog{
+        Peer:       follower,
+        MatchIndex: testIndex + 2,
+    }
+    peerEvent := ev.NewPeerReplicateLogEvent(peerUpdate)
+    local.Dispatch(peerEvent)
+    nchan := local.Notifier().GetNotifyChan()
+    assertGetCommitNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
+    assertGetApplyNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
+    assertGetClientResponseEvent(t, reqEvent, true, testData)
+    //
+    local.Terminate()
+}
+
+func TestLeaderSyncHandleClientAppendRequest(t *testing.T) {
+    local, peers := getLocalAndPeersForSync(t)
+    // dispatch the client request
+    peers.On("Broadcast", mock.Anything).Return().Once()
+    request := &ev.ClientAppendRequest{
+        Data: testData,
+    }
+    reqEvent := ev.NewClientAppendRequestEvent(request)
+    local.Dispatch(reqEvent)
+    // dispatch the peer update
+    follower := testServers[1]
+    peerUpdate := &ev.PeerReplicateLog{
+        Peer:       follower,
+        MatchIndex: testIndex + 2,
+    }
+    peerEvent := ev.NewPeerReplicateLogEvent(peerUpdate)
+    local.Dispatch(peerEvent)
+    nchan := local.Notifier().GetNotifyChan()
+    assertGetCommitNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
+    assertGetApplyNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
+    assertGetClientResponseEvent(t, reqEvent, true, testData)
     //
     local.Terminate()
 }
