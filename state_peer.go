@@ -88,7 +88,14 @@ func (self *DeactivatedPeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Entry", self.ID())
-    return nil
+    return self.Super()
+}
+
+func (self *DeactivatedPeerState) Init(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Init", self.ID())
+    return self.Super()
 }
 
 func (self *DeactivatedPeerState) Exit(
@@ -139,7 +146,7 @@ func (self *ActivatedPeerState) Init(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
     self.Debug("STATE: %s, -> Init", self.ID())
-    sm.QInit(StateActivatedPeerID)
+    sm.QInit(StateCandidatePeerID)
     return nil
 }
 
@@ -205,6 +212,13 @@ func (self *CandidatePeerState) Entry(
 
     self.Debug("STATE: %s, -> Entry", self.ID())
     return nil
+}
+
+func (self *CandidatePeerState) Init(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Init", self.ID())
+    return self.Super()
 }
 
 func (self *CandidatePeerState) Exit(
@@ -475,7 +489,7 @@ func (*StandardModePeerState) ID() string {
 func (self *StandardModePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    self.Debug("STATE: %s, -> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     peerHSM.SelfDispatch(self.SetupReplicating(peerHSM))

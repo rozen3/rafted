@@ -563,8 +563,8 @@ func GetPeers(localAddr ps.ServerAddr, conf *ps.Config) []ps.ServerAddr {
     return peers
 }
 
-func AddrsToMap(addrs []ps.ServerAddr) map[ps.ServerAddr]*Peer {
-    Map := make(map[ps.ServerAddr]*Peer, len(addrs))
+func AddrsToMap(addrs []ps.ServerAddr) map[ps.ServerAddr]Peer {
+    Map := make(map[ps.ServerAddr]Peer, len(addrs))
     for _, addr := range addrs {
         Map[addr] = nil
     }
@@ -574,7 +574,7 @@ func AddrsToMap(addrs []ps.ServerAddr) map[ps.ServerAddr]*Peer {
 // MapSetMinus calculates the difference of two map, and returns
 // the result of s1 - s2.
 func MapSetMinus(
-    s1 map[ps.ServerAddr]*Peer, s2 map[ps.ServerAddr]*Peer) []ps.ServerAddr {
+    s1 map[ps.ServerAddr]Peer, s2 map[ps.ServerAddr]Peer) []ps.ServerAddr {
 
     diff := make([]ps.ServerAddr, 0)
     for addr, _ := range s1 {

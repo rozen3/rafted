@@ -17,7 +17,7 @@ type Peers interface {
 }
 
 type PeerManager struct {
-    peerMap  map[ps.ServerAddr]*Peer
+    peerMap  map[ps.ServerAddr]Peer
     peerLock sync.RWMutex
 
     heartbeatTimeout     time.Duration
@@ -41,10 +41,10 @@ func NewPeerManager(
     local Local,
     getLoggerForPeer func(ps.ServerAddr) logging.Logger) *PeerManager {
 
-    peerMap := make(map[ps.ServerAddr]*Peer)
+    peerMap := make(map[ps.ServerAddr]Peer)
     for _, addr := range peerAddrs {
         logger := getLoggerForPeer(addr)
-        peerMap[addr] = NewPeer(
+        peerMap[addr] = NewPeerMan(
             heartbeatTimeout,
             maxTimeoutJitter,
             maxAppendEntriesSize,
@@ -84,7 +84,7 @@ func (self *PeerManager) AddPeers(peerAddrs []ps.ServerAddr) {
     peersToAdd := MapSetMinus(newPeerMap, self.peerMap)
     for _, addr := range peersToAdd {
         logger := self.getLoggerForPeer(addr)
-        self.peerMap[addr] = NewPeer(
+        self.peerMap[addr] = NewPeerMan(
             self.heartbeatTimeout,
             self.maxTimeoutJitter,
             self.maxAppendEntriesSize,
@@ -104,16 +104,24 @@ func (self *PeerManager) RemovePeers(peerAddrs []ps.ServerAddr) {
     peersToRemove := MapSetMinus(self.peerMap, newPeerMap)
     for _, addr := range peersToRemove {
         peer, _ := self.peerMap[addr]
-        peer.Close()
+        peer.Terminate()
         delete(self.peerMap, addr)
     }
 }
 
-type Peer struct {
-    hsm *PeerHSM
+type Peer interface {
+    Send(Event hsm.Event)
+    SendPrior(event hsm.Event)
+    Terminate()
+
+    QueryState() string
 }
 
-func NewPeer(
+type PeerMan struct {
+    peerHSM *PeerHSM
+}
+
+func NewPeerMan(
     heartbeatTimeout time.Duration,
     maxTimeoutJitter float32,
     maxAppendEntriesSize uint64,
@@ -122,7 +130,7 @@ func NewPeer(
     client comm.Client,
     eventHandler func(ev.RaftEvent),
     local Local,
-    logger logging.Logger) *Peer {
+    logger logging.Logger) Peer {
 
     top := hsm.NewTop()
     initial := hsm.NewInitial(top, StatePeerID)
@@ -138,25 +146,36 @@ func NewPeer(
     hsm.NewTerminal(top)
     peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler, local)
     peerHSM.Init()
-    return &Peer{peerHSM}
+    return &PeerMan{peerHSM}
 }
 
-func (self *Peer) Start() {
-    self.hsm.Init()
+func (self *PeerMan) Send(event hsm.Event) {
+    self.peerHSM.Dispatch(event)
 }
 
-func (self *Peer) Send(event hsm.Event) {
-    self.hsm.Dispatch(event)
+func (self *PeerMan) SendPrior(event hsm.Event) {
+    self.peerHSM.SelfDispatch(event)
 }
 
-func (self *Peer) Close() {
-    self.hsm.Terminate()
+func (self *PeerMan) Terminate() {
+    self.peerHSM.Terminate()
+}
+
+func (self *PeerMan) QueryState() string {
+    requestEvent := ev.NewQueryStateRequestEvent()
+    self.peerHSM.Dispatch(requestEvent)
+    responseEvent := requestEvent.RecvResponse()
+    hsm.AssertEqual(responseEvent.Type(), ev.EventQueryStateResponse)
+    event, ok := responseEvent.(*ev.QueryStateResponseEvent)
+    hsm.AssertTrue(ok)
+    return event.Response.StateID
 }
 
 type PeerHSM struct {
     *hsm.StdHSM
     dispatchChan     chan hsm.Event
     selfDispatchChan *ReliableEventChannel
+    stopChan         chan interface{}
     group            sync.WaitGroup
 
     addr         ps.ServerAddr
@@ -177,6 +196,7 @@ func NewPeerHSM(
         StdHSM:           hsm.NewStdHSM(HSMTypePeer, top, initial),
         dispatchChan:     make(chan hsm.Event, 1),
         selfDispatchChan: NewReliableEventChannel(),
+        stopChan:         make(chan interface{}, 1),
         addr:             addr,
         client:           client,
         eventHandler:     eventHandler,
@@ -195,6 +215,8 @@ func (self *PeerHSM) loop() {
         priorityChan := self.selfDispatchChan.GetOutChan()
         for {
             select {
+            case <-self.stopChan:
+                return
             case event := <-priorityChan:
                 self.StdHSM.Dispatch2(self, event)
                 continue
@@ -202,6 +224,8 @@ func (self *PeerHSM) loop() {
                 // no event in priorityChan
             }
             select {
+            case <-self.stopChan:
+                return
             case event := <-priorityChan:
                 self.StdHSM.Dispatch2(self, event)
             case event := <-self.dispatchChan:
@@ -228,6 +252,7 @@ func (self *PeerHSM) SelfDispatch(event hsm.Event) {
 
 func (self *PeerHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
+    self.stopChan <- self
     self.group.Wait()
     self.selfDispatchChan.Close()
     self.client.Close()

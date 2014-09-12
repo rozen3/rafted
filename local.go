@@ -193,6 +193,7 @@ func (self *LocalHSM) Terminate() {
     self.group.Wait()
     self.selfDispatchChan.Close()
     self.applier.Close()
+    self.notifier.Close()
 }
 
 func (self *LocalHSM) GetCurrentTerm() uint64 {
@@ -403,9 +404,9 @@ type Local interface {
     GetVotedFor() ps.ServerAddr
     GetLeader() ps.ServerAddr
 
-    ConfigManager() ps.ConfigManager
     Log() ps.Log
     SnapshotManager() ps.SnapshotManager
+    ConfigManager() ps.ConfigManager
     Notifier() *Notifier
 
     SetPeers(peers Peers)
@@ -502,17 +503,16 @@ func (self *LocalManager) GetVotedFor() ps.ServerAddr {
 func (self *LocalManager) GetLeader() ps.ServerAddr {
     return self.localHSM.GetLeader()
 }
-
-func (self *LocalManager) ConfigManager() ps.ConfigManager {
-    return self.localHSM.ConfigManager()
-}
-
 func (self *LocalManager) Log() ps.Log {
     return self.localHSM.Log()
 }
 
 func (self *LocalManager) SnapshotManager() ps.SnapshotManager {
     return self.localHSM.SnapshotManager()
+}
+
+func (self *LocalManager) ConfigManager() ps.ConfigManager {
+    return self.localHSM.ConfigManager()
 }
 
 func (self *LocalManager) Notifier() *Notifier {

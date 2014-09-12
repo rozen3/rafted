@@ -1,4 +1,4 @@
-package rafted
+package logging
 
 import (
     "github.com/hhkbp2/go-logger/logger"
