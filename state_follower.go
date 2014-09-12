@@ -61,9 +61,8 @@ func (self *FollowerState) Entry(
     self.UpdateLastContactTime()
     // start heartbeat timeout ticker
     onTimeout := func() {
-        lastContactTime := self.LastContactTime()
         timeout := &ev.Timeout{
-            LastTime: lastContactTime,
+            LastTime: self.LastContactTime(),
             Timeout:  self.electionTimeout,
         }
         localHSM.SelfDispatch(ev.NewElectionTimeoutEvent(timeout))

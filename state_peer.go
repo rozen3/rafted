@@ -312,17 +312,14 @@ func (self *LeaderPeerState) Entry(
     }
     peerHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
     // init timer
-    deliverHearbeatTimeout := func() {
-        lastContactTime := self.LastContactTime()
-        if TimeExpire(lastContactTime, self.heartbeatTimeout) {
-            timeout := &ev.Timeout{
-                LastTime: lastContactTime,
-                Timeout:  self.heartbeatTimeout,
-            }
-            peerHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
+    onTimeout := func() {
+        timeout := &ev.Timeout{
+            LastTime: self.LastContactTime(),
+            Timeout:  self.heartbeatTimeout,
         }
+        peerHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
     }
-    self.ticker.Start(deliverHearbeatTimeout)
+    self.ticker.Start(onTimeout)
     return nil
 }
 
