@@ -2,12 +2,12 @@ package rafted
 
 import (
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "github.com/hhkbp2/testify/assert"
     "github.com/hhkbp2/testify/mock"
     "github.com/hhkbp2/testify/require"
     "testing"
-    "time"
 )
 
 func TestPeerHeartbeatTimeout(t *testing.T) {
@@ -108,18 +108,7 @@ func TestPeerCandidateEnterLeaderOnAppendEntriesRequest(t *testing.T) {
     reqEvent := ev.NewAppendEntriesRequestEvent(request)
     peer.Send(reqEvent)
     assert.Equal(t, StateLeaderPeerID, peer.QueryState())
-    select {
-    case event := <-requestChan.GetOutChan():
-        assert.Equal(t, ev.EventAppendEntriesRequest, event.Type(),
-            "expect %s, but actual %s",
-            ev.EventTypeString(ev.EventAppendEntriesRequest),
-            ev.EventTypeString(event.Type()))
-        e, ok := event.(*ev.AppendEntriesRequestEvent)
-        assert.True(t, ok)
-        assert.Equal(t, request.Term, e.Request.Term)
-    case <-time.After(HeartbeatTimeout):
-        assert.True(t, false)
-    }
+    assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
 
     peer.Terminate()
     assert.Nil(t, server.Close())
@@ -154,11 +143,111 @@ func TestPeerLeaderHeartbeatTimeout(t *testing.T) {
     mockLocal.On("SendPrior", mock.Anything).Return()
     peer.Send(ev.NewPeerEnterLeaderEvent())
     assert.Equal(t, StateLeaderPeerID, peer.QueryState())
-    nchan := mockLocal.Notifier().GetNotifyChan()
     // three times are enough
+    request := &ev.AppendEntriesRequest{
+        Term:              testTerm,
+        Leader:            leaderAddr,
+        LeaderCommitIndex: testIndex,
+    }
+    nchan := mockLocal.Notifier().GetNotifyChan()
     assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+    assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
     assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+    assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
     assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+    assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
+    assert.Equal(t, 1, len(mockLocal.PriorEvents))
+
+    peer.Terminate()
+    assert.Nil(t, server.Close())
+}
+
+func TestPeerStandardModeCatchingUp(t *testing.T) {
+    logger := logging.GetLogger("abc")
+    require.Nil(t, assert.SetCallerInfoLevelNumber(3))
+    requestCount := 0
+    peerLogIndex := testIndex
+    // a simple simulation for a peer which accept one log entry on every AE rpc
+    requestHandler := func(event ev.RaftRequestEvent) {
+        assert.Equal(t, ev.EventAppendEntriesRequest, event.Type(),
+            "expect %s but actual %s",
+            ev.EventTypeString(ev.EventAppendEntriesRequest),
+            ev.EventTypeString(event.Type()))
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
+        assert.True(t, ok)
+        logger.Debug("** requestCount: %d, peerLogIndex: %d", requestCount, peerLogIndex)
+        requestCount++
+        var response *ev.AppendEntriesResponse
+        if e.Request.PrevLogIndex == peerLogIndex {
+            lastIndex := e.Request.PrevLogIndex + uint64(len(e.Request.Entries))
+            if peerLogIndex < lastIndex {
+                peerLogIndex++
+            }
+            response = &ev.AppendEntriesResponse{
+                Term:         e.Request.Term,
+                LastLogIndex: peerLogIndex,
+                Success:      true,
+            }
+        } else {
+            response = &ev.AppendEntriesResponse{
+                Term:         e.Request.Term,
+                LastLogIndex: peerLogIndex,
+                Success:      false,
+            }
+        }
+        logger.Debug("** peer response with, term: %d, LastLogIndex: %d, Success: %t", response.Term, response.LastLogIndex, response.Success)
+        event.SendResponse(ev.NewAppendEntriesResponseEvent(response))
+    }
+    leaderAddr := testServers[0]
+    peerAddr := testServers[1]
+    server := getTestMemoryServer(peerAddr, requestHandler)
+    // get peer
+    responseHandler := func(event ev.RaftEvent) {
+        // empty body
+    }
+    peer, mockLocal := getTestPeerAndLocalSafe(t, responseHandler)
+    // add a few log entry ahead in leader's log
+    aheadCount := 3
+    for i := 1; i <= aheadCount; i++ {
+        entry := &ps.LogEntry{
+            Term:  testTerm,
+            Index: testIndex + uint64(i),
+            Type:  ps.LogCommand,
+            Data:  testData,
+            Conf: &ps.Config{
+                Servers:    testServers,
+                NewServers: nil,
+            },
+        }
+        assert.Nil(t, mockLocal.Log().StoreLog(entry))
+    }
+
+    peer.Send(ev.NewPeerActivateEvent())
+    assert.Equal(t, StateCandidatePeerID, peer.QueryState())
+    mockLocal.On("GetCurrentTerm").Return(testTerm)
+    mockLocal.On("GetLocalAddr").Return(leaderAddr)
+    mockLocal.On("SendPrior", mock.Anything).Return()
+    peer.Send(ev.NewPeerEnterLeaderEvent())
+    nchan := mockLocal.Notifier().GetNotifyChan()
+    assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+    heartbeatCount := 3
+    for i := 0; i < aheadCount+heartbeatCount; i++ {
+        assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+    }
+    assert.Equal(t, StateLeaderPeerID, peer.QueryState())
+    assert.True(t, requestCount >= aheadCount+1+heartbeatCount)
+    assert.Equal(t, aheadCount+1, len(mockLocal.PriorEvents))
+    for i := 0; i <= aheadCount; i++ {
+        event := mockLocal.PriorEvents[i]
+        assert.Equal(t, ev.EventPeerReplicateLog, event.Type(),
+            "expect %s but actual %s",
+            ev.EventTypeString(ev.EventPeerReplicateLog),
+            ev.EventTypeString(event.Type()))
+        e, ok := event.(*ev.PeerReplicateLogEvent)
+        assert.True(t, ok)
+        assert.Equal(t, peerAddr, e.Message.Peer)
+        assert.Equal(t, testIndex+uint64(i), e.Message.MatchIndex)
+    }
 
     peer.Terminate()
     assert.Nil(t, server.Close())

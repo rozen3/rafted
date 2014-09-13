@@ -345,23 +345,7 @@ func (self *LeaderPeerState) Handle(
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
-        if e.Response.Term > local.GetCurrentTerm() {
-            local.SendPrior(ev.NewStepdownEvent())
-        }
-        matchIndex, _ := self.GetIndexInfo()
-        if e.Response.LastLogIndex > matchIndex {
-            message := &ev.PeerReplicateLog{
-                Peer:       peerHSM.Addr(),
-                MatchIndex: matchIndex,
-            }
-            event := ev.NewPeerReplicateLogEvent(message)
-            local.SendPrior(event)
-        } else {
-            peerAddr := peerHSM.Addr()
-            self.Warning("peer %s last log index backward from %d to :%d",
-                peerAddr.String(), matchIndex, e.Response.LastLogIndex)
-        }
-        self.SetMatchIndex(e.Response.LastLogIndex)
+        self.HandleAppendEntriesResponse(local, peerHSM, e.Response)
         return nil
     case ev.EventTimeoutHeartbeat:
         e, ok := event.(*ev.HeartbeatTimeoutEvent)
@@ -462,6 +446,31 @@ func (self *LeaderPeerState) UpdateLastContact() {
     self.ticker.Reset()
 }
 
+func (self *LeaderPeerState) HandleAppendEntriesResponse(local Local, peerHSM *PeerHSM, response *ev.AppendEntriesResponse) {
+    if response.Term > local.GetCurrentTerm() {
+        local.SendPrior(ev.NewStepdownEvent())
+    }
+    matchIndex, _ := self.GetIndexInfo()
+    peerAddr := peerHSM.Addr()
+    if response.LastLogIndex > matchIndex {
+        self.Debug("the LastLogIndex of peer %s updates from %d to %d",
+            peerAddr.String(), matchIndex, response.LastLogIndex)
+        message := &ev.PeerReplicateLog{
+            Peer:       peerHSM.Addr(),
+            MatchIndex: response.LastLogIndex,
+        }
+        event := ev.NewPeerReplicateLogEvent(message)
+        local.SendPrior(event)
+    } else if response.LastLogIndex == matchIndex {
+        self.Debug("the LastLogIndex of peer %s stays %d on AE",
+            peerAddr.String(), response.LastLogIndex)
+    } else {
+        self.Error("the LastLogIndex of peer %s backwards from %d to %d",
+            peerAddr.String(), matchIndex, response.LastLogIndex)
+    }
+    self.SetMatchIndex(response.LastLogIndex)
+}
+
 type StandardModePeerState struct {
     *LogStateHead
 
@@ -511,7 +520,6 @@ func (self *StandardModePeerState) Handle(
     hsm.AssertTrue(ok)
     switch event.Type() {
     case ev.EventAppendEntriesRequest:
-        self.Debug("here")
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
         peerAddr := peerHSM.Addr()
@@ -539,6 +547,9 @@ func (self *StandardModePeerState) Handle(
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
         local := peerHSM.Local()
+        leaderPeerState, ok := self.Super().(*LeaderPeerState)
+        hsm.AssertTrue(ok)
+        leaderPeerState.HandleAppendEntriesResponse(local, peerHSM, e.Response)
         lastLogIndex, err := local.Log().LastIndex()
         if err != nil {
             local.SendPrior(ev.NewPersistErrorEvent(errors.New(
@@ -553,7 +564,7 @@ func (self *StandardModePeerState) Handle(
             // peer log has caught up with us leader already
             sm.QTran(StateLeaderPeerID)
         }
-        return self.Super()
+        return nil
     case ev.EventTimeoutHeartbeat:
         event := self.SetupReplicating(peerHSM)
         peerHSM.SelfDispatch(event)
@@ -568,7 +579,6 @@ func (self *StandardModePeerState) Handle(
 func (self *StandardModePeerState) SetupReplicating(
     peerHSM *PeerHSM) (event hsm.Event) {
 
-    self.Debug("SetupReplicating")
     leaderPeerState, ok := self.Super().(*LeaderPeerState)
     hsm.AssertTrue(ok)
     matchIndex, nextIndex := leaderPeerState.GetIndexInfo()
@@ -604,6 +614,10 @@ func (self *StandardModePeerState) SetupReplicating(
             LeaderCommitIndex: committedIndex,
         }
         event = ev.NewAppendEntriesRequestEvent(request)
+        self.Debug("call AE RPC to peer with Term: %d, PrevLogTerm: %d, "+
+            "PrevLogIndex: %d, Entries size: %d",
+            request.Term, request.PrevLogTerm, request.PrevLogIndex,
+            len(request.Entries))
     case matchIndex < lastSnapshotIndex:
         event = ev.NewPeerEnterSnapshotModeEvent()
     default:
@@ -651,6 +665,10 @@ func (self *StandardModePeerState) SetupReplicating(
             LeaderCommitIndex: committedIndex,
         }
         event = ev.NewAppendEntriesRequestEvent(request)
+        self.Debug("call AE RPC to peer with Term: %d, PrevLogTerm: %d, "+
+            "PrevLogIndex: %d, Entries size: %d",
+            request.Term, request.PrevLogTerm, request.PrevLogIndex,
+            len(request.Entries))
     }
     return event
 }
@@ -685,7 +703,7 @@ func (*SnapshotModePeerState) ID() string {
 func (self *SnapshotModePeerState) Entry(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    self.Debug("STATE: %s, -> Entry")
+    self.Debug("STATE: %s, -> Entry", self.ID())
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     local := peerHSM.Local()

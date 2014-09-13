@@ -121,6 +121,25 @@ func getTestLocalAndPeers(t *testing.T) (Local, *MockPeers) {
 // raft events related
 // ------------------------------------------------------------
 
+func assertGetAppendEntriesRequestEvent(
+    t *testing.T, eventChan <-chan hsm.Event, afterTime time.Duration,
+    request *ev.AppendEntriesRequest) {
+
+    select {
+    case event := <-eventChan:
+        assert.Equal(t, ev.EventAppendEntriesRequest, event.Type(),
+            "expect %s but actual %s",
+            ev.EventTypeString(ev.EventAppendEntriesRequest),
+            ev.EventTypeString(event.Type()))
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
+        assert.True(t, ok)
+        assert.Equal(t, request.Term, e.Request.Term)
+        // TODO add more fields check
+    case <-time.After(afterTime):
+        assert.True(t, false)
+    }
+}
+
 func assertGetRequestVoteResponseEvent(
     t *testing.T, reqEvent ev.RaftRequestEvent, granted bool, term uint64) {
 
