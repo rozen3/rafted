@@ -45,6 +45,11 @@ func (self *MemoryServerTransport) Open() error {
     return nil
 }
 
+func (self *MemoryServerTransport) ReadNextMessage() *TransportChunk {
+    chunk := <-self.ConsumeCh
+    return chunk
+}
+
 func (self *MemoryServerTransport) ReadChunk() (*TransportChunk, error) {
     chunk, ok := <-self.ConsumeCh
     if ok {
@@ -367,10 +372,9 @@ func NewMemoryServer(
 
 func (self *MemoryServer) Serve() {
     for {
-        chunk, err := self.transport.ReadChunk()
-        if err != nil {
-            self.logger.Error(
-                "memory server fails to read first chunk, error: %s", err)
+        chunk := self.transport.ReadNextMessage()
+        if chunk == nil {
+            self.logger.Debug("memory server read no more message")
             // server exit
             return
         }
