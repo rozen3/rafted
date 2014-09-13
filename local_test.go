@@ -229,6 +229,20 @@ func assertNotGetElectionTimeoutNotify(
     }
 }
 
+func assertGetHeartbeatTimeoutNotify(
+    t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration) {
+
+    select {
+    case e := <-notifyChan:
+        assert.Equal(t, ev.EventNotifyHeartbeatTimeout, e.Type(),
+            "expect %s, but actual %s",
+            ev.NotifyTypeString(ev.EventNotifyHeartbeatTimeout),
+            ev.NotifyTypeString(e.Type()))
+    case <-time.After(afterTime):
+        assert.True(t, false)
+    }
+}
+
 func assertGetStateChangeNotify(
     t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
     oldState, newState ev.RaftStateType) {
