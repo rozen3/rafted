@@ -2,6 +2,7 @@ package comm
 
 import (
     "bufio"
+    "bytes"
     "errors"
     "fmt"
     ev "github.com/hhkbp2/rafted/event"
@@ -138,6 +139,16 @@ func (self *MemoryTransportRegister) Get(
     defer self.RUnlock()
     transport, ok = self.transports[id]
     return transport, ok
+}
+
+func (self *MemoryTransportRegister) String() string {
+    self.RLock()
+    defer self.RUnlock()
+    var buf bytes.Buffer
+    for k, _ := range self.transports {
+        buf.WriteString(k + "\n")
+    }
+    return buf.String()
 }
 
 type MemoryTransport struct {
@@ -360,7 +371,8 @@ func (self *MemoryServer) Serve() {
         if err != nil {
             self.logger.Error(
                 "memory server fails to read first chunk, error: %s", err)
-            continue
+            // server exit
+            return
         }
         transport, ok := self.acceptedConnections[chunk.SourceCh]
         if ok {

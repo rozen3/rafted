@@ -171,8 +171,9 @@ func (self *ActivatedPeerState) Handle(
         peerAddr := peerHSM.Addr()
         response, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
-            self.Error("fail to call rpc RequestVoteRequest to peer: %s",
-                peerAddr.String())
+            self.Error(
+                "fail to call rpc RequestVoteRequest to peer: %s, error: %s",
+                peerAddr.String(), err)
             return nil
         }
         peerHSM.SelfDispatch(response)
@@ -404,8 +405,9 @@ func (self *LeaderPeerState) Handle(
         peerAddr := peerHSM.Addr()
         respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, requestEvent)
         if err != nil {
-            self.Error("fail to call rpc AppendEntriesRequest to peer: %s",
-                peerAddr.String())
+            self.Error(
+                "fail to call rpc AppendEntriesRequest to peer: %s, error: %s",
+                peerAddr.String(), err)
             return nil
         }
         appendEntriesRespEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
@@ -496,7 +498,7 @@ func (self *StandardModePeerState) Entry(
 func (self *StandardModePeerState) Exit(
     sm hsm.HSM, event hsm.Event) (state hsm.State) {
 
-    self.Debug("STATE: %s, -> Exit")
+    self.Debug("STATE: %s, -> Exit", self.ID())
     return nil
 }
 
@@ -509,13 +511,15 @@ func (self *StandardModePeerState) Handle(
     hsm.AssertTrue(ok)
     switch event.Type() {
     case ev.EventAppendEntriesRequest:
+        self.Debug("here")
         e, ok := event.(ev.RaftEvent)
         hsm.AssertTrue(ok)
         peerAddr := peerHSM.Addr()
         respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
-            self.Error("fail to call rpc AppendEntriesRequest to peer: %s",
-                peerAddr.String())
+            self.Error(
+                "fail to call rpc AppendEntriesRequest to peer: %s, error: %s",
+                peerAddr.String(), err)
             return nil
         }
         appendEntriesRespEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
@@ -564,6 +568,7 @@ func (self *StandardModePeerState) Handle(
 func (self *StandardModePeerState) SetupReplicating(
     peerHSM *PeerHSM) (event hsm.Event) {
 
+    self.Debug("SetupReplicating")
     leaderPeerState, ok := self.Super().(*LeaderPeerState)
     hsm.AssertTrue(ok)
     matchIndex, nextIndex := leaderPeerState.GetIndexInfo()
@@ -578,15 +583,23 @@ func (self *StandardModePeerState) SetupReplicating(
     case matchIndex == 0:
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
-            local.SendPrior(ev.NewPersistErrorEvent(
-                errors.New("fail to read committed index of log")))
+            message := fmt.Sprintf(
+                "fail to read committed index of log, error: %s", err)
+            local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
+            return nil
+        }
+        lastLogTerm, lastLogIndex, err := local.Log().LastEntryInfo()
+        if err != nil {
+            message := fmt.Sprintf(
+                "fail to read last entry info of log, error: %s", err)
+            local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
             return nil
         }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
             Leader:            local.GetLocalAddr(),
-            PrevLogTerm:       0,
-            PrevLogIndex:      0,
+            PrevLogTerm:       lastLogTerm,
+            PrevLogIndex:      lastLogIndex,
             Entries:           make([]*ps.LogEntry, 0),
             LeaderCommitIndex: committedIndex,
         }
@@ -743,8 +756,9 @@ func (self *SnapshotModePeerState) Handle(
         peerAddr := peerHSM.Addr()
         respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
-            self.Error("fail to call rpc InstallSnapshotRequest to peer: %s",
-                peerAddr.String())
+            self.Error(
+                "fail to call rpc InstallSnapshotRequest to peer: %s, error: %s",
+                peerAddr.String(), err)
             // retry again
             peerHSM.SelfDispatch(event)
         }

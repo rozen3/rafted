@@ -120,9 +120,10 @@ func getTestMemoryServer(
     addr ps.ServerAddr,
     eventHandler func(ev.RaftRequestEvent)) *comm.MemoryServer {
 
-    bindAddr := testServers[0]
+    bindAddr := testServers[1]
     logger := logging.GetLogger("test server #" + bindAddr.String())
     server := comm.NewMemoryServer(&bindAddr, eventHandler, testRegister, logger)
+    go server.Serve()
     return server
 }
 
