@@ -10,6 +10,7 @@ import (
 
 type Backend interface {
     Send(event ev.RaftRequestEvent)
+    Close()
 }
 
 type HSMBackend struct {
@@ -20,6 +21,12 @@ type HSMBackend struct {
 
 func (self *HSMBackend) Send(event ev.RaftRequestEvent) {
     self.local.Send(event)
+}
+
+func (self *HSMBackend) Close() {
+    self.peers.Close()
+    self.local.Close()
+    self.server.Close()
 }
 
 func NewHSMBackend(

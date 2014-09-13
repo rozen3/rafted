@@ -14,6 +14,7 @@ type Peers interface {
     Broadcast(event hsm.Event)
     AddPeers(peerAddrs []ps.ServerAddr)
     RemovePeers(peerAddrs []ps.ServerAddr)
+    Close()
 }
 
 type PeerManager struct {
@@ -64,6 +65,7 @@ func NewPeerManager(
         client:               client,
         eventHandler:         eventHandler,
         local:                local,
+        getLoggerForPeer:     getLoggerForPeer,
     }
     local.SetPeers(object)
     return object
@@ -104,15 +106,25 @@ func (self *PeerManager) RemovePeers(peerAddrs []ps.ServerAddr) {
     peersToRemove := MapSetMinus(self.peerMap, newPeerMap)
     for _, addr := range peersToRemove {
         peer, _ := self.peerMap[addr]
-        peer.Terminate()
+        peer.Close()
         delete(self.peerMap, addr)
     }
+}
+
+func (self *PeerManager) Close() {
+    self.peerLock.Lock()
+    defer self.peerLock.Unlock()
+    for addr, peer := range self.peerMap {
+        peer.Close()
+        delete(self.peerMap, addr)
+    }
+    self.client.Close()
 }
 
 type Peer interface {
     Send(Event hsm.Event)
     SendPrior(event hsm.Event)
-    Terminate()
+    Close()
 
     QueryState() string
 }
@@ -157,7 +169,7 @@ func (self *PeerMan) SendPrior(event hsm.Event) {
     self.peerHSM.SelfDispatch(event)
 }
 
-func (self *PeerMan) Terminate() {
+func (self *PeerMan) Close() {
     self.peerHSM.Terminate()
 }
 
@@ -255,7 +267,6 @@ func (self *PeerHSM) Terminate() {
     self.stopChan <- self
     self.group.Wait()
     self.selfDispatchChan.Close()
-    self.client.Close()
 }
 
 func (self *PeerHSM) Addr() ps.ServerAddr {

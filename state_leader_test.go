@@ -115,8 +115,7 @@ func TestLeaderUnsyncHandlePeerUpdate(t *testing.T) {
     assertLogLastIndex(t, local.Log(), request.PrevLogIndex+1)
     assertLogLastTerm(t, local.Log(), request.Term)
     assertLogCommittedIndex(t, local.Log(), request.PrevLogIndex+1)
-    //
-    local.Terminate()
+    local.Close()
 }
 
 func TestLeaderHandleAppendEntriesRequest(t *testing.T) {
@@ -180,8 +179,7 @@ func TestLeaderHandleAppendEntriesRequest(t *testing.T) {
     assertGetLeaderChangeNotify(t, nchan, 0, leader)
     assertGetCommitNotify(t, nchan, 0, nextTerm-1, nextIndex-1)
     assertGetApplyNotify(t, nchan, 0, nextTerm-1, nextIndex-1)
-    //
-    local.Terminate()
+    local.Close()
 }
 
 func TestLeaderHandleRequestVoteRequest(t *testing.T) {
@@ -213,8 +211,7 @@ func TestLeaderHandleRequestVoteRequest(t *testing.T) {
     assertGetStateChangeNotify(t, nchan, 0,
         ev.RaftStateLeader, ev.RaftStateFollower)
     assertGetTermChangeNotify(t, nchan, 0, nextTerm-1, nextTerm)
-    //
-    local.Terminate()
+    local.Close()
 }
 
 func TestLeaderHandleInstallSnapshotRequest(_ *testing.T) {
@@ -229,8 +226,7 @@ func TestLeaderUnsyncHandleClientReadOnlyRequest(t *testing.T) {
     reqEvent := ev.NewClientReadOnlyRequestEvent(request)
     local.Send(reqEvent)
     assertGetLeaderUnsyncResponseEvent(t, reqEvent)
-    //
-    local.Terminate()
+    local.Close()
 }
 
 func TestLeaderSyncHandleClientReadOnlyRequest(t *testing.T) {
@@ -254,8 +250,7 @@ func TestLeaderSyncHandleClientReadOnlyRequest(t *testing.T) {
     assertGetCommitNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
     assertGetApplyNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
     assertGetClientResponseEvent(t, reqEvent, true, testData)
-    //
-    local.Terminate()
+    local.Close()
 }
 
 func TestLeaderSyncHandleClientAppendRequest(t *testing.T) {
@@ -279,6 +274,5 @@ func TestLeaderSyncHandleClientAppendRequest(t *testing.T) {
     assertGetCommitNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
     assertGetApplyNotify(t, nchan, ElectionTimeout, testTerm+1, testIndex+2)
     assertGetClientResponseEvent(t, reqEvent, true, testData)
-    //
-    local.Terminate()
+    local.Close()
 }

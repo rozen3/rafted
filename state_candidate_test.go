@@ -44,8 +44,7 @@ func TestCandidateElectionTimeout(t *testing.T) {
     assertGetElectionTimeoutNotify(t, nchan, ElectionTimeout)
     assert.Equal(t, StateCandidateID, local.QueryState())
     assert.Equal(t, nextTerm+1, local.GetCurrentTerm())
-    //
-    local.Terminate()
+    local.Close()
 }
 
 func TestCandidateHandleAppendEntriesRequest(t *testing.T) {
@@ -108,8 +107,7 @@ func TestCandidateHandleAppendEntriesRequest(t *testing.T) {
     assert.Equal(t, ps.NilServerAddr, local.GetVotedFor())
     assert.Equal(t, leader, local.GetLeader())
     assert.Equal(t, StateFollowerID, local.QueryState())
-    //
-    local.Terminate()
+    local.Close()
 }
 
 func TestCandidateHandleClientRequest(t *testing.T) {
@@ -127,8 +125,7 @@ func TestCandidateHandleClientRequest(t *testing.T) {
     assert.Equal(t, StateCandidateID, local.QueryState())
     local.Send(reqEvent)
     assertGetLeaderUnknownResponse(t, reqEvent)
-    //
-    local.Terminate()
+    local.Close()
 }
 
 func TestCandidateHandleRequestVoteResponse(t *testing.T) {
@@ -164,6 +161,5 @@ func TestCandidateHandleRequestVoteResponse(t *testing.T) {
     // test internal status
     assert.Equal(t, StateUnsyncID, local.QueryState())
     assert.Equal(t, testTerm+2, local.GetCurrentTerm())
-    //
-    local.Terminate()
+    local.Close()
 }

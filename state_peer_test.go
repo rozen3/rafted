@@ -25,8 +25,7 @@ func TestPeerActivate(t *testing.T) {
     event := ev.NewPeerActivateEvent()
     peer.Send(event)
     assert.Equal(t, StateCandidatePeerID, peer.QueryState())
-    //
-    peer.Terminate()
+    peer.Close()
 }
 
 func TestPeerCandidateEnterLeaderOnEnterLeaderEvent(t *testing.T) {
@@ -51,7 +50,7 @@ func TestPeerCandidateEnterLeaderOnEnterLeaderEvent(t *testing.T) {
     peer.Send(ev.NewPeerEnterLeaderEvent())
     assert.Equal(t, StateStandardModePeerID, peer.QueryState())
 
-    peer.Terminate()
+    peer.Close()
     assert.Nil(t, server.Close())
 }
 
@@ -110,7 +109,7 @@ func TestPeerCandidateEnterLeaderOnAppendEntriesRequest(t *testing.T) {
     assert.Equal(t, StateLeaderPeerID, peer.QueryState())
     assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
 
-    peer.Terminate()
+    peer.Close()
     assert.Nil(t, server.Close())
 }
 
@@ -158,7 +157,7 @@ func TestPeerLeaderHeartbeatTimeout(t *testing.T) {
     assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
     assert.Equal(t, 1, len(mockLocal.PriorEvents))
 
-    peer.Terminate()
+    peer.Close()
     assert.Nil(t, server.Close())
 }
 
@@ -249,6 +248,6 @@ func TestPeerStandardModeCatchingUp(t *testing.T) {
         assert.Equal(t, testIndex+uint64(i), e.Message.MatchIndex)
     }
 
-    peer.Terminate()
+    peer.Close()
     assert.Nil(t, server.Close())
 }

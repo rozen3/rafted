@@ -396,7 +396,7 @@ func InitMemberChangeStatus(
 type Local interface {
     Send(event hsm.Event)
     SendPrior(event hsm.Event)
-    Terminate()
+    Close()
 
     QueryState() string
     GetCurrentTerm() uint64
@@ -474,7 +474,7 @@ func (self *LocalManager) SendPrior(event hsm.Event) {
     self.localHSM.SelfDispatch(event)
 }
 
-func (self *LocalManager) Terminate() {
+func (self *LocalManager) Close() {
     self.localHSM.Terminate()
 }
 

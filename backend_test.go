@@ -96,7 +96,51 @@ func NewTestHSMBackend(
     }, nil
 }
 
-func TestHSMBackend(t *testing.T) {
-    // TODO add impl
-    assert.Equal(t, true, true)
+func TestBackendOneNodeCluster(t *testing.T) {
+    servers := testServers[0:1]
+    serverAddr := servers[0]
+    backend, err := NewTestHSMBackend(serverAddr, servers)
+    assert.Nil(t, err)
+    assert.NotNil(t, backend)
+    time.Sleep(ElectionTimeout)
+    request := &ev.ClientAppendRequest{
+        Data: testData,
+    }
+    reqEvent := ev.NewClientAppendRequestEvent(request)
+    backend.Send(reqEvent)
+    assertGetClientResponseEvent(t, reqEvent, true, testData)
+}
+
+func TestBackendContruction(t *testing.T) {
+    servers := testServers
+    clusterSize := 3
+    backends := make([]Backend, 0, clusterSize)
+    for i := 0; i < clusterSize; i++ {
+        backend, err := NewTestHSMBackend(servers[i], servers)
+        assert.Nil(t, err)
+        backends = append(backends, backend)
+    }
+
+    request := &ev.ClientAppendRequest{
+        Data: testData,
+    }
+    reqEvent := ev.NewClientAppendRequestEvent(request)
+    backends[0].Send(reqEvent)
+    for i := 0; i < len(backends); i++ {
+        event := reqEvent.RecvResponse()
+        switch event.Type() {
+        case ev.EventLeaderRedirectResponse:
+            continue
+        case ev.EventClientResponse:
+            e, ok := event.(*ev.ClientResponseEvent)
+            assert.True(t, ok)
+            response := e.Response
+            assert.Equal(t, true, response.Success)
+            assert.Equal(t, testData, response.Data)
+        }
+    }
+    // cleanup
+    for _, backend := range backends {
+        backend.Close()
+    }
 }

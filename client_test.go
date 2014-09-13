@@ -51,6 +51,10 @@ func (self *MockBackend) Send(event ev.RaftRequestEvent) {
     event.SendResponse(ev.NewClientResponseEvent(response))
 }
 
+func (self *MockBackend) Close() {
+    // empty body
+}
+
 func TestSimpleClient(t *testing.T) {
     backend := NewMockBackend()
     timeout := TestTimeout
@@ -86,6 +90,10 @@ func NewMockBackend2(
 func (self *MockBackend2) Send(event ev.RaftRequestEvent) {
     respEvent := self.SendFunc(event)
     event.SendResponse(respEvent)
+}
+
+func (self *MockBackend2) Close() {
+    // empty body
 }
 
 func setupTestRedirectClient(

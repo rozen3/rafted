@@ -166,8 +166,13 @@ func (self *FollowerState) Handle(
         e, ok := event.(ev.RaftRequestEvent)
         hsm.AssertTrue(ok)
         // redirect client to current leader
-        response := &ev.LeaderRedirectResponse{localHSM.GetLeader()}
-        e.SendResponse(ev.NewLeaderRedirectResponseEvent(response))
+        leader := localHSM.GetLeader()
+        if ps.AddrEqual(&leader, &ps.NilServerAddr) {
+            e.SendResponse(ev.NewLeaderUnknownResponseEvent())
+        } else {
+            response := &ev.LeaderRedirectResponse{leader}
+            e.SendResponse(ev.NewLeaderRedirectResponseEvent(response))
+        }
         return nil
     case event.Type() == ev.EventTimeoutElection:
         e, ok := event.(*ev.ElectionTimeoutEvent)

@@ -49,7 +49,7 @@ func (self *MockLocal) SendPrior(event hsm.Event) {
     self.Mock.Called(event)
 }
 
-func (self *MockLocal) Terminate() {
+func (self *MockLocal) Close() {
     self.Mock.Called()
 }
 
@@ -172,8 +172,4 @@ func getTestPeerAndLocalSafe(
     peer, local, err := getTestPeerAndLocal(eventHandler)
     assert.Nil(t, err)
     return peer, local
-}
-
-func TestPeer(_ *testing.T) {
-    // TODO add impl
 }
