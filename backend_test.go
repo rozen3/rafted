@@ -114,7 +114,6 @@ func TestBackendOneNodeCluster(t *testing.T) {
 }
 
 func TestBackendContruction(t *testing.T) {
-    logger := logging.GetLogger("abc")
     servers := testServers[0:2]
     clusterSize := 2
     backends := make([]Backend, 0, clusterSize)
@@ -131,11 +130,9 @@ func TestBackendContruction(t *testing.T) {
     reqEvent := ev.NewClientAppendRequestEvent(request)
     for i := 0; i < len(backends); i++ {
         backends[i].Send(reqEvent)
-        logger.Debug("** ResultChan: %#v", reqEvent.ResultChan)
         event := reqEvent.RecvResponse()
         switch event.Type() {
         case ev.EventLeaderRedirectResponse:
-            logger.Debug("** redirect")
             continue
         case ev.EventClientResponse:
             e, ok := event.(*ev.ClientResponseEvent)
