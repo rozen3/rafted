@@ -12,10 +12,18 @@ import (
     "io"
     "net"
     "sync"
+    "time"
 )
 
 const (
     DefaultTransportBufferSize = 16
+)
+
+var (
+    MemoryTransportReadTimeout error = errors.New(
+        "timeout on memory transport read")
+    MemoryTransportWriteTimeout error = errors.New(
+        "timeout on memory transport write")
 )
 
 type TransportChunk struct {
@@ -25,13 +33,16 @@ type TransportChunk struct {
 
 type MemoryServerTransport struct {
     addr       net.Addr
+    timeout    time.Duration
     ConsumeCh  chan *TransportChunk
     ResponseCh chan []byte
     register   *MemoryTransportRegister
 }
 
 func NewMemoryServerTransport(
-    addr net.Addr, register *MemoryTransportRegister) *MemoryServerTransport {
+    addr net.Addr,
+    timeout time.Duration,
+    register *MemoryTransportRegister) *MemoryServerTransport {
 
     return &MemoryServerTransport{
         addr:      addr,
@@ -59,8 +70,12 @@ func (self *MemoryServerTransport) ReadChunk() (*TransportChunk, error) {
 }
 
 func (self *MemoryServerTransport) WriteChunk(chunk *TransportChunk) error {
-    self.ConsumeCh <- chunk
-    return nil
+    select {
+    case self.ConsumeCh <- chunk:
+        return nil
+    case <-time.After(self.timeout):
+        return MemoryTransportWriteTimeout
+    }
 }
 
 func BytesCopy(dest []byte, src []byte) int {
@@ -158,14 +173,16 @@ func (self *MemoryTransportRegister) String() string {
 
 type MemoryTransport struct {
     addr      net.Addr
+    timeout   time.Duration
     consumeCh chan []byte
     register  *MemoryTransportRegister
     peer      *MemoryServerTransport
 }
 
-func NewMemoryTransport(addr net.Addr, register *MemoryTransportRegister) *MemoryTransport {
+func NewMemoryTransport(addr net.Addr, timeout time.Duration, register *MemoryTransportRegister) *MemoryTransport {
     return &MemoryTransport{
         addr:      addr,
+        timeout:   timeout,
         consumeCh: make(chan []byte, DefaultTransportBufferSize),
         register:  register,
     }
@@ -190,9 +207,13 @@ func (self *MemoryTransport) Close() error {
 }
 
 func (self *MemoryTransport) Read(b []byte) (int, error) {
-    data := <-self.consumeCh
-    n := BytesCopy(b, data)
-    return n, nil
+    select {
+    case data := <-self.consumeCh:
+        n := BytesCopy(b, data)
+        return n, nil
+    case <-time.After(self.timeout):
+        return 0, MemoryTransportReadTimeout
+    }
 }
 
 func (self *MemoryTransport) Write(b []byte) (int, error) {
@@ -215,10 +236,12 @@ type MemoryConnection struct {
 }
 
 func NewMemoryConnection(
-    addr net.Addr, register *MemoryTransportRegister) *MemoryConnection {
+    addr net.Addr,
+    timeout time.Duration,
+    register *MemoryTransportRegister) *MemoryConnection {
 
     conn := &MemoryConnection{
-        MemoryTransport: NewMemoryTransport(addr, register),
+        MemoryTransport: NewMemoryTransport(addr, timeout, register),
     }
     conn.reader = bufio.NewReader(conn.MemoryTransport)
     conn.writer = bufio.NewWriter(conn.MemoryTransport)
@@ -248,15 +271,19 @@ type MemoryClient struct {
     connectionPoolLock sync.Mutex
 
     poolSize int
+    timeout  time.Duration
     register *MemoryTransportRegister
 }
 
 func NewMemoryClient(
-    poolSize int, register *MemoryTransportRegister) *MemoryClient {
+    poolSize int,
+    timeout time.Duration,
+    register *MemoryTransportRegister) *MemoryClient {
 
     return &MemoryClient{
         connectionPool: make(map[string][]*MemoryConnection),
         poolSize:       poolSize,
+        timeout:        timeout,
         register:       register,
     }
 }
@@ -323,7 +350,7 @@ func (self *MemoryClient) getConnection(
         return connection, nil
     }
 
-    connection = NewMemoryConnection(target, self.register)
+    connection = NewMemoryConnection(target, self.timeout, self.register)
     if err := connection.Open(); err != nil {
         return nil, err
     }
@@ -346,6 +373,7 @@ func (self *MemoryClient) Close() error {
 }
 
 type MemoryServer struct {
+    timeout             time.Duration
     register            *MemoryTransportRegister
     transport           *MemoryServerTransport
     acceptedConnections map[chan []byte]*MemoryServerTransport
@@ -355,13 +383,15 @@ type MemoryServer struct {
 
 func NewMemoryServer(
     bindAddr net.Addr,
+    timeout time.Duration,
     eventHandler func(ev.RaftRequestEvent),
     register *MemoryTransportRegister,
     logger logging.Logger) *MemoryServer {
 
-    transport := NewMemoryServerTransport(bindAddr, register)
+    transport := NewMemoryServerTransport(bindAddr, timeout, register)
     transport.Open()
     return &MemoryServer{
+        timeout:             timeout,
         register:            register,
         transport:           transport,
         acceptedConnections: make(map[chan []byte]*MemoryServerTransport),
@@ -389,7 +419,7 @@ func (self *MemoryServer) Serve() {
                 IP: fmt.Sprintf(
                     "%s.%#v", self.transport.Addr().String(), chunk.SourceCh),
             }
-            transport := NewMemoryServerTransport(&addr, self.register)
+            transport := NewMemoryServerTransport(&addr, self.timeout, self.register)
             transport.ResponseCh = chunk.SourceCh
             self.acceptedConnections[chunk.SourceCh] = transport
             transport.WriteChunk(chunk)

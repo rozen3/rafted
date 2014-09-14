@@ -389,6 +389,8 @@ func (self *Applier) FollowerCommitUpTo(logIndex uint64) {
 }
 
 func (self *Applier) LeaderCommit(entry *InflightEntry) {
+    self.logger.Debug(
+        "** applier LeaderCommit(entry, index=%d)", entry.Request.LogEntry.Index)
     self.leaderCommitChan.Send(entry)
 }
 
@@ -460,6 +462,8 @@ func (self *Applier) ApplyLogEntry(
 }
 
 func (self *Applier) ApplyInflightLog(entry *InflightEntry) {
+    self.logger.Debug(
+        "** applier ApplyInflightLog(entry, index=%d)", entry.Request.LogEntry.Index)
     committedIndex, err := self.log.CommittedIndex()
     if err != nil {
         self.handleLogError(
@@ -495,6 +499,7 @@ func (self *Applier) ApplyInflightLog(entry *InflightEntry) {
             "applier: fail to apply log at index: %d", logIndex)
         return
     }
+    self.logger.Debug("** applier apply log at index: %d", logIndex)
 
     if entry.Request.LogEntry.Type == ps.LogMemberChange {
         // don't response client here
@@ -510,6 +515,9 @@ func (self *Applier) ApplyInflightLog(entry *InflightEntry) {
             Data:    result,
         }
         entry.Request.ResultChan <- ev.NewClientResponseEvent(response)
+        self.logger.Debug(
+            "** applier response client for index: %d to chan: %#v",
+            logIndex, entry.Request.ResultChan)
     }
 
     self.notifier.Notify(
@@ -583,4 +591,21 @@ func MapSetMinus(
         }
     }
     return diff
+}
+
+func AddrsString(addrs []ps.ServerAddr) []string {
+    result := make([]string, 0, len(addrs))
+    for _, addr := range addrs {
+        result = append(result, addr.String())
+    }
+    return result
+}
+
+func EntriesInfo(entries []*ps.LogEntry) []string {
+    result := make([]string, 0, len(entries))
+    for _, entry := range entries {
+        info := fmt.Sprintf("Term: %d Index: %d", entry.Term, entry.Index)
+        result = append(result, info)
+    }
+    return result
 }

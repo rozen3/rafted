@@ -32,28 +32,31 @@ type Logger interface {
 }
 
 type FileLogger struct {
+    name string
 }
 
 func (self *FileLogger) Critical(format string, args ...interface{}) {
-    logger.Fatalf(format, args...)
+    logger.Fatalf(self.name+" "+format, args...)
 }
 
 func (self *FileLogger) Error(format string, args ...interface{}) {
-    logger.Errorf(format, args...)
+    logger.Errorf(self.name+" "+format, args...)
 }
 
 func (self *FileLogger) Warning(format string, args ...interface{}) {
-    logger.Warnf(format, args...)
+    logger.Warnf(self.name+" "+format, args...)
 }
 
 func (self *FileLogger) Info(format string, args ...interface{}) {
-    logger.Infof(format, args...)
+    logger.Infof(self.name+" "+format, args...)
 }
 
 func (self *FileLogger) Debug(format string, args ...interface{}) {
-    logger.Debugf(format, args...)
+    logger.Debugf(self.name+" "+format, args...)
 }
 
-func GetLogger(_ string) Logger {
-    return &FileLogger{}
+func GetLogger(name string) Logger {
+    return &FileLogger{
+        name: name,
+    }
 }

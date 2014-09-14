@@ -345,6 +345,7 @@ func (self *LocalHSM) CommitInflightLog(entry *InflightEntry) error {
             "fail to store committed index of log, error: %s", err)
         return errors.New(message)
     }
+    self.Debug("** commit inflight log at index: %d to applier", logIndex)
     self.applier.LeaderCommit(entry)
     return nil
 }

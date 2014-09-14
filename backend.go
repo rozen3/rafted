@@ -24,8 +24,8 @@ func (self *HSMBackend) Send(event ev.RaftRequestEvent) {
 }
 
 func (self *HSMBackend) Close() {
-    self.peers.Close()
     self.local.Close()
+    self.peers.Close()
     self.server.Close()
 }
 
@@ -82,7 +82,8 @@ func NewHSMBackend(
         client,
         eventHandler1,
         local,
-        getLoggerForPeer)
+        getLoggerForPeer,
+        logger)
     server, err := comm.NewSocketServer(&bindAddr, eventHandler2, logger)
     if err != nil {
         // TODO add cleanup

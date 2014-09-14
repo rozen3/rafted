@@ -7,6 +7,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
+    "strings"
 )
 
 type LeaderState struct {
@@ -190,6 +191,7 @@ func (self *LeaderState) Handle(
         self.HandleClientRequest(localHSM, e.Request.Data, e.ResultChan)
         return nil
     case ev.EventClientAppendRequest:
+        self.Debug("receive ClientAppendRequestEvent")
         e, ok := event.(*ev.ClientAppendRequestEvent)
         hsm.AssertTrue(ok)
         self.HandleClientRequest(localHSM, e.Request.Data, e.ResultChan)
@@ -197,8 +199,6 @@ func (self *LeaderState) Handle(
     case ev.EventPeerReplicateLog:
         e, ok := event.(*ev.PeerReplicateLogEvent)
         hsm.AssertTrue(ok)
-        self.Debug("replicate peer %s, log index: %d",
-            e.Message.Peer.String(), e.Message.MatchIndex)
         goodToCommit, err := self.Inflight.Replicate(
             e.Message.Peer, e.Message.MatchIndex)
         if err != nil {
@@ -211,7 +211,11 @@ func (self *LeaderState) Handle(
             err = self.CommitInflightEntries(localHSM, allCommitted)
             if err != nil {
                 localHSM.SelfDispatch(ev.NewPersistErrorEvent(err))
+                return nil
             }
+            self.Debug("commit log index starts from %d to %d",
+                allCommitted[0].Request.LogEntry.Index,
+                allCommitted[len(allCommitted)-1].Request.LogEntry.Index)
         }
         return nil
     case ev.EventStepdown:
@@ -248,10 +252,15 @@ func (self *LeaderState) StartFlight(
 
     term := localHSM.GetCurrentTerm()
     log := localHSM.Log()
-    lastLogIndex, err := log.LastIndex()
+    lastLogTerm, lastLogIndex, err := log.LastEntryInfo()
     if err != nil {
-        message := fmt.Sprintf("fail to read last index of log, error: %s", err)
+        message := fmt.Sprintf(
+            "fail to read last entry info of log, error: %s", err)
         return errors.New(message)
+    }
+    committedIndex, err := log.CommittedIndex()
+    if err != nil {
+        return errors.New("fail to read committed index of log")
     }
 
     // construct durable log entry
@@ -271,7 +280,8 @@ func (self *LeaderState) StartFlight(
 
     // persist log locally
     if err := log.StoreLog(logEntry); err != nil {
-        return errors.New("fail to store log")
+        message := fmt.Sprintf("fail to store log, error: %s", err)
+        return errors.New(message)
     }
 
     if ps.IsInMemeberChange(conf) {
@@ -280,45 +290,32 @@ func (self *LeaderState) StartFlight(
     }
 
     //  and inflight log entry
-    request := &InflightRequest{
+    inflightRequest := &InflightRequest{
         LogEntry:   logEntry,
         ResultChan: resultChan,
     }
-    self.Inflight.Add(request)
+    self.Inflight.Add(inflightRequest)
     // TODO add check for Add()
 
     // send AppendEntriesReqeust to all peer
-    lastLogTerm, lastLogIndex, err := log.LastEntryInfo()
-    if err != nil {
-        message := fmt.Sprintf(
-            "fail to read last entry info of log, error: %s", err)
-        return errors.New(message)
-    }
-    committedIndex, err := log.CommittedIndex()
-    if err != nil {
-        return errors.New("fail to read committed index of log")
-    }
-
-    // retrieve all uncommitted logs
-    logEntries, err := log.GetLogInRange(committedIndex+1, lastLogIndex)
-    if err != nil {
-        message := fmt.Sprintf("fail to read log in range [%d, %d]",
-            committedIndex+1, lastLogIndex)
-        return errors.New(message)
-    }
-    req := &ev.AppendEntriesRequest{
+    request := &ev.AppendEntriesRequest{
         Term:              term,
         Leader:            localHSM.GetLocalAddr(),
         PrevLogIndex:      lastLogIndex,
         PrevLogTerm:       lastLogTerm,
-        Entries:           logEntries,
+        Entries:           []*ps.LogEntry{logEntry},
         LeaderCommitIndex: committedIndex,
     }
-    event := ev.NewAppendEntriesRequestEvent(req)
+    self.Debug("StartFlight() AE, Term: %d, PrevLogTerm: %d, PrevLogIndex: %d, "+
+        "Entries size: %d, LeaderCommitIndex: %d, entries info: %s",
+        request.Term, request.PrevLogTerm, request.PrevLogIndex,
+        len(request.Entries), request.LeaderCommitIndex,
+        "["+strings.Join(EntriesInfo(request.Entries), ",")+"]")
+    event := ev.NewAppendEntriesRequestEvent(request)
 
     selfResponse := &ev.AppendEntriesResponse{
         Term:         term,
-        LastLogIndex: lastLogIndex,
+        LastLogIndex: logIndex,
         Success:      true,
     }
     localHSM.SelfDispatch(ev.NewAppendEntriesResponseEvent(selfResponse))

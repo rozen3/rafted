@@ -30,6 +30,7 @@ const (
     StateStandardModePeerID = "standard_mode_peer"
     StateSnapshotModePeerID = "snapshot_mode_peer"
     StatePipelineModePeerID = "pipeline_mode_peer"
+    StatePersistErrorPeerID = "persist_error_peer"
 )
 
 const (

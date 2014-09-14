@@ -6,6 +6,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
+    "strings"
     "sync"
     "time"
 )
@@ -29,6 +30,7 @@ type PeerManager struct {
     eventHandler         func(ev.RaftEvent)
     local                Local
     getLoggerForPeer     func(ps.ServerAddr) logging.Logger
+    logger               logging.Logger
 }
 
 func NewPeerManager(
@@ -40,24 +42,11 @@ func NewPeerManager(
     client comm.Client,
     eventHandler func(ev.RaftEvent),
     local Local,
-    getLoggerForPeer func(ps.ServerAddr) logging.Logger) *PeerManager {
+    getLoggerForPeer func(ps.ServerAddr) logging.Logger,
+    logger logging.Logger) *PeerManager {
 
-    peerMap := make(map[ps.ServerAddr]Peer)
-    for _, addr := range peerAddrs {
-        logger := getLoggerForPeer(addr)
-        peerMap[addr] = NewPeerMan(
-            heartbeatTimeout,
-            maxTimeoutJitter,
-            maxAppendEntriesSize,
-            maxSnapshotChunkSize,
-            addr,
-            client,
-            eventHandler,
-            local,
-            logger)
-    }
     object := &PeerManager{
-        peerMap:              peerMap,
+        peerMap:              make(map[ps.ServerAddr]Peer),
         heartbeatTimeout:     heartbeatTimeout,
         maxTimeoutJitter:     maxTimeoutJitter,
         maxAppendEntriesSize: maxAppendEntriesSize,
@@ -66,6 +55,7 @@ func NewPeerManager(
         eventHandler:         eventHandler,
         local:                local,
         getLoggerForPeer:     getLoggerForPeer,
+        logger:               logger,
     }
     local.SetPeers(object)
     return object
@@ -74,6 +64,7 @@ func NewPeerManager(
 func (self *PeerManager) Broadcast(event hsm.Event) {
     self.peerLock.RLock()
     defer self.peerLock.RUnlock()
+    self.logger.Debug("Broadcast(): %s", ev.EventString(event))
     for _, peer := range self.peerMap {
         peer.Send(event)
     }
@@ -82,8 +73,11 @@ func (self *PeerManager) Broadcast(event hsm.Event) {
 func (self *PeerManager) AddPeers(peerAddrs []ps.ServerAddr) {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
+    self.logger.Debug("AddPeers(): %#v", peerAddrs)
     newPeerMap := AddrsToMap(peerAddrs)
     peersToAdd := MapSetMinus(newPeerMap, self.peerMap)
+    self.logger.Debug(
+        "peers to add: %#v", strings.Join(AddrsString(peersToAdd), " "))
     for _, addr := range peersToAdd {
         logger := self.getLoggerForPeer(addr)
         self.peerMap[addr] = NewPeerMan(
@@ -102,8 +96,11 @@ func (self *PeerManager) AddPeers(peerAddrs []ps.ServerAddr) {
 func (self *PeerManager) RemovePeers(peerAddrs []ps.ServerAddr) {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
+    self.logger.Debug("RemovePeers(): %#v", peerAddrs)
     newPeerMap := AddrsToMap(peerAddrs)
     peersToRemove := MapSetMinus(self.peerMap, newPeerMap)
+    self.logger.Debug(
+        "peers to remove: %#v", strings.Join(AddrsString(peersToRemove), " "))
     for _, addr := range peersToRemove {
         peer, _ := self.peerMap[addr]
         peer.Close()
@@ -114,6 +111,7 @@ func (self *PeerManager) RemovePeers(peerAddrs []ps.ServerAddr) {
 func (self *PeerManager) Close() {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
+    self.logger.Debug("PeerManager.Close()")
     for addr, peer := range self.peerMap {
         peer.Close()
         delete(self.peerMap, addr)
@@ -155,6 +153,7 @@ func NewPeerMan(
     NewStandardModePeerState(leaderPeerState, maxAppendEntriesSize, logger)
     NewSnapshotModePeerState(leaderPeerState, maxSnapshotChunkSize, logger)
     NewPipelineModePeerState(leaderPeerState, logger)
+    NewPersistErrorPeerState(peerState, logger)
     hsm.NewTerminal(top)
     peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler, local)
     peerHSM.Init()

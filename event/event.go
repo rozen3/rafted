@@ -1,6 +1,7 @@
 package event
 
 import (
+    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ps "github.com/hhkbp2/rafted/persist"
 )
@@ -135,7 +136,7 @@ func EventTypeString(event hsm.EventType) string {
     case EventPersistErrorResponse:
         return "PersistErrorResponseEvent"
     default:
-        return "Unknown Event"
+        return fmt.Sprintf("Unknown Event: %d", event)
     }
 }
 

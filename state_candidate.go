@@ -118,7 +118,24 @@ func (self *CandidateState) Handle(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     switch {
-    // TODO process RequestVoteRequestEvent here?
+    case event.Type() == ev.EventRequestVoteRequest:
+        e, ok := event.(*ev.RequestVoteRequestEvent)
+        hsm.AssertTrue(ok)
+        term := localHSM.GetCurrentTerm()
+        if e.Request.Term > term {
+            self.Debug("candidate receive RequestVoteRequest with term: %d "+
+                "> local term: %d", e.Request.Term, term)
+            localHSM.SetCurrentTermWithNotify(e.Request.Term)
+            localHSM.SelfDispatch(ev.NewStepdownEvent())
+            localHSM.SelfDispatch(event)
+            return nil
+        }
+        response := &ev.RequestVoteResponse{
+            Term:    term,
+            Granted: false,
+        }
+        e.SendResponse(ev.NewRequestVoteResponseEvent(response))
+        return nil
     case event.Type() == ev.EventRequestVoteResponse:
         e, ok := event.(*ev.RequestVoteResponseEvent)
         hsm.AssertTrue(ok)
@@ -129,7 +146,7 @@ func (self *CandidateState) Handle(
         }
 
         if e.Response.Term > term {
-            self.Debug("candidate receive RequestVoteRequest with term: %d"+
+            self.Debug("candidate receive RequestVoteResponse with term: %d"+
                 " > local term: %d", e.Response.Term, term)
             localHSM.SetCurrentTermWithNotify(e.Response.Term)
             localHSM.SelfDispatch(ev.NewStepdownEvent())
@@ -137,7 +154,7 @@ func (self *CandidateState) Handle(
         }
 
         if e.Response.Granted {
-            self.Info("candidate receive Granted RequestVoteRequest from: %s",
+            self.Info("candidate receive Granted RequestVoteResponse from: %s",
                 e.FromAddr.String())
             if err := self.condition.AddVote(e.FromAddr); err != nil {
                 self.Error("candidate fail to add vote for addr: %s",

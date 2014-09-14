@@ -111,6 +111,7 @@ func (self *FollowerState) Handle(
     case event.Type() == ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
+        self.Debug("*** %#v", e.Request)
         // Update to latest term if we see newer term
         if e.Request.Term > localHSM.GetCurrentTerm() {
             localHSM.SetCurrentTermWithNotify(e.Request.Term)
@@ -128,6 +129,8 @@ func (self *FollowerState) Handle(
         }
         response := self.HandleAppendEntriesRequest(
             localHSM, e.Request, lastLogIndex)
+        self.Debug("response AE with Term: %d, LastLogIndex: %d, Success: %t",
+            response.Term, response.LastLogIndex, response.Success)
         e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
         return nil
     case event.Type() == ev.EventInstallSnapshotRequest:
@@ -310,10 +313,11 @@ func (self *FollowerState) HandleAppendEntriesRequest(
     // store any new entries
     if n := len(request.Entries); n > 0 {
         first := request.Entries[0]
-        // Delete any conflicting entries
+        // delete any conflicting entries
         if first.Index <= lastLogIndex {
-            self.Info("append entries request first log index: %d less than"+
-                " local last log index: %d", first.Index, lastLogIndex)
+            self.Info("AppendEntriesRequest log entry start from "+
+                "index: %d, less than local last log index: %d",
+                first.Index, lastLogIndex)
             if err := log.TruncateAfter(first.Index); err != nil {
                 message := fmt.Sprintf(
                     "fail to truncate log after index: %d, error: %s",
@@ -357,7 +361,9 @@ func (self *FollowerState) HandleAppendEntriesRequest(
             localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
             return response
         }
+        self.Debug("*** update commit index from %d to %d", committedIndex, index)
         fromIndex := Min(committedIndex+1, index)
+        self.Debug("*** notify commit from index %d to %d", fromIndex, index)
         entries, err := localHSM.Log().GetLogInRange(fromIndex, index)
         if err != nil {
             message := fmt.Sprintf("fail to read log in range [%d, %d]",
@@ -407,12 +413,19 @@ func (self *FollowerState) checkPrevIndex(
     localHSM *LocalHSM, prevLogIndex, prevLogTerm uint64) bool {
 
     var logTerm uint64 = 0
-    if prevLogIndex > 0 {
+    lastTerm, lastIndex, err := localHSM.Log().LastEntryInfo()
+    if err != nil {
+        message := fmt.Sprintf(
+            "fail to read last entry info of log, error: %s", err)
+        localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+        return false
+    }
+    if prevLogIndex == lastIndex {
+        logTerm = lastTerm
+    } else {
         prevLog, err := localHSM.Log().GetLog(prevLogIndex)
         if err != nil {
-            message := fmt.Sprintf("fail to read log at index: %d, error: %s",
-                prevLogIndex, err)
-            localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(message)))
+            self.Warning("fail to read log at index: %d, error: %s", prevLogIndex, err)
             return false
         }
         logTerm = prevLog.Term
@@ -455,6 +468,13 @@ func (self *FollowerState) dispatchMemberChangeEvents(
             "fail to read committed index of log")))
         return false
     }
+
+    // No more log is appended or commited, in this case:
+    // committedIndex == newCommittedIndex == lastLogIndex == newLastLogIndex
+    if committedIndex == newLastLogIndex {
+        return true
+    }
+
     logEntries, err := log.GetLogInRange(committedIndex+1, newLastLogIndex)
     if err != nil {
         message := fmt.Sprintf("fail to read log in range [%d, %d]",

@@ -9,17 +9,19 @@ import (
     "github.com/hhkbp2/testify/assert"
     "github.com/ugorji/go/codec"
     "testing"
+    "time"
 )
 
 var (
     testData     []byte = []byte(str.RandomString(100))
     testPoolSize        = 2
+    testTimeout         = time.Millisecond * 50
 )
 
 func TestMemoryServerTransport(t *testing.T) {
     addr := ps.RandomMemoryServerAddr()
     register := NewMemoryTransportRegister()
-    transport := NewMemoryServerTransport(&addr, register)
+    transport := NewMemoryServerTransport(&addr, testTimeout, register)
     transport.Open()
     sourceChan := make(chan []byte, 1)
     chunk := &TransportChunk{
@@ -88,10 +90,10 @@ func TestMemoryTransport(t *testing.T) {
     serverAddr := ps.RandomMemoryServerAddr()
     addr := &serverAddr
     register := NewMemoryTransportRegister()
-    serverTran := NewMemoryServerTransport(addr, register)
+    serverTran := NewMemoryServerTransport(addr, testTimeout, register)
     err := serverTran.Open()
     assert.Nil(t, err)
-    clientTran := NewMemoryTransport(addr, register)
+    clientTran := NewMemoryTransport(addr, testTimeout, register)
     // test PeerAddr()
     peerAddr := clientTran.PeerAddr()
     assert.Equal(t, addr, peerAddr)
@@ -176,12 +178,12 @@ func TestMemoryConnection(t *testing.T) {
     serverAddr := ps.RandomMemoryServerAddr()
     addr := &serverAddr
     register := NewMemoryTransportRegister()
-    serverTran := NewMemoryServerTransport(addr, register)
+    serverTran := NewMemoryServerTransport(addr, testTimeout, register)
     err := serverTran.Open()
     assert.Nil(t, err)
     reqEvent, respEvent := getTestAppendEntriesEvents(serverAddr)
     startServerOnTran(t, serverTran, reqEvent, respEvent)
-    conn := NewMemoryConnection(addr, register)
+    conn := NewMemoryConnection(addr, testTimeout, register)
     // test Open()
     err = conn.Open()
     assert.Nil(t, err)
@@ -200,11 +202,11 @@ func TestMemoryConnection(t *testing.T) {
 func TestMemoryClient(t *testing.T) {
     serverAddr := ps.RandomMemoryServerAddr()
     register := NewMemoryTransportRegister()
-    serverTran := NewMemoryServerTransport(&serverAddr, register)
+    serverTran := NewMemoryServerTransport(&serverAddr, testTimeout, register)
     serverTran.Open()
     reqEvent, respEvent := getTestAppendEntriesEvents(serverAddr)
     startServerOnTran(t, serverTran, reqEvent, respEvent)
-    client := NewMemoryClient(testPoolSize, register)
+    client := NewMemoryClient(testPoolSize, testTimeout, register)
     // test CallRPCTo()
     event, err := client.CallRPCTo(&serverAddr, reqEvent)
     assert.Nil(t, err)
@@ -228,9 +230,9 @@ func TestMemoryServer(t *testing.T) {
         assert.Equal(t, reqEvent.Request, e.Request)
         e.SendResponse(respEvent)
     }
-    server := NewMemoryServer(&serverAddr, eventHandler, register, logger)
+    server := NewMemoryServer(&serverAddr, testTimeout, eventHandler, register, logger)
     go server.Serve()
-    client := NewMemoryClient(testPoolSize, register)
+    client := NewMemoryClient(testPoolSize, testTimeout, register)
     event, err := client.CallRPCTo(&serverAddr, reqEvent)
     assert.Nil(t, err)
     assert.Equal(t, event.Type(), ev.EventAppendEntriesResponse)

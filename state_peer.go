@@ -8,6 +8,7 @@ import (
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "io"
+    "strings"
     "sync"
     "sync/atomic"
     "time"
@@ -58,6 +59,9 @@ func (self *PeerState) Handle(sm hsm.HSM, event hsm.Event) (state hsm.State) {
             StateID: peerHSM.StdHSM.State.ID(),
         }
         e.SendResponse(ev.NewQueryStateResponseEvent(response))
+        return nil
+    case ev.EventPersistError:
+        sm.QTran(StatePersistErrorPeerID)
         return nil
     case ev.EventTerm:
         sm.QTran(hsm.TerminalStateID)
@@ -342,6 +346,33 @@ func (self *LeaderPeerState) Handle(
     hsm.AssertTrue(ok)
     local := peerHSM.Local()
     switch event.Type() {
+    case ev.EventAppendEntriesRequest:
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
+        hsm.AssertTrue(ok)
+        self.Debug("call AE RPC to peer with Term: %d, PrevLogTerm: %d, "+
+            "PrevLogIndex: %d, Entries size: %d, LeaderCommitIndex: %d, "+
+            "entries info: %s",
+            e.Request.Term, e.Request.PrevLogTerm, e.Request.PrevLogIndex,
+            len(e.Request.Entries), e.Request.LeaderCommitIndex,
+            "["+strings.Join(EntriesInfo(e.Request.Entries), ",")+"]")
+        peerAddr := peerHSM.Addr()
+        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
+        if err != nil {
+            self.Error(
+                "fail to call rpc AppendEntriesRequest to peer: %s, error: %s",
+                peerAddr.String(), err)
+            return nil
+        }
+        appendEntriesRespEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
+        if !ok {
+            self.Error("receive non AppendEntriesResponse for AppendEntriesRequest")
+            return nil
+        }
+        appendEntriesRespEvent.FromAddr = peerAddr
+        // update last contact timer
+        self.UpdateLastContact()
+        peerHSM.SelfDispatch(appendEntriesRespEvent)
+        return nil
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
@@ -380,11 +411,17 @@ func (self *LeaderPeerState) Handle(
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
             Leader:            local.GetLocalAddr(),
-            PrevLogTerm:       prevLogIndex,
-            PrevLogIndex:      prevLogTerm,
+            PrevLogTerm:       prevLogTerm,
+            PrevLogIndex:      prevLogIndex,
             Entries:           make([]*ps.LogEntry, 0),
             LeaderCommitIndex: committedIndex,
         }
+        self.Debug("LeaderPeer on HeartbeatTimeout matchIndex == %d, AE, "+
+            "Term: %d, PrevLogTerm: %d, PrevLogIndex: %d, Entries size: %d, "+
+            "LeaderCommitIndex: %d, entries info: %s",
+            matchIndex, request.Term, request.PrevLogTerm, request.PrevLogIndex,
+            len(request.Entries), request.LeaderCommitIndex,
+            "["+strings.Join(EntriesInfo(request.Entries), ",")+"]")
         requestEvent := ev.NewAppendEntriesRequestEvent(request)
         peerAddr := peerHSM.Addr()
         respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, requestEvent)
@@ -519,30 +556,6 @@ func (self *StandardModePeerState) Handle(
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     switch event.Type() {
-    case ev.EventAppendEntriesRequest:
-        e, ok := event.(ev.RaftEvent)
-        hsm.AssertTrue(ok)
-        peerAddr := peerHSM.Addr()
-        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
-        if err != nil {
-            self.Error(
-                "fail to call rpc AppendEntriesRequest to peer: %s, error: %s",
-                peerAddr.String(), err)
-            return nil
-        }
-        appendEntriesRespEvent, ok := respEvent.(*ev.AppendEntriesResponseEvent)
-        if !ok {
-            self.Error("receive non AppendEntriesResponse for AppendEntriesRequest")
-            return nil
-        }
-        appendEntriesRespEvent.FromAddr = peerAddr
-        // update last contact timer
-        leaderPeerState, ok := self.Super().(*LeaderPeerState)
-        hsm.AssertTrue(ok)
-        leaderPeerState.UpdateLastContact()
-        // dispatch response to self, just jump to the next case block
-        peerHSM.SelfDispatch(appendEntriesRespEvent)
-        return nil
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
@@ -583,11 +596,12 @@ func (self *StandardModePeerState) SetupReplicating(
     hsm.AssertTrue(ok)
     matchIndex, nextIndex := leaderPeerState.GetIndexInfo()
     local := peerHSM.Local()
-    _, lastSnapshotIndex, err := local.SnapshotManager().LastSnapshotInfo()
+    lastSnapshotTerm, lastSnapshotIndex, err := local.SnapshotManager().LastSnapshotInfo()
     if err != nil {
-        local.SendPrior(ev.NewPersistErrorEvent(
-            errors.New("fail to last snapshot info")))
-        return nil
+        errorEvent := ev.NewPersistErrorEvent(
+            errors.New("fail to last snapshot info"))
+        local.SendPrior(errorEvent)
+        return errorEvent
     }
     switch {
     case matchIndex == 0:
@@ -595,29 +609,62 @@ func (self *StandardModePeerState) SetupReplicating(
         if err != nil {
             message := fmt.Sprintf(
                 "fail to read committed index of log, error: %s", err)
-            local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
-            return nil
+            errorEvent := ev.NewPersistErrorEvent(errors.New(message))
+            local.SendPrior(errorEvent)
+            return errorEvent
         }
-        lastLogTerm, lastLogIndex, err := local.Log().LastEntryInfo()
+        lastLogIndex, err := local.Log().LastIndex()
         if err != nil {
             message := fmt.Sprintf(
-                "fail to read last entry info of log, error: %s", err)
-            local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
-            return nil
+                "fail to read last index of log, error: %s", err)
+            errorEvent := ev.NewPersistErrorEvent(errors.New(message))
+            local.SendPrior(errorEvent)
+            return errorEvent
+        }
+        logEntry, err := local.Log().GetLog(lastLogIndex)
+        if err != nil {
+            message := fmt.Sprintf(
+                "fail to read log at index: %d, error: %s", lastLogIndex, err)
+            errorEvent := ev.NewPersistErrorEvent(errors.New(message))
+            local.SendPrior(errorEvent)
+            return errorEvent
+        }
+        var prevLogTerm uint64
+        var prevLogIndex uint64
+        if lastLogIndex == 1 {
+            prevLogTerm = 0
+            prevLogIndex = 0
+        } else if (lastSnapshotIndex + 1) == lastLogIndex {
+            prevLogTerm = lastSnapshotTerm
+            prevLogIndex = lastSnapshotIndex
+        } else {
+            prevLogIndex = lastLogIndex - 1
+            prevLogEntry, err := local.Log().GetLog(prevLogIndex)
+            if err != nil {
+                message := fmt.Sprintf(
+                    "fail to read log at index: %d, error: %s",
+                    prevLogIndex, err)
+                errorEvent := ev.NewPersistErrorEvent(errors.New(message))
+                local.SendPrior(errorEvent)
+                return errorEvent
+            }
+            prevLogTerm = prevLogEntry.Term
         }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
             Leader:            local.GetLocalAddr(),
-            PrevLogTerm:       lastLogTerm,
-            PrevLogIndex:      lastLogIndex,
-            Entries:           make([]*ps.LogEntry, 0),
+            PrevLogTerm:       prevLogTerm,
+            PrevLogIndex:      prevLogIndex,
+            Entries:           []*ps.LogEntry{logEntry},
             LeaderCommitIndex: committedIndex,
         }
-        event = ev.NewAppendEntriesRequestEvent(request)
-        self.Debug("call AE RPC to peer with Term: %d, PrevLogTerm: %d, "+
-            "PrevLogIndex: %d, Entries size: %d",
+        self.Debug("SetupReplicating() matchIndex == 0, AE, Term: %d, "+
+            "PrevLogTerm: %d, PrevLogIndex: %d, Entries size: %d, "+
+            "LeaderCommitIndex: %d, entries info: %s",
             request.Term, request.PrevLogTerm, request.PrevLogIndex,
-            len(request.Entries))
+            len(request.Entries), request.LeaderCommitIndex,
+            "["+strings.Join(EntriesInfo(request.Entries), ",")+"]")
+        event = ev.NewAppendEntriesRequestEvent(request)
     case matchIndex < lastSnapshotIndex:
         event = ev.NewPeerEnterSnapshotModeEvent()
     default:
@@ -625,36 +672,38 @@ func (self *StandardModePeerState) SetupReplicating(
         if err != nil {
             message := fmt.Sprintf("fail to read log at index: %d, error: %s",
                 matchIndex, err)
-            local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
-            return nil
+            errorEvent := ev.NewPersistErrorEvent(errors.New(message))
+            local.SendPrior(errorEvent)
+            return errorEvent
         }
         prevLogIndex := log.Index
         prevLogTerm := log.Term
 
         lastLogIndex, err := local.Log().LastIndex()
         if err != nil {
-            local.SendPrior(ev.NewPersistErrorEvent(
-                errors.New("fail to read last log index of log")))
-            return nil
+            errorEvent := ev.NewPersistErrorEvent(
+                errors.New("fail to read last log index of log"))
+            local.SendPrior(errorEvent)
+            return errorEvent
         }
         entriesSize := Min(uint64(self.maxAppendEntriesSize),
             (lastLogIndex - matchIndex))
         maxIndex := nextIndex + entriesSize - 1
-        logEntries := make([]*ps.LogEntry, 0, entriesSize)
-        for i := nextIndex; i <= maxIndex; i++ {
-            if log, err = local.Log().GetLog(i); err != nil {
-                message := fmt.Sprintf(
-                    "fail to read log at index: %d, error: %s", i, err)
-                local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
-                return nil
-            }
-            logEntries = append(logEntries, log)
+        logEntries, err := local.Log().GetLogInRange(nextIndex, maxIndex)
+        if err != nil {
+            message := fmt.Sprintf(
+                "fail to read log at range[%d, %d], error: %s",
+                nextIndex, maxIndex, err)
+            errorEvent := ev.NewPersistErrorEvent(errors.New(message))
+            local.SendPrior(errorEvent)
+            return errorEvent
         }
         committedIndex, err := local.Log().CommittedIndex()
         if err != nil {
-            local.SendPrior(ev.NewPersistErrorEvent(
-                errors.New("fail to read committed index of log")))
-            return nil
+            errorEvent := ev.NewPersistErrorEvent(
+                errors.New("fail to read committed index of log"))
+            local.SendPrior(errorEvent)
+            return errorEvent
         }
         request := &ev.AppendEntriesRequest{
             Term:              local.GetCurrentTerm(),
@@ -664,11 +713,13 @@ func (self *StandardModePeerState) SetupReplicating(
             Entries:           logEntries,
             LeaderCommitIndex: committedIndex,
         }
+        self.Debug("SetupReplicating() matchIndex == %d, AE, Term: %d, "+
+            "PrevLogTerm: %d, PrevLogIndex: %d, Entries size: %d, "+
+            "LeaderCommitIndex: %d, entries info: %s",
+            matchIndex, request.Term, request.PrevLogTerm, request.PrevLogIndex,
+            len(request.Entries), request.LeaderCommitIndex,
+            "["+strings.Join(EntriesInfo(request.Entries), ",")+"]")
         event = ev.NewAppendEntriesRequestEvent(request)
-        self.Debug("call AE RPC to peer with Term: %d, PrevLogTerm: %d, "+
-            "PrevLogIndex: %d, Entries size: %d",
-            request.Term, request.PrevLogTerm, request.PrevLogIndex,
-            len(request.Entries))
     }
     return event
 }
@@ -909,5 +960,45 @@ func (self *PipelineModePeerState) Handle(
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.EventString(event))
     // TODO add impl
+    return self.Super()
+}
+
+type PersistErrorPeerState struct {
+    *LogStateHead
+}
+
+func NewPersistErrorPeerState(
+    super hsm.State, logger logging.Logger) *PersistErrorPeerState {
+
+    object := &PersistErrorPeerState{
+        LogStateHead: NewLogStateHead(super, logger),
+    }
+    super.AddChild(object)
+    return object
+}
+
+func (*PersistErrorPeerState) ID() string {
+    return StatePersistErrorPeerID
+}
+
+func (self *PersistErrorPeerState) Entry(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Entry", self.ID())
+    return nil
+}
+
+func (self *PersistErrorPeerState) Exit(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Exit", self.ID())
+    return nil
+}
+
+func (self *PersistErrorPeerState) Handle(
+    sm hsm.HSM, event hsm.Event) (state hsm.State) {
+
+    self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
+        ev.EventString(event))
     return self.Super()
 }
