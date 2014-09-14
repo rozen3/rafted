@@ -13,14 +13,10 @@ import (
 func TestFollowerElectionTimeout(t *testing.T) {
     require.Nil(t, assert.SetCallerInfoLevelNumber(2))
     local, peers := getTestLocalAndPeers(t)
-    peers.On("Broadcast", mock.AnythingOfType("*event.PeerActivateEvent")).
-        Return().Once()
-    peers.On("AddPeers", mock.AnythingOfType("[]persist.ServerAddr")).
-        Return().Once()
-    peers.On("Broadcast", mock.AnythingOfType("*event.RequestVoteRequestEvent")).
-        Return().Once()
-    peers.On("Broadcast", mock.AnythingOfType("*event.PeerDeactivateEvent")).
-        Return().Once()
+    peers.On("Broadcast", mock.Anything).Return().Once()
+    peers.On("AddPeers", mock.Anything).Return().Once()
+    peers.On("Broadcast", mock.Anything).Return().Once()
+    peers.On("Broadcast", mock.Anything).Return().Once()
     // check initial term and state
     assert.Equal(t, local.GetCurrentTerm(), testTerm)
     assert.Equal(t, StateFollowerID, local.QueryState())

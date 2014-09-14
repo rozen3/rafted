@@ -381,3 +381,7 @@ func assertLogCommittedIndex(t *testing.T, log ps.Log, index uint64) {
     assert.Nil(t, err)
     assert.Equal(t, index, committedIndex)
 }
+
+// ------------------------------------------------------------
+// Test Case
+// ------------------------------------------------------------

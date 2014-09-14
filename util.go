@@ -260,13 +260,19 @@ func (self *Notifier) Start() {
     go func() {
         defer self.group.Done()
         inChan := self.inChan.GetOutChan()
+        var event ev.NotifyEvent
         for {
             select {
             case <-self.closeChan:
                 return
-            case event := <-inChan:
-                ne, _ := event.(ev.NotifyEvent)
-                self.outChan <- ne
+            case event = <-inChan:
+            }
+
+            ne, _ := event.(ev.NotifyEvent)
+            select {
+            case <-self.closeChan:
+                return
+            case self.outChan <- ne:
             }
         }
     }()

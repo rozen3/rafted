@@ -123,6 +123,7 @@ func TestNotifier(t *testing.T) {
     notifier.Notify(event)
     notifier.Notify(event)
     stopChan <- 1
+    notifier.Notify(event)
     assert.Equal(t, 2, notifyCount)
     // test Close()
     notifier.Close()

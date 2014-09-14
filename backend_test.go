@@ -149,6 +149,5 @@ func TestBackendContruction(t *testing.T) {
     // cleanup
     for _, backend := range backends {
         backend.Close()
-        logger.Debug("** backend %#v close", backend)
     }
 }
