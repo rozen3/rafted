@@ -55,6 +55,11 @@ func (self *MockBackend) Close() {
     // empty body
 }
 
+func (self *MockBackend) GetNotifyChan() <-chan ev.NotifyEvent {
+    // dummy implementation
+    return make(<-chan ev.NotifyEvent)
+}
+
 func TestSimpleClient(t *testing.T) {
     backend := NewMockBackend()
     timeout := TestTimeout
@@ -94,6 +99,11 @@ func (self *MockBackend2) Send(event ev.RaftRequestEvent) {
 
 func (self *MockBackend2) Close() {
     // empty body
+}
+
+func (self *MockBackend2) GetNotifyChan() <-chan ev.NotifyEvent {
+    // dummy implementation
+    return make(<-chan ev.NotifyEvent)
 }
 
 func setupTestRedirectClient(

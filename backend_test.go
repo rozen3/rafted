@@ -114,8 +114,8 @@ func TestBackendOneNodeCluster(t *testing.T) {
 }
 
 func TestBackendContruction(t *testing.T) {
-    servers := testServers[0:2]
-    clusterSize := 2
+    servers := testServers
+    clusterSize := 3
     backends := make([]Backend, 0, clusterSize)
     for i := 0; i < clusterSize; i++ {
         backend, err := NewTestHSMBackend(servers[i], servers)

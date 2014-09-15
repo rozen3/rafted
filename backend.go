@@ -8,9 +8,14 @@ import (
     "time"
 )
 
+type Notifiable interface {
+    GetNotifyChan() <-chan ev.NotifyEvent
+}
+
 type Backend interface {
     Send(event ev.RaftRequestEvent)
     Close()
+    Notifiable
 }
 
 type HSMBackend struct {
@@ -21,6 +26,10 @@ type HSMBackend struct {
 
 func (self *HSMBackend) Send(event ev.RaftRequestEvent) {
     self.local.Send(event)
+}
+
+func (self *HSMBackend) GetNotifyChan() <-chan ev.NotifyEvent {
+    return self.local.Notifier().GetNotifyChan()
 }
 
 func (self *HSMBackend) Close() {
