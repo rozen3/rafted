@@ -13,7 +13,13 @@ import (
 )
 
 func testConfiguration() *Configuration {
-    return DefaultConfiguration()
+    config := DefaultConfiguration()
+    // increase the timeout to reduce the possibility of election split
+    // in testing
+    config.HeartbeatTimeout = time.Millisecond * 200
+    config.ElectionTimeout = time.Second * 1
+    config.MaxTimeoutJitter = 0.2
+    return config
 }
 
 var (
