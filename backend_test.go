@@ -114,13 +114,12 @@ func TestBackendContruction(t *testing.T) {
         Data: testData,
     }
     reqEvent := ev.NewClientAppendRequestEvent(request)
+    i := 0
 Outermost:
-    for i := 0; i < clusterSize; i = i % clusterSize {
+    for {
         backends[i].Send(reqEvent)
         event := reqEvent.RecvResponse()
         switch event.Type() {
-        case ev.EventLeaderRedirectResponse:
-            continue
         case ev.EventClientResponse:
             e, ok := event.(*ev.ClientResponseEvent)
             assert.True(t, ok)
@@ -128,7 +127,10 @@ Outermost:
             assert.Equal(t, true, response.Success)
             assert.Equal(t, testData, response.Data)
             break Outermost
+        default:
+            time.Sleep(testConfig.HeartbeatTimeout)
         }
+        i = (i + 1) % clusterSize
     }
     // cleanup
     for _, backend := range backends {
