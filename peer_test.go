@@ -123,7 +123,7 @@ func getTestMemoryServer(
     bindAddr := testServers[1]
     logger := logging.GetLogger("test server #" + bindAddr.String())
     server := comm.NewMemoryServer(
-        &bindAddr, CommTimeout, eventHandler, testRegister, logger)
+        &bindAddr, testConfig.CommTimeout, eventHandler, testRegister, logger)
     go server.Serve()
     return server
 }
@@ -151,14 +151,12 @@ func getTestPeerAndLocal(eventHandler func(ev.RaftEvent)) (Peer, *MockLocal, err
     configManager := ps.NewMemoryConfigManager(index, conf)
     notifier := NewNotifier()
     local := NewMockLocal(log, snapshotManager, configManager, notifier)
-    client := comm.NewMemoryClient(DefaultPoolSize, CommTimeout, testRegister)
+    client := comm.NewMemoryClient(
+        testConfig.CommPoolSize, testConfig.CommTimeout, testRegister)
     logger := logging.GetLogger("test peer")
 
     peer := NewPeerMan(
-        HeartbeatTimeout,
-        MaxTimeoutJitter,
-        MaxAppendEntriesSize,
-        MaxSnapshotChunkSize,
+        testConfig,
         servers[1],
         client,
         eventHandler,

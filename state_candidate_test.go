@@ -28,7 +28,7 @@ func getTestLocalAndPeersForCandidate(t *testing.T) (Local, *MockPeers) {
 func TestCandidateElectionTimeout(t *testing.T) {
     require.Nil(t, assert.SetCallerInfoLevelNumber(3))
     local, _ := getTestLocalAndPeersForCandidate(t)
-    time.Sleep(ElectionTimeout)
+    time.Sleep(testConfig.ElectionTimeout)
     // check election timeout for follower -> candidate
     nchan := local.Notifier().GetNotifyChan()
     assertGetElectionTimeoutNotify(t, nchan, 0)
@@ -41,7 +41,7 @@ func TestCandidateElectionTimeout(t *testing.T) {
     assert.Equal(t, StateCandidateID, local.QueryState())
     assert.Equal(t, nextTerm, local.GetCurrentTerm())
     // check election timeout for candidate -> candidate
-    assertGetElectionTimeoutNotify(t, nchan, ElectionTimeout)
+    assertGetElectionTimeoutNotify(t, nchan, testConfig.ElectionTimeout)
     assert.Equal(t, StateCandidateID, local.QueryState())
     assert.Equal(t, nextTerm+1, local.GetCurrentTerm())
     local.Close()
@@ -50,7 +50,7 @@ func TestCandidateElectionTimeout(t *testing.T) {
 func TestCandidateHandleAppendEntriesRequest(t *testing.T) {
     require.Nil(t, assert.SetCallerInfoLevelNumber(3))
     local, _ := getTestLocalAndPeersForCandidate(t)
-    time.Sleep(ElectionTimeout)
+    time.Sleep(testConfig.ElectionTimeout)
     // check election timeout for follower -> candidate
     nchan := local.Notifier().GetNotifyChan()
     assertGetElectionTimeoutNotify(t, nchan, 0)
@@ -113,7 +113,7 @@ func TestCandidateHandleAppendEntriesRequest(t *testing.T) {
 func TestCandidateHandleClientRequest(t *testing.T) {
     require.Nil(t, assert.SetCallerInfoLevelNumber(3))
     local, _ := getTestLocalAndPeersForCandidate(t)
-    time.Sleep(ElectionTimeout)
+    time.Sleep(testConfig.ElectionTimeout)
     // ignore 3 notifies
     nchan := local.Notifier().GetNotifyChan()
     SwallowNotifyNow(t, nchan, 3)
@@ -131,12 +131,12 @@ func TestCandidateHandleClientRequest(t *testing.T) {
 func TestCandidateHandleRequestVoteResponse(t *testing.T) {
     require.Nil(t, assert.SetCallerInfoLevelNumber(3))
     local, peers := getTestLocalAndPeersForCandidate(t)
-    time.Sleep(ElectionTimeout)
+    time.Sleep(testConfig.ElectionTimeout)
     nchan := local.Notifier().GetNotifyChan()
     SwallowNotifyNow(t, nchan, 3)
     assert.Equal(t, testTerm+1, local.GetCurrentTerm())
     // test this scenario: not enough vote, retrigger another round of election
-    assertGetElectionTimeoutNotify(t, nchan, ElectionTimeout)
+    assertGetElectionTimeoutNotify(t, nchan, testConfig.ElectionTimeout)
     assertGetTermChangeNotify(t, nchan, 0, testTerm+1, testTerm+2)
     assert.Equal(t, StateCandidateID, local.QueryState())
     assert.Equal(t, testTerm+2, local.GetCurrentTerm())
@@ -154,7 +154,7 @@ func TestCandidateHandleRequestVoteResponse(t *testing.T) {
     voter := testServers[1]
     respEvent.FromAddr = voter
     local.Send(respEvent)
-    assertGetStateChangeNotify(t, nchan, ElectionTimeout,
+    assertGetStateChangeNotify(t, nchan, testConfig.ElectionTimeout,
         ev.RaftStateCandidate, ev.RaftStateLeader)
     // enter leader state
     assertGetLeaderChangeNotify(t, nchan, 0, leader)

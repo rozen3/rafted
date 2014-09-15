@@ -7,7 +7,7 @@ import (
 )
 
 func TestRandomLessDuration(t *testing.T) {
-    timeout := HeartbeatTimeout
+    timeout := testConfig.HeartbeatTimeout
     var maxJitter float32 = 0.1
     rtimeout := RandomLessDuration(timeout, maxJitter)
     assert.True(t, timeout > rtimeout)

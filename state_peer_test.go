@@ -149,11 +149,11 @@ func TestPeerLeaderHeartbeatTimeout(t *testing.T) {
         LeaderCommitIndex: testIndex,
     }
     nchan := mockLocal.Notifier().GetNotifyChan()
-    assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
     assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
-    assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
     assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
-    assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
     assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
     assert.Equal(t, 1, len(mockLocal.PriorEvents))
 
@@ -228,10 +228,10 @@ func TestPeerStandardModeCatchingUp(t *testing.T) {
     mockLocal.On("SendPrior", mock.Anything).Return()
     peer.Send(ev.NewPeerEnterLeaderEvent())
     nchan := mockLocal.Notifier().GetNotifyChan()
-    assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
     heartbeatCount := 3
     for i := 0; i < aheadCount+heartbeatCount; i++ {
-        assertGetHeartbeatTimeoutNotify(t, nchan, HeartbeatTimeout)
+        assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
     }
     assert.Equal(t, StateLeaderPeerID, peer.QueryState())
     assert.True(t, requestCount >= aheadCount+1+heartbeatCount)

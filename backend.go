@@ -5,7 +5,6 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
-    "time"
 )
 
 type Notifiable interface {
@@ -39,14 +38,7 @@ func (self *HSMBackend) Close() {
 }
 
 func NewHSMBackend(
-    heartbeatTimeout time.Duration,
-    electionTimeout time.Duration,
-    electionTimeoutThresholdPersent float64,
-    maxTimeoutJitter float32,
-    persistErrorNotifyTimeout time.Duration,
-    maxAppendEntriesSize uint64,
-    maxSnapshotChunkSize uint64,
-    poolSize int,
+    config *Configuration,
     localAddr ps.ServerAddr,
     bindAddr ps.ServerAddr,
     otherPeerAddrs []ps.ServerAddr,
@@ -57,11 +49,7 @@ func NewHSMBackend(
     logger logging.Logger) (*HSMBackend, error) {
 
     local, err := NewLocalManager(
-        heartbeatTimeout,
-        electionTimeout,
-        electionTimeoutThresholdPersent,
-        maxTimeoutJitter,
-        persistErrorNotifyTimeout,
+        config,
         localAddr,
         log,
         stateMachine,
@@ -71,7 +59,7 @@ func NewHSMBackend(
     if err != nil {
         return nil, err
     }
-    client := comm.NewSocketClient(poolSize)
+    client := comm.NewSocketClient(config.CommPoolSize)
     eventHandler1 := func(event ev.RaftEvent) {
         local.Send(event)
     }
@@ -83,10 +71,7 @@ func NewHSMBackend(
         return logger
     }
     peerManager := NewPeerManager(
-        heartbeatTimeout,
-        maxTimeoutJitter,
-        maxAppendEntriesSize,
-        maxSnapshotChunkSize,
+        config,
         otherPeerAddrs,
         client,
         eventHandler1,

@@ -10,18 +10,6 @@ import (
     "time"
 )
 
-const (
-    HeartbeatTimeout                        = time.Millisecond * 50
-    ElectionTimeout                         = time.Millisecond * 200
-    ElectionTimeoutThresholdPersent float64 = 0.8
-    MaxTimeoutJitter                float32 = 0.1
-    PersistErrorNotifyTimeout               = time.Millisecond * 100
-    MaxAppendEntriesSize            uint64  = 10
-    MaxSnapshotChunkSize            uint64  = 1000
-    CommTimeout                             = HeartbeatTimeout
-    DefaultPoolSize                         = 10
-)
-
 func RemoveAddr(addrs []ps.ServerAddr, addr ps.ServerAddr) []ps.ServerAddr {
     result := make([]ps.ServerAddr, 0, len(addrs))
     for _, a := range addrs {
@@ -47,11 +35,7 @@ func NewTestHSMBackend(
 
     localLogger := logging.GetLogger("leader" + "#" + localAddr.String())
     local, err := NewLocalManager(
-        HeartbeatTimeout,
-        ElectionTimeout,
-        ElectionTimeoutThresholdPersent,
-        MaxTimeoutJitter,
-        PersistErrorNotifyTimeout,
+        testConfig,
         localAddr,
         log,
         stateMachine,
@@ -61,7 +45,8 @@ func NewTestHSMBackend(
     if err != nil {
         return nil, err
     }
-    client := comm.NewMemoryClient(DefaultPoolSize, CommTimeout, testRegister)
+    client := comm.NewMemoryClient(
+        testConfig.CommPoolSize, testConfig.CommTimeout, testRegister)
     eventHandler1 := func(event ev.RaftEvent) {
         local.Send(event)
     }
@@ -75,10 +60,7 @@ func NewTestHSMBackend(
     peerManagerLogger := logging.GetLogger(
         "peer manager" + "#" + localAddr.String())
     peerManager := NewPeerManager(
-        HeartbeatTimeout,
-        MaxTimeoutJitter,
-        MaxAppendEntriesSize,
-        MaxSnapshotChunkSize,
+        testConfig,
         RemoveAddr(addrs, localAddr),
         client,
         eventHandler1,
@@ -87,7 +69,11 @@ func NewTestHSMBackend(
         peerManagerLogger)
     serverLogger := logging.GetLogger("Server" + "#" + localAddr.String())
     server := comm.NewMemoryServer(
-        &localAddr, CommTimeout, eventHandler2, testRegister, serverLogger)
+        &localAddr,
+        testConfig.CommTimeout,
+        eventHandler2,
+        testRegister,
+        serverLogger)
     go func() {
         server.Serve()
     }()
@@ -104,7 +90,7 @@ func TestBackendOneNodeCluster(t *testing.T) {
     backend, err := NewTestHSMBackend(serverAddr, servers)
     assert.Nil(t, err)
     assert.NotNil(t, backend)
-    time.Sleep(ElectionTimeout)
+    time.Sleep(testConfig.ElectionTimeout)
     request := &ev.ClientAppendRequest{
         Data: testData,
     }
@@ -122,7 +108,7 @@ func TestBackendContruction(t *testing.T) {
         assert.Nil(t, err)
         backends = append(backends, backend)
     }
-    time.Sleep(ElectionTimeout)
+    time.Sleep(testConfig.ElectionTimeout)
 
     request := &ev.ClientAppendRequest{
         Data: testData,

@@ -22,22 +22,16 @@ type PeerManager struct {
     peerMap  map[ps.ServerAddr]Peer
     peerLock sync.RWMutex
 
-    heartbeatTimeout     time.Duration
-    maxTimeoutJitter     float32
-    maxAppendEntriesSize uint64
-    maxSnapshotChunkSize uint64
-    client               comm.Client
-    eventHandler         func(ev.RaftEvent)
-    local                Local
-    getLoggerForPeer     func(ps.ServerAddr) logging.Logger
-    logger               logging.Logger
+    config           *Configuration
+    client           comm.Client
+    eventHandler     func(ev.RaftEvent)
+    local            Local
+    getLoggerForPeer func(ps.ServerAddr) logging.Logger
+    logger           logging.Logger
 }
 
 func NewPeerManager(
-    heartbeatTimeout time.Duration,
-    maxTimeoutJitter float32,
-    maxAppendEntriesSize uint64,
-    maxSnapshotChunkSize uint64,
+    config *Configuration,
     peerAddrs []ps.ServerAddr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
@@ -46,16 +40,13 @@ func NewPeerManager(
     logger logging.Logger) *PeerManager {
 
     object := &PeerManager{
-        peerMap:              make(map[ps.ServerAddr]Peer),
-        heartbeatTimeout:     heartbeatTimeout,
-        maxTimeoutJitter:     maxTimeoutJitter,
-        maxAppendEntriesSize: maxAppendEntriesSize,
-        maxSnapshotChunkSize: maxSnapshotChunkSize,
-        client:               client,
-        eventHandler:         eventHandler,
-        local:                local,
-        getLoggerForPeer:     getLoggerForPeer,
-        logger:               logger,
+        peerMap:          make(map[ps.ServerAddr]Peer),
+        config:           config,
+        client:           client,
+        eventHandler:     eventHandler,
+        local:            local,
+        getLoggerForPeer: getLoggerForPeer,
+        logger:           logger,
     }
     local.SetPeers(object)
     return object
@@ -81,10 +72,7 @@ func (self *PeerManager) AddPeers(peerAddrs []ps.ServerAddr) {
     for _, addr := range peersToAdd {
         logger := self.getLoggerForPeer(addr)
         self.peerMap[addr] = NewPeerMan(
-            self.heartbeatTimeout,
-            self.maxTimeoutJitter,
-            self.maxAppendEntriesSize,
-            self.maxSnapshotChunkSize,
+            self.config,
             addr,
             self.client,
             self.eventHandler,
@@ -132,10 +120,7 @@ type PeerMan struct {
 }
 
 func NewPeerMan(
-    heartbeatTimeout time.Duration,
-    maxTimeoutJitter float32,
-    maxAppendEntriesSize uint64,
-    maxSnapshotChunkSize uint64,
+    config *Configuration,
     addr ps.ServerAddr,
     client comm.Client,
     eventHandler func(ev.RaftEvent),
@@ -149,9 +134,12 @@ func NewPeerMan(
     activatedPeerState := NewActivatedPeerState(peerState, logger)
     NewCandidatePeerState(activatedPeerState, logger)
     leaderPeerState := NewLeaderPeerState(
-        activatedPeerState, heartbeatTimeout, maxTimeoutJitter, logger)
-    NewStandardModePeerState(leaderPeerState, maxAppendEntriesSize, logger)
-    NewSnapshotModePeerState(leaderPeerState, maxSnapshotChunkSize, logger)
+        activatedPeerState,
+        config.HeartbeatTimeout,
+        config.MaxTimeoutJitter,
+        logger)
+    NewStandardModePeerState(leaderPeerState, config.MaxAppendEntriesSize, logger)
+    NewSnapshotModePeerState(leaderPeerState, config.MaxSnapshotChunkSize, logger)
     NewPipelineModePeerState(leaderPeerState, logger)
     NewPersistErrorPeerState(peerState, logger)
     hsm.NewTerminal(top)

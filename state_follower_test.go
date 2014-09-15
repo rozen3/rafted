@@ -22,7 +22,7 @@ func TestFollowerElectionTimeout(t *testing.T) {
     assert.Equal(t, StateFollowerID, local.QueryState())
     // check election timeout
     nchan := local.Notifier().GetNotifyChan()
-    assertGetElectionTimeoutNotify(t, nchan, ElectionTimeout)
+    assertGetElectionTimeoutNotify(t, nchan, testConfig.ElectionTimeout)
     // check state transfer after timeout
     assert.Equal(t, StateCandidateID, local.QueryState())
     local.Close()
@@ -80,7 +80,7 @@ func TestFollowerHandleRequestVoteRequest(t *testing.T) {
     assertGetTermChangeNotify(t, nchan, 0, newTerm-1, newTerm)
     // test election timeout ticker reset on RV
     assertNotGetElectionTimeoutNotify(t, nchan,
-        BeforeTimeout(ElectionTimeout, startTime))
+        BeforeTimeout(testConfig.ElectionTimeout, startTime))
     local.Close()
 }
 
@@ -159,6 +159,6 @@ func TestFollowerHandleAppendEntriesRequest(t *testing.T) {
     assert.Equal(t, leader, local.GetLeader())
     // test election timeout ticker reset on this AP
     assertNotGetElectionTimeoutNotify(t, nchan,
-        BeforeTimeout(ElectionTimeout, startTime))
+        BeforeTimeout(testConfig.ElectionTimeout, startTime))
     local.Close()
 }

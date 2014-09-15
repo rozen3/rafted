@@ -114,9 +114,10 @@ func setupTestRedirectClient(
         backend.Send(event)
     }
     logger := logging.GetLogger("Server" + "#" + addr.String())
-    client := cm.NewMemoryClient(DefaultPoolSize, CommTimeout, testRegister)
+    client := cm.NewMemoryClient(
+        testConfig.CommPoolSize, testConfig.CommTimeout, testRegister)
     server := cm.NewMemoryServer(
-        &addr, CommTimeout, eventHandler, testRegister, logger)
+        &addr, testConfig.CommTimeout, eventHandler, testRegister, logger)
     logger2 := logging.GetLogger("RedirectClient" + "#" + addr.String())
     redirectRetry := rt.NewErrorRetry().
         MaxTries(3).

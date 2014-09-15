@@ -418,11 +418,7 @@ type LocalManager struct {
 }
 
 func NewLocalManager(
-    heartbeatTimeout time.Duration,
-    electionTimeout time.Duration,
-    electionTimeoutThresholdPersent float64,
-    maxTimeoutJitter float32,
-    persistErrorNotifyTimeout time.Duration,
+    config *Configuration,
     localAddr ps.ServerAddr,
     log ps.Log,
     stateMachine ps.StateMachine,
@@ -435,21 +431,23 @@ func NewLocalManager(
     localState := NewLocalState(top, logger)
     followerState := NewFollowerState(
         localState,
-        electionTimeout,
-        electionTimeoutThresholdPersent,
-        maxTimeoutJitter,
+        config.ElectionTimeout,
+        config.ElectionTimeoutThresholdPersent,
+        config.MaxTimeoutJitter,
         logger)
     NewSnapshotRecoveryState(followerState, logger)
-    followerMemberChangeState := NewFollowerMemberChangeState(followerState, logger)
+    followerMemberChangeState := NewFollowerMemberChangeState(
+        followerState, logger)
     NewFollowerOldNewConfigSeenState(followerMemberChangeState, logger)
     NewFollowerOldNewConfigCommittedState(followerState, logger)
     NewFollowerNewConfigSeenState(followerState, logger)
     needPeersState := NewNeedPeersState(localState, logger)
-    NewCandidateState(needPeersState, electionTimeout, maxTimeoutJitter, logger)
+    NewCandidateState(
+        needPeersState, config.ElectionTimeout, config.MaxTimeoutJitter, logger)
     leaderState := NewLeaderState(needPeersState, logger)
     NewUnsyncState(leaderState, logger)
     NewSyncState(leaderState, logger)
-    NewPersistErrorState(localState, persistErrorNotifyTimeout, logger)
+    NewPersistErrorState(localState, config.PersistErrorNotifyTimeout, logger)
     hsm.NewTerminal(top)
     localHSM, err := NewLocalHSM(
         top,

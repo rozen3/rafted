@@ -12,7 +12,12 @@ import (
     "time"
 )
 
+func testConfiguration() *Configuration {
+    return DefaultConfiguration()
+}
+
 var (
+    testConfig         = testConfiguration()
     testData           = []byte(str.RandomString(100))
     testIndex   uint64 = 100
     testTerm    uint64 = 10
@@ -61,11 +66,7 @@ func getTestLocal() (Local, error) {
     configManager := ps.NewMemoryConfigManager(index, conf)
     logger := logging.GetLogger("test local")
     local, err := NewLocalManager(
-        HeartbeatTimeout,
-        ElectionTimeout,
-        ElectionTimeoutThresholdPersent,
-        MaxTimeoutJitter,
-        PersistErrorNotifyTimeout,
+        testConfig,
         localAddr,
         log,
         stateMachine,
@@ -80,7 +81,7 @@ func getTestLocal() (Local, error) {
 
 func BeforeTimeout(timeout time.Duration, startTime time.Time) time.Duration {
     d := time.Duration(
-        int64(float32(int64(timeout)) * (1 - MaxTimeoutJitter)))
+        int64(float32(int64(timeout)) * (1 - testConfig.MaxTimeoutJitter)))
     return (d - time.Now().Sub(startTime))
 }
 
