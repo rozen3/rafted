@@ -1,33 +1,93 @@
 package persist
 
-import "io"
+import (
+    "errors"
+    "io"
+)
 
-// StateMachine is the interface for implementing state machine in raft.
+var (
+    ErrorSnapshotNotFound error = errors.New("Snapshot not found")
+    ErrorNoSnapshot             = errors.New("No snapshot")
+)
+
+// Metadata for a snapshot.
+type SnapshotMeta struct {
+    // unique id for every snapshot, opaquely used in SnapshotManager.
+    ID string
+    // the snapshot replaces all entries up through and including this index
+    LastIncludedTerm uint64
+    // term of lastIncludedIndex
+    LastIncludedIndex uint64
+    // total size of this snapshot
+    Size uint64
+    // the configuration of all servers
+    Conf *Config
+}
+
+// StateMachine is the interface for implementing state machine and
+// snapshot management in raft.
 type StateMachine interface {
     // Apply is invoked once a log entry is commited to state machine.
     Apply([]byte) []byte
 
-    // MakeSnapshot() is invoked to create a new snapshot for further writing.
-    // MakeSnapshot() and Apply() are not called in multiple goroutines,
-    // but Apply() could be called concurrently with Snapshot.Persist().
+    // MakeSnapshot() is invoked to create a local snapshot.
+    // MakeSnapshot() and Apply() could be called in multiple goroutines.
     // Any state machine implementation should ensure the concurrency, which
     // allows concurrent update while a snapshot is persisting.
-    MakeSnapshot() (Snapshot, error)
+    // The arguments are the last term included in this snapshot,
+    // the last index included and the corresponding servers configuration.
+    MakeSnapshot(
+        lastIncludedTerm uint64,
+        lastIncludeIndex uint64,
+        conf *Config) (id string, err error)
 
-    // Restore() is used to restore the state machine fron a snapshot.
-    // It's not called concurrently with any other functions in this interface.
-    Restore(io.ReadCloser) error
+    // MakeEmptySnapshot() in invoked to create a empty snapshot for receiving
+    // snapshot from raft leader in the procedure of snapshot recoverage.
+    // MakeEmptySnapshot() and Apply() are not called in multiple goroutines.
+    // the arguments are the same with MakeSnapshot().
+    MakeEmptySnapshot(
+        lastIncludeTerm uint64,
+        lastIncludeIndex uint64,
+        conf *Config) (SnapshotWriter, error)
+
+    // RestoreFromSnapshot() is used to restore the state machine from
+    // the snapshot of specified id.
+    // It's not called concurrently with Apply().
+    // Return ErrorSnapshotNotFound if no snapshot with specified id.
+    RestoreFromSnapshot(id string) error
+
+    // LastSnapshotInfo() returns the info of the latest snapshot.
+    // Return ErrorNoSnapshot if no snapshot at all.
+    LastSnapshotInfo() (*SnapshotMeta, error)
+
+    // AllSnapshotInfo() lists metadatas of all durable snapshots(
+    // not including the unfinished snapshot). Metadatas shoud be returned
+    // in descending order, with the highest index first.
+    // Return ErrorNoSnapshot if there is not snapshot at all.
+    AllSnapshotInfo() ([]*SnapshotMeta, error)
+
+    // OpenSnapshot() open a snapshot for read. It returns the metadata
+    // of the specified snapshot and a ReadCloser for reading it.
+    // The ReadCloser must be closed if it is no longer needed.
+    // Return ErrorSnapshotNotFound if no snapshot with specified id.
+    OpenSnapshot(id string) (*SnapshotMeta, io.ReadCloser, error)
+
+    // Delete removes a snapshot.
+    // Return ErrorSnapshotNotFound if no snapshot with specified id.
+    DeleteSnapshot(id string) error
 }
 
-// Snapshot represents a in-memory object to persist snapshot.
-// It's returned by StateMachine.MakeSnapshot().
-// These functions in this interface should be safe to invoked with concurrent
-// call to StateMachine.MakeSnapshot(). Any implementation should ensure that.
-type Snapshot interface {
-    // Persist is invoked to dump all states to the SnapshotWriter,
-    // and close it on completion.
-    Persist(writer SnapshotWriter) error
+// SnapshotWriter is the interface to persist snapshot.
+// It's returned by StateMachine.MakeEmptySnapshot(). The raft implementation
+// would write snapshot into the stream and close it on completion.
+// Cancel will be called on error.
+type SnapshotWriter interface {
+    // Stream writer for snapshot persistance
+    io.WriteCloser
 
-    // Release is invoked when we are finished with this snapshot.
-    Release()
+    // Returns ID of this corresponding snapshot
+    ID() string
+
+    // Cancels the snapshot writing
+    Cancel() error
 }
