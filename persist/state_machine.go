@@ -38,7 +38,7 @@ type StateMachine interface {
     // the last index included and the corresponding servers configuration.
     MakeSnapshot(
         lastIncludedTerm uint64,
-        lastIncludeIndex uint64,
+        lastIncludedIndex uint64,
         conf *Config) (id string, err error)
 
     // MakeEmptySnapshot() in invoked to create a empty snapshot for receiving
@@ -46,8 +46,8 @@ type StateMachine interface {
     // MakeEmptySnapshot() and Apply() are not called in multiple goroutines.
     // the arguments are the same with MakeSnapshot().
     MakeEmptySnapshot(
-        lastIncludeTerm uint64,
-        lastIncludeIndex uint64,
+        lastIncludedTerm uint64,
+        lastIncludedIndex uint64,
         conf *Config) (SnapshotWriter, error)
 
     // RestoreFromSnapshot() is used to restore the state machine from

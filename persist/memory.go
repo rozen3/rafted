@@ -249,157 +249,39 @@ func (self *MemoryLog) TruncateAfter(index uint64) error {
     return nil
 }
 
-type MemorySnapshotInstance struct {
+type MemorySnapshot struct {
     Meta *SnapshotMeta
-    Data []byte
-    lock sync.Mutex
-}
-
-func NewMemorySnapshotInstance(
-    term, index uint64, Servers []ServerAddr) *MemorySnapshotInstance {
-
-    return &MemorySnapshotInstance{
-        Meta: &SnapshotMeta{
-            ID:                Timestamp(),
-            LastIncludedTerm:  term,
-            LastIncludedIndex: index,
-            Servers:           Servers,
-        },
-        Data: make([]byte, 0),
-    }
-}
-
-func (self *MemorySnapshotInstance) SetSize(size uint64) {
-    self.lock.Lock()
-    defer self.lock.Unlock()
-    self.Meta.Size = size
-}
-
-func (self *MemorySnapshotInstance) SetData(data []byte) {
-    self.lock.Lock()
-    defer self.lock.Unlock()
-    self.Data = data
-    self.Meta.Size = uint64(len(data))
-}
-
-type MemorySnapshotManager struct {
-    snapshotList *list.List
-    lock         sync.RWMutex
-}
-
-func NewMemorySnapshotManager() *MemorySnapshotManager {
-    lst := list.New()
-    return &MemorySnapshotManager{
-        snapshotList: lst,
-    }
-}
-
-func (self *MemorySnapshotManager) Create(
-    term, index uint64, Servers []ServerAddr) (SnapshotWriter, error) {
-
-    self.lock.Lock()
-    defer self.lock.Unlock()
-    instance := NewMemorySnapshotInstance(term, index, Servers)
-    return NewMemorySnapshotWriter(self, instance), nil
-}
-
-func (self *MemorySnapshotManager) add(instance *MemorySnapshotInstance) {
-    self.lock.Lock()
-    defer self.lock.Unlock()
-    self.snapshotList.PushBack(instance)
-}
-
-func (self *MemorySnapshotManager) LastSnapshotInfo() (uint64, uint64, error) {
-    self.lock.RLock()
-    defer self.lock.RUnlock()
-    if self.snapshotList.Len() == 0 {
-        return 0, 0, nil
-    }
-    elem := self.snapshotList.Back()
-    instance, _ := elem.Value.(*MemorySnapshotInstance)
-    return instance.Meta.LastIncludedTerm, instance.Meta.LastIncludedIndex, nil
-}
-
-func (self *MemorySnapshotManager) List() ([]*SnapshotMeta, error) {
-    self.lock.RLock()
-    defer self.lock.RUnlock()
-    total := self.snapshotList.Len()
-    allMeta := make([]*SnapshotMeta, 0, total)
-    for e := self.snapshotList.Front(); e != nil; e = e.Next() {
-        instance, ok := e.Value.(*MemorySnapshotInstance)
-        if !ok {
-            return allMeta, errors.New("corrupted format")
-        }
-        allMeta = append(allMeta, instance.Meta)
-    }
-    return allMeta, nil
-}
-
-func (self *MemorySnapshotManager) Open(
-    id string) (*SnapshotMeta, io.ReadCloser, error) {
-
-    self.lock.RLock()
-    defer self.lock.RUnlock()
-    for e := self.snapshotList.Front(); e != nil; e = e.Next() {
-        instance, ok := e.Value.(*MemorySnapshotInstance)
-        if !ok {
-            return nil, nil, errors.New("corrupted format")
-        }
-        if instance.Meta.ID == id {
-            readerCloser := NewReaderCloserWrapper(
-                bytes.NewReader(instance.Data))
-            return instance.Meta, readerCloser, nil
-        }
-    }
-    return nil, nil, errors.New(fmt.Sprintf("no snapshot for id: %s", id))
-}
-
-func (self *MemorySnapshotManager) Delete(id string) error {
-    self.lock.RLock()
-    defer self.lock.RUnlock()
-    for e := self.snapshotList.Front(); e != nil; e = e.Next() {
-        instance, ok := e.Value.(*MemorySnapshotInstance)
-        if !ok {
-            return errors.New("corrupted format")
-        }
-        if instance.Meta.ID == id {
-            self.snapshotList.Remove(e)
-            return nil
-        }
-    }
-    return errors.New(fmt.Sprintf("no snapshot for id: %s", id))
+    Data *list.List
 }
 
 type MemorySnapshotWriter struct {
-    manager  *MemorySnapshotManager
-    instance *MemorySnapshotInstance
-    data     []byte
-    lock     sync.Mutex
+    stateMachine *MemoryStateMachine
+    snapshot     *MemorySnapshot
+    lock         sync.Mutex
 }
 
 func NewMemorySnapshotWriter(
-    manager *MemorySnapshotManager,
-    instance *MemorySnapshotInstance) *MemorySnapshotWriter {
+    stateMachine *MemoryStateMachine,
+    snapshot *MemorySnapshot) *MemorySnapshotWriter {
 
     return &MemorySnapshotWriter{
-        manager:  manager,
-        instance: instance,
-        data:     make([]byte, 0),
+        stateMachine: stateMachine,
+        snapshot:     snapshot,
     }
 }
 
 func (self *MemorySnapshotWriter) Write(p []byte) (int, error) {
     self.lock.Lock()
     defer self.lock.Unlock()
-    self.data = append(self.data, p...)
+    self.instance.Data.PushBack(p)
     return len(p), nil
 }
 
 func (self *MemorySnapshotWriter) Close() error {
     self.lock.Lock()
     defer self.lock.Unlock()
-    self.instance.SetData(self.data)
-    self.manager.add(self.instance)
+    self.instance.Size = self.instance.Data.Len()
+    self.stateMachine.addSnapshot(self.instance)
     return nil
 }
 
@@ -408,122 +290,180 @@ func (self *MemorySnapshotWriter) ID() string {
 }
 
 func (self *MemorySnapshotWriter) Cancel() error {
-    self.lock.Lock()
-    defer self.lock.Unlock()
-    self.data = make([]byte, 0)
+    // empty body
     return nil
 }
 
 type MemoryStateMachine struct {
-    data *list.List
-    lock sync.Mutex
+    dataList     *list.List
+    dataLock     sync.Mutex
+    snapshotList *list.List
+    snapshotLock sync.RWMutex
 }
 
 func NewMemoryStateMachine() *MemoryStateMachine {
-    lst := list.New()
+    dataList := list.New()
+    snapshotList := list.New()
     return &MemoryStateMachine{
-        data: lst,
+        dataList:     dataList,
+        snapshotList: snapshotList,
     }
 }
 
 func (self *MemoryStateMachine) Data() *list.List {
-    self.lock.Lock()
-    defer self.lock.Unlock()
-    return self.data
+    self.dataLock.Lock()
+    defer self.dataLock.Unlock()
+    return self.dataList
 }
 
 func (self *MemoryStateMachine) Apply(p []byte) []byte {
-    self.lock.Lock()
-    defer self.lock.Unlock()
-    self.data.PushBack(p)
+    self.dataLock.Lock()
+    defer self.dataLock.Unlock()
+    self.dataList.PushBack(p)
     return p
 }
 
-func (self *MemoryStateMachine) MakeSnapshot() (Snapshot, error) {
-    self.lock.Lock()
-    defer self.lock.Unlock()
+func (self *MemoryStateMachine) getID(term, index uint64) string {
+    id := fmt.Sprintf(
+        "Term:%d Index:%d", lastIncludedTerm, lastIncludedIndex)
+    return id
+}
+
+func (self *MemoryStateMachine) MakeSnapshot(
+    lastIncludedTerm uint64,
+    lastIncludedIndex uint64,
+    conf *Config) (id string, err error) {
+
+    self.datalock.Lock()
+    self.snapshotLock.Lock()
+    defer self.dataLock.Unlock()
+    defer self.snapshotLock.Unlock()
+    // construct the metadata
+    id := self.getID(lastIncludedTerm, lastIncludedIndex)
+    meta := &SnapshotMeta{
+        ID:                id,
+        LastIncludedTerm:  lastIncludedTerm,
+        LastIncludedIndex: lastIncludedIndex,
+        Size:              uint64(self.dataList.Len()),
+        Conf:              conf,
+    }
     // copy all data
     lst := list.New()
-    lst.PushBackList(self.data)
-    return NewMemorySnapshot(lst), nil
+    lst.PushBackList(self.dataList)
+    snapshot := &MemorySnapshot{
+        Meta: meta,
+        Data: lst,
+    }
+    self.snapshotList.PushBack(snapshot)
+    return id, nil
 }
 
-func (self *MemoryStateMachine) Restore(readerCloser io.ReadCloser) error {
+func (self *MemoryStateMachine) MakeEmptySnapshot(
+    lastIncludedTerm uint64,
+    lastIncludedIndex uint64,
+    conf *Config) (SnapshotWriter, error) {
+
+    self.snapshotLock.Lock()
+    defer self.snapshotLock.Unlock()
+    id := self.getID(lastIncludedTerm, lastIncludedIndex)
+    meta := &SnapshotMeta{
+        ID:                id,
+        LastIncludedTerm:  lastIncludedTerm,
+        LastIncludedIndex: lastIncludedIndex,
+        Size:              0,
+        Conf:              conf,
+    }
+    snapshot := &MemorySnapshot{
+        Meta: meta,
+        Data: list.New(),
+    }
+    writer := &MemorySnapshotWriter{
+        stateMachine: self,
+        snapshot:     snapshot,
+    }
+    return writer, nil
+}
+
+func (self *MemoryStateMachine) addSnapshot(snapshot *MemorySnapshot) {
+    self.snapshotLock.Lock()
+    defer self.snapshotLock.Unlock()
+    self.snapshotList.PushBack(snapshot)
+}
+
+func (self *MemoryStateMachine) RestoreFromSnapshot(id string) error {
     self.lock.Lock()
+    self.snapshotLock.RLock()
     defer self.lock.Unlock()
-    defer readerCloser.Close()
+    defer self.snapshotLock.RUnlock()
 
-    length := int32(0)
-    err := binary.Read(readerCloser, binary.BigEndian, &length)
-    if err != nil {
-        return err
+    for e := self.snapshotList.Front(); e != nil; e = e.Next() {
+        snapshot, _ := e.Value.(*MemorySnapshot)
+        if snapshot.Meta.ID == id {
+            self.dataList.Init()
+            self.dataList.PushBackList(snapshot.Data)
+            return nil
+        }
     }
-    data := list.New()
-    for i := int32(0); i < length; i++ {
-        byteSize := int32(0)
-        err := binary.Read(readerCloser, binary.BigEndian, &byteSize)
-        if err != nil {
-            return err
-        }
-        b := make([]byte, byteSize)
-        n, err := readerCloser.Read(b)
-        if err != nil {
-            return err
-        }
-        if n != len(b) {
-            return errors.New("size missmatched")
-        }
-        data.PushBack(b)
-    }
-    self.data = data
-    return nil
+    return ErrorSnapshotNotFound
 }
 
-type MemorySnapshot struct {
-    data *list.List
-    lock sync.Mutex
+func (self *MemoryStateMachine) LastSnapshotInfo() (*SnapshotMeta, error) {
+    self.snapshotLock.RLock()
+    defer self.snapshotLock.RUnlock()
+    if self.snapshotList.Len() == 0 {
+        return nil, ErrorNoSnapshot
+    }
+    elem := self.snapshotList.Back()
+    snapshot, _ := elem.Value.(*MemorySnapshot)
+    return snapshot.Meta, nil
 }
 
-func NewMemorySnapshot(data *list.List) *MemorySnapshot {
-    return &MemorySnapshot{
-        data: data,
+func (self *MemoryStateMachine) AllSnapshotInfo() ([]*SnapshotMeta, error) {
+    self.snapshotLock.RLock()
+    defer self.snapshotLock.RUnlock()
+    length := self.snapshotList.Len()
+    if length == 0 {
+        return nil, ErrorNoSnapshot
     }
+    result := make([]*SnapshotMeta, 0, length)
+    for e := self.snapshotList.Front(); e != nil; e = e.Next() {
+        snapshot, _ := e.Value.(*MemorySnapshot)
+        result = append(result, snapshot.Meta)
+    }
+    return result, nil
 }
 
-func (self *MemorySnapshot) Persist(writer SnapshotWriter) error {
-    self.lock.Lock()
-    defer self.lock.Unlock()
+func (self *MemoryStateMachine) OpenSnapshot(
+    id string) (*SnapshotMeta, io.ReadCloser, error) {
 
-    length := int32(self.data.Len())
-    err := binary.Write(writer, binary.BigEndian, &length)
-    if err != nil {
-        return err
-    }
-    for e := self.data.Front(); e != nil; e = e.Next() {
-        v, ok := e.Value.([]byte)
-        if !ok {
-            return errors.New("invalid type in data")
-        }
-        // write the length of data first
-        length = int32(len(v))
-        err = binary.Write(writer, binary.BigEndian, &length)
-        if err != nil {
-            return err
-        }
-        // write the data
-        if _, err := writer.Write(v); err != nil {
-            return err
+    self.snapshotLock.RLock()
+    defer self.snapshotLock.RUnlock()
+    for e := self.snapshotList.Front(); e != nil; e = e.Next() {
+        snapshot, _ := e.Value.(*MemorySnapshot)
+        if snapshot.Meta.ID == id {
+            allData := make([]byte, 0)
+            for elem := snapshot.Data.Front(); elem != nil; elem = elem.Next() {
+                data, _ := elem.([]byte)
+                allData = append(allData, data)
+            }
+            readerCloser := NewReaderCloserWrapper(bytes.NewReader(allData))
+            return snapshot.Meta, readerCloser, nil
         }
     }
-    writer.Close()
-    return nil
+    return nil, nil, ErrorSnapshotNotFound
 }
 
-func (self *MemorySnapshot) Release() {
-    self.lock.Lock()
-    defer self.lock.Unlock()
-
-    // empty body
+func (self *MemoryStateMachine) DeleteSnapshot(id string) error {
+    self.snapshotLock.Lock()
+    defer self.snapshotLock.Unlock()
+    for e := self.snapshotList.Front(); e != nil; e = e.Next() {
+        snapshot, _ := e.Value.(*MemorySnapshot)
+        if snapshot.Meta.ID == id {
+            self.snapshotList.Remove(e)
+            return nil
+        }
+    }
+    return ErrorSnapshotNotFound
 }
 
 type MemoryConfigManager struct {

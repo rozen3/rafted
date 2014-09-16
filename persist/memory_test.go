@@ -189,8 +189,14 @@ func TestMemoryStateMachine(t *testing.T) {
     // test MakeSnapshot()
     term := uint64(100)
     index := uint64(23355)
-    servers := SetupMemoryServerAddrs(5)
-    manager := NewMemorySnapshotManager()
+    conf := &Config{
+        Servers:    SetupMemoryServerAddrs(5),
+        NewServers: nil,
+    }
+    id, err := stateMachine.MakeSnapshot(term, index, conf)
+    assert.Nil(t, err)
+    stateMachine.Open(id)
+    assert.Nil(t, err)
     writer, err := manager.Create(term, index, servers)
     id := writer.ID()
     assert.Nil(t, err)
