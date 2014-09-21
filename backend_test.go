@@ -31,7 +31,6 @@ func NewTestHSMBackend(
     }
     configManager := ps.NewMemoryConfigManager(firstLogIndex, config)
     stateMachine := ps.NewMemoryStateMachine()
-    snapshotManager := ps.NewMemorySnapshotManager()
 
     localLogger := logging.GetLogger("leader" + "#" + localAddr.String())
     local, err := NewLocalManager(
@@ -39,7 +38,6 @@ func NewTestHSMBackend(
         localAddr,
         log,
         stateMachine,
-        snapshotManager,
         configManager,
         localLogger)
     if err != nil {

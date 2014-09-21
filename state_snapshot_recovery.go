@@ -9,53 +9,19 @@ import (
     ps "github.com/hhkbp2/rafted/persist"
 )
 
-type RemoteSnapshot struct {
+type SnapshotInfo struct {
     Leader            ps.ServerAddr
-    Servers           []ps.ServerAddr
+    Conf              *ps.Config
     LastIncludedTerm  uint64
     LastIncludedIndex uint64
     Size              uint64
     Offset            uint64
-    Chunk             []byte
-    writer            ps.SnapshotWriter
 }
 
-func NewRemoteSnapshot(
-    leader ps.ServerAddr,
-    servers []ps.ServerAddr,
-    lastIncludedTerm uint64,
-    lastIncludedIndex uint64,
-    size uint64,
-    writer ps.SnapshotWriter) *RemoteSnapshot {
-    return &RemoteSnapshot{
-        Leader:            leader,
-        Servers:           servers,
-        LastIncludedTerm:  lastIncludedTerm,
-        LastIncludedIndex: lastIncludedIndex,
-        Size:              size,
-        Offset:            0,
-        Chunk:             make([]byte, 0),
-        writer:            writer,
-    }
-}
-
-func (self *RemoteSnapshot) PersistChunk(offset uint64, chunk []byte) error {
-    if offset != self.Offset {
-        return errors.New("offset mismatch")
-    }
-
-    self.Chunk = chunk
-    if err := self.Persist(self.writer); err != nil {
-        return err
-    }
-    self.Offset += uint64(len(chunk))
-    return nil
-}
-
-func (self *RemoteSnapshot) Persist(writer ps.SnapshotWriter) error {
-    length := len(self.Chunk)
+func write(writer ps.SnapshotWriter, data []byte) error {
+    length := len(data)
     for i := 0; i < length; {
-        n, err := writer.Write(self.Chunk[i:])
+        n, err := writer.Write(data[i:])
         if err != nil {
             return err
         }
@@ -64,14 +30,11 @@ func (self *RemoteSnapshot) Persist(writer ps.SnapshotWriter) error {
     return nil
 }
 
-func (self *RemoteSnapshot) Release() {
-}
-
 type SnapshotRecoveryState struct {
     *LogStateHead
 
-    writer   ps.SnapshotWriter
-    snapshot *RemoteSnapshot
+    writer ps.SnapshotWriter
+    info   *SnapshotInfo
 }
 
 func NewSnapshotRecoveryState(
@@ -80,7 +43,7 @@ func NewSnapshotRecoveryState(
     object := &SnapshotRecoveryState{
         LogStateHead: NewLogStateHead(super, logger),
         writer:       nil,
-        snapshot:     nil,
+        info:         nil,
     }
     super.AddChild(object)
     return object
@@ -100,14 +63,14 @@ func (self *SnapshotRecoveryState) Entry(
     e, ok := event.(*ev.InstallSnapshotRequestEvent)
     hsm.AssertTrue(ok)
 
-    servers := e.Request.Servers
+    conf := e.Request.Conf
     lastIncludedTerm := e.Request.LastIncludedTerm
     lastIncludedIndex := e.Request.LastIncludedIndex
-    snapshotWriter, err := localHSM.SnapshotManager().Create(
-        lastIncludedTerm, lastIncludedIndex, servers)
+    snapshotWriter, err := localHSM.StateMachine().MakeEmptySnapshot(
+        lastIncludedTerm, lastIncludedIndex, conf)
     if err != nil {
         self.writer = nil
-        self.snapshot = nil
+        self.info = nil
         message := fmt.Sprintf(
             "fail to create snapshot for term: %d, index: %d, error: %s",
             lastIncludedTerm, lastIncludedIndex, err)
@@ -115,13 +78,14 @@ func (self *SnapshotRecoveryState) Entry(
         localHSM.SelfDispatch(ev.NewAbortSnapshotRecoveryEvent(e))
     } else {
         self.writer = snapshotWriter
-        self.snapshot = NewRemoteSnapshot(
-            e.Request.Leader,
-            e.Request.Servers,
-            e.Request.LastIncludedTerm,
-            e.Request.LastIncludedIndex,
-            e.Request.Size,
-            self.writer)
+        self.info = &SnapshotInfo{
+            Leader:            e.Request.Leader,
+            Conf:              e.Request.Conf,
+            LastIncludedTerm:  e.Request.LastIncludedTerm,
+            LastIncludedIndex: e.Request.LastIncludedIndex,
+            Size:              e.Request.Size,
+            Offset:            uint64(0),
+        }
         localHSM.SelfDispatch(event)
     }
     return self.Super()
@@ -133,7 +97,7 @@ func (self *SnapshotRecoveryState) Exit(
     self.Debug("STATE: %s, -> Exit", self.ID())
     // clean up state status
     self.writer = nil
-    self.snapshot = nil
+    self.info = nil
     return self.Super()
 }
 
@@ -167,7 +131,7 @@ func (self *SnapshotRecoveryState) Handle(
             return nil
         }
 
-        if ps.AddrNotEqual(&e.Request.Leader, &self.snapshot.Leader) {
+        if ps.AddrNotEqual(&e.Request.Leader, &self.info.Leader) {
             // Receive another leader install snapshot request. Just ignore.
             e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
             return nil
@@ -179,17 +143,17 @@ func (self *SnapshotRecoveryState) Handle(
         followerState.UpdateLastContact(localHSM)
 
         // check the infos consistant
-        if ps.AddrsNotEqual(e.Request.Servers, self.snapshot.Servers) ||
-            (e.Request.LastIncludedTerm != self.snapshot.LastIncludedTerm) ||
-            (e.Request.LastIncludedIndex != self.snapshot.LastIncludedIndex) ||
-            (e.Request.Size != self.snapshot.Size) ||
-            (e.Request.Offset != self.snapshot.Offset) {
+        if ps.ConfigNotEqual(e.Request.Conf, self.info.Conf) ||
+            (e.Request.LastIncludedTerm != self.info.LastIncludedTerm) ||
+            (e.Request.LastIncludedIndex != self.info.LastIncludedIndex) ||
+            (e.Request.Size != self.info.Size) ||
+            (e.Request.Offset != self.info.Offset) {
             // Receive request with inconsistant infos to previous ones.
             self.Info("receive inconsistant InstallSnapshotRequest")
             e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
             return nil
         }
-        err := self.snapshot.PersistChunk(e.Request.Offset, e.Request.Data)
+        err := write(self.writer, e.Request.Data)
         if err != nil {
             // fail to persist this chunk
             self.Error("fail to persist snapshot chunk, offset: %s, error: %s",
@@ -197,34 +161,23 @@ func (self *SnapshotRecoveryState) Handle(
             if e := self.writer.Cancel(); e != nil {
                 self.Error("fail to cancel snapshot writer, error: %s", e)
             }
-            self.snapshot.Release()
             e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
             sm.QTran(StateFollowerID)
             return nil
         }
+        self.info.Offset += uint64(len(e.Request.Data))
 
         response.Success = true
         e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
         // check whether snapshot recovery is done
-        if self.snapshot.Offset == self.snapshot.Size {
+        if self.info.Offset == self.info.Size {
             snapshotID := self.writer.ID()
             if err := self.writer.Close(); err != nil {
                 self.Error("fail to cancel snapshot writer, error: %s", e)
             }
-            self.snapshot.Release()
             // Done writing a new snapshot from leader.
             // From now restore log from snapshot.
-            _, reader, err := localHSM.SnapshotManager().Open(snapshotID)
-            if err != nil {
-                message := fmt.Sprintf(
-                    "fail to open snapshot, id: %s, error: %s", snapshotID, err)
-                e := errors.New(message)
-                localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
-                return nil
-            }
-            success := true
-            if err = localHSM.StateMachine().Restore(reader); err != nil {
-
+            if err = localHSM.StateMachine().RestoreFromSnapshot(snapshotID); err != nil {
                 // clean up latestly created snapshot
                 // NOTICE disable now
                 // localHSM.SnapshotManager().Delete(snapshotID)
@@ -232,15 +185,9 @@ func (self *SnapshotRecoveryState) Handle(
                     "from snapshot, id: %s, error: %s", snapshotID, err)
                 e := errors.New(message)
                 localHSM.SelfDispatch(ev.NewPersistErrorEvent(e))
-                success = false
+                return nil
             }
-            if err = reader.Close(); err != nil {
-                self.Error("fail to close reader of snapshot id: %s",
-                    snapshotID)
-            }
-            if success {
-                sm.QTran(StateFollowerID)
-            }
+            sm.QTran(StateFollowerID)
         }
         return nil
     case ev.EventTimeoutElection:

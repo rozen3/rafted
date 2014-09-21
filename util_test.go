@@ -271,23 +271,6 @@ func (self *MockLog) TruncateAfter(index uint64) error {
     return args.Error(0)
 }
 
-type MockSnapshot struct {
-    mock.Mock
-}
-
-func NewMockSnapshot() *MockSnapshot {
-    return &MockSnapshot{}
-}
-
-func (self *MockSnapshot) Persist(writer ps.SnapshotWriter) error {
-    args := self.Mock.Called(writer)
-    return args.Error(0)
-}
-
-func (self *MockSnapshot) Release() {
-    self.Mock.Called()
-}
-
 type MockStateMachine struct {
     mock.Mock
 }
@@ -306,18 +289,72 @@ func (self *MockStateMachine) Apply(data []byte) []byte {
     return s
 }
 
-func (self *MockStateMachine) MakeSnapshot() (ps.Snapshot, error) {
-    args := self.Mock.Called()
-    var snapshot ps.Snapshot
-    var ok bool
-    if snapshot, ok = args.Get(0).(ps.Snapshot); !ok {
-        panic("fail because object isn't Snapshot")
-    }
-    return snapshot, args.Error(1)
+func (self *MockStateMachine) MakeSnapshot(
+    lastIncludedTerm uint64,
+    lastIncludedIndex uint64,
+    conf *ps.Config) (id string, err error) {
+
+    args := self.Mock.Called(lastIncludedTerm, lastIncludedIndex, conf)
+    return args.String(0), args.Error(1)
 }
 
-func (self *MockStateMachine) Restore(reader io.ReadCloser) error {
-    args := self.Mock.Called(reader)
+func (self *MockStateMachine) MakeEmptySnapshot(
+    lastIncludedTerm uint64,
+    lastIncludedIndex uint64,
+    conf *ps.Config) (ps.SnapshotWriter, error) {
+
+    args := self.Mock.Called(lastIncludedTerm, lastIncludedIndex, conf)
+    var writer ps.SnapshotWriter
+    var ok bool
+    if writer, ok = args.Get(0).(ps.SnapshotWriter); !ok {
+        panic("fail because object isn't SnapshotWriter")
+    }
+    return writer, args.Error(1)
+}
+
+func (self *MockStateMachine) RestoreFromSnapshot(id string) error {
+    args := self.Mock.Called(id)
+    return args.Error(0)
+}
+
+func (self *MockStateMachine) LastSnapshotInfo() (*ps.SnapshotMeta, error) {
+    args := self.Mock.Called()
+    var meta *ps.SnapshotMeta
+    var ok bool
+    if meta, ok = args.Get(0).(*ps.SnapshotMeta); !ok {
+        panic("object isn't SnapshotMeta")
+    }
+    return meta, args.Error(1)
+}
+
+func (self *MockStateMachine) AllSnapshotInfo() ([]*ps.SnapshotMeta, error) {
+    args := self.Mock.Called()
+    var metas []*ps.SnapshotMeta
+    var ok bool
+    if metas, ok = args.Get(0).([]*ps.SnapshotMeta); !ok {
+        panic("object isn't []*SnapshotMeta")
+    }
+    return metas, args.Error(1)
+}
+
+func (self *MockStateMachine) OpenSnapshot(
+    id string) (*ps.SnapshotMeta, io.ReadCloser, error) {
+
+    args := self.Mock.Called(id)
+    var meta *ps.SnapshotMeta
+    var reader io.ReadCloser
+    var ok bool
+    if meta, ok = args.Get(0).(*ps.SnapshotMeta); !ok {
+        panic("object isn't SnapshotMeta")
+    }
+    if reader, ok = args.Get(1).(io.ReadCloser); !ok {
+        panic("object isn't io.ReadCloser")
+    }
+    return meta, reader, args.Error(2)
+}
+
+func (self *MockStateMachine) DeleteSnapshot(id string) error {
+    args := self.Mock.Called(id)
     return args.Error(0)
 }
 

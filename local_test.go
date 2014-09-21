@@ -68,7 +68,6 @@ func getTestLocal() (Local, error) {
         return nil, err
     }
     stateMachine := ps.NewMemoryStateMachine()
-    snapshotManager := ps.NewMemorySnapshotManager()
     configManager := ps.NewMemoryConfigManager(index, conf)
     logger := logging.GetLogger("test local")
     local, err := NewLocalManager(
@@ -76,7 +75,6 @@ func getTestLocal() (Local, error) {
         localAddr,
         log,
         stateMachine,
-        snapshotManager,
         configManager,
         logger)
     if err != nil {

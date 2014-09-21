@@ -83,7 +83,7 @@ type InstallSnapshotRequest struct {
 
     // The configuration of all servers on LastIncludedIndex log entry
     // (when taking snapshot)
-    Servers []ps.ServerAddr
+    Conf *ps.Config
 
     // Size of the snapshot
     Size uint64

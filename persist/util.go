@@ -98,6 +98,10 @@ func ConfigEqual(conf1 *Config, conf2 *Config) bool {
         AddrsEqual(conf1.NewServers, conf2.NewServers))
 }
 
+func ConfigNotEqual(conf1 *Config, conf2 *Config) bool {
+    return !ConfigEqual(conf1, conf2)
+}
+
 func CopyConfig(conf *Config) *Config {
     return &Config{
         Servers:    conf.Servers[:],

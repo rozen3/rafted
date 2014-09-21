@@ -15,27 +15,26 @@ import (
 type MockLocal struct {
     mock.Mock
 
-    log             ps.Log
-    snapshotManager ps.SnapshotManager
-    configManager   ps.ConfigManager
-    notifier        *Notifier
-    Events          []hsm.Event
-    PriorEvents     []hsm.Event
+    log           ps.Log
+    stateMachine  ps.StateMachine
+    configManager ps.ConfigManager
+    notifier      *Notifier
+    Events        []hsm.Event
+    PriorEvents   []hsm.Event
 }
 
 func NewMockLocal(
     log ps.Log,
-    snapshotManager ps.SnapshotManager,
+    stateMachine ps.StateMachine,
     configManager ps.ConfigManager,
     notifier *Notifier) *MockLocal {
 
     return &MockLocal{
-        log:             log,
-        snapshotManager: snapshotManager,
-        configManager:   configManager,
-        notifier:        notifier,
-        Events:          make([]hsm.Event, 0),
-        PriorEvents:     make([]hsm.Event, 0),
+        log:           log,
+        configManager: configManager,
+        notifier:      notifier,
+        Events:        make([]hsm.Event, 0),
+        PriorEvents:   make([]hsm.Event, 0),
     }
 }
 
@@ -100,8 +99,8 @@ func (self *MockLocal) Log() ps.Log {
     return self.log
 }
 
-func (self *MockLocal) SnapshotManager() ps.SnapshotManager {
-    return self.snapshotManager
+func (self *MockLocal) StateMachine() ps.StateMachine {
+    return self.stateMachine
 }
 
 func (self *MockLocal) ConfigManager() ps.ConfigManager {
@@ -147,10 +146,10 @@ func getTestPeerAndLocal(eventHandler func(ev.RaftEvent)) (Peer, *MockLocal, err
     if err != nil {
         return nil, nil, err
     }
-    snapshotManager := ps.NewMemorySnapshotManager()
+    stateMachine := ps.NewMemoryStateMachine()
     configManager := ps.NewMemoryConfigManager(index, conf)
     notifier := NewNotifier()
-    local := NewMockLocal(log, snapshotManager, configManager, notifier)
+    local := NewMockLocal(log, stateMachine, configManager, notifier)
     client := comm.NewMemoryClient(
         testConfig.CommPoolSize, testConfig.CommTimeout, testRegister)
     logger := logging.GetLogger("test peer")

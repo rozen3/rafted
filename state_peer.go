@@ -596,7 +596,7 @@ func (self *StandardModePeerState) SetupReplicating(
     hsm.AssertTrue(ok)
     matchIndex, nextIndex := leaderPeerState.GetIndexInfo()
     local := peerHSM.Local()
-    lastSnapshotTerm, lastSnapshotIndex, err := local.SnapshotManager().LastSnapshotInfo()
+    lastSnapshotMeta, err := local.StateMachine().LastSnapshotInfo()
     if err != nil {
         errorEvent := ev.NewPersistErrorEvent(
             errors.New("fail to last snapshot info"))
@@ -634,9 +634,9 @@ func (self *StandardModePeerState) SetupReplicating(
         if lastLogIndex == 1 {
             prevLogTerm = 0
             prevLogIndex = 0
-        } else if (lastSnapshotIndex + 1) == lastLogIndex {
-            prevLogTerm = lastSnapshotTerm
-            prevLogIndex = lastSnapshotIndex
+        } else if (lastSnapshotMeta.LastIncludedIndex + 1) == lastLogIndex {
+            prevLogTerm = lastSnapshotMeta.LastIncludedTerm
+            prevLogIndex = lastSnapshotMeta.LastIncludedIndex
         } else {
             prevLogIndex = lastLogIndex - 1
             prevLogEntry, err := local.Log().GetLog(prevLogIndex)
@@ -665,7 +665,7 @@ func (self *StandardModePeerState) SetupReplicating(
             len(request.Entries), request.LeaderCommitIndex,
             "["+strings.Join(EntriesInfo(request.Entries), ",")+"]")
         event = ev.NewAppendEntriesRequestEvent(request)
-    case matchIndex < lastSnapshotIndex:
+    case matchIndex < lastSnapshotMeta.LastIncludedIndex:
         event = ev.NewPeerEnterSnapshotModeEvent()
     default:
         log, err := local.Log().GetLog(matchIndex)
@@ -758,7 +758,7 @@ func (self *SnapshotModePeerState) Entry(
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
     local := peerHSM.Local()
-    snapshotMetas, err := local.SnapshotManager().List()
+    snapshotMetas, err := local.StateMachine().AllSnapshotInfo()
     if err != nil {
         local.SendPrior(ev.NewPersistErrorEvent(errors.New(
             "fail to list snapshot")))
@@ -773,7 +773,7 @@ func (self *SnapshotModePeerState) Entry(
     }
 
     id := snapshotMetas[0].ID
-    meta, readCloser, err := local.SnapshotManager().Open(id)
+    meta, readCloser, err := local.StateMachine().OpenSnapshot(id)
     if err != nil {
         message := fmt.Sprintf("fail to open snapshot, id: %s", id)
         local.SendPrior(ev.NewPersistErrorEvent(errors.New(message)))
@@ -894,7 +894,7 @@ func (self *SnapshotModePeerState) SetupRequest(
         LastIncludedTerm:  self.snapshotMeta.LastIncludedTerm,
         Offset:            self.offset,
         Data:              self.lastChunk,
-        Servers:           self.snapshotMeta.Servers,
+        Conf:              self.snapshotMeta.Conf,
         Size:              self.snapshotMeta.Size,
     }
     event := ev.NewInstallSnapshotRequestEvent(request)

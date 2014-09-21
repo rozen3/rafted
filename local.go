@@ -69,10 +69,9 @@ type LocalHSM struct {
     memberChangeStatus     MemberChangeStatusType
     memberChangeStatusLock sync.RWMutex
 
-    log             ps.Log
-    stateMachine    ps.StateMachine
-    snapshotManager ps.SnapshotManager
-    configManager   ps.ConfigManager
+    log           ps.Log
+    stateMachine  ps.StateMachine
+    configManager ps.ConfigManager
 
     applier  *Applier
     peers    Peers
@@ -87,7 +86,6 @@ func NewLocalHSM(
     configManager ps.ConfigManager,
     stateMachine ps.StateMachine,
     log ps.Log,
-    snapshotManager ps.SnapshotManager,
     logger logging.Logger) (*LocalHSM, error) {
 
     // TODO check the integrety between log and configManager
@@ -120,7 +118,6 @@ func NewLocalHSM(
         memberChangeStatus: memberChangeStatus,
         log:                log,
         stateMachine:       stateMachine,
-        snapshotManager:    snapshotManager,
         configManager:      configManager,
         notifier:           notifier,
         Logger:             logger,
@@ -288,10 +285,6 @@ func (self *LocalHSM) StateMachine() ps.StateMachine {
     return self.stateMachine
 }
 
-func (self *LocalHSM) SnapshotManager() ps.SnapshotManager {
-    return self.snapshotManager
-}
-
 func (self *LocalHSM) Peers() Peers {
     return self.peers
 }
@@ -406,7 +399,7 @@ type Local interface {
     GetLeader() ps.ServerAddr
 
     Log() ps.Log
-    SnapshotManager() ps.SnapshotManager
+    StateMachine() ps.StateMachine
     ConfigManager() ps.ConfigManager
     Notifier() *Notifier
 
@@ -422,7 +415,6 @@ func NewLocalManager(
     localAddr ps.ServerAddr,
     log ps.Log,
     stateMachine ps.StateMachine,
-    snapshotManager ps.SnapshotManager,
     configManager ps.ConfigManager,
     logger logging.Logger) (Local, error) {
 
@@ -456,7 +448,6 @@ func NewLocalManager(
         configManager,
         stateMachine,
         log,
-        snapshotManager,
         logger)
     if err != nil {
         return nil, err
@@ -502,12 +493,13 @@ func (self *LocalManager) GetVotedFor() ps.ServerAddr {
 func (self *LocalManager) GetLeader() ps.ServerAddr {
     return self.localHSM.GetLeader()
 }
+
 func (self *LocalManager) Log() ps.Log {
     return self.localHSM.Log()
 }
 
-func (self *LocalManager) SnapshotManager() ps.SnapshotManager {
-    return self.localHSM.SnapshotManager()
+func (self *LocalManager) StateMachine() ps.StateMachine {
+    return self.localHSM.StateMachine()
 }
 
 func (self *LocalManager) ConfigManager() ps.ConfigManager {

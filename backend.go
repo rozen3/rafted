@@ -45,7 +45,6 @@ func NewHSMBackend(
     configManager ps.ConfigManager,
     stateMachine ps.StateMachine,
     log ps.Log,
-    snapshotManager ps.SnapshotManager,
     logger logging.Logger) (*HSMBackend, error) {
 
     local, err := NewLocalManager(
@@ -53,7 +52,6 @@ func NewHSMBackend(
         localAddr,
         log,
         stateMachine,
-        snapshotManager,
         configManager,
         logger)
     if err != nil {
