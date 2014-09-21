@@ -3,7 +3,6 @@ package persist
 import (
     "bytes"
     "container/list"
-    "encoding/binary"
     "errors"
     "fmt"
     "io"
@@ -273,20 +272,20 @@ func NewMemorySnapshotWriter(
 func (self *MemorySnapshotWriter) Write(p []byte) (int, error) {
     self.lock.Lock()
     defer self.lock.Unlock()
-    self.instance.Data.PushBack(p)
+    self.snapshot.Data.PushBack(p)
     return len(p), nil
 }
 
 func (self *MemorySnapshotWriter) Close() error {
     self.lock.Lock()
     defer self.lock.Unlock()
-    self.instance.Size = self.instance.Data.Len()
-    self.stateMachine.addSnapshot(self.instance)
+    self.snapshot.Meta.Size = uint64(self.snapshot.Data.Len())
+    self.stateMachine.addSnapshot(self.snapshot)
     return nil
 }
 
 func (self *MemorySnapshotWriter) ID() string {
-    return self.instance.Meta.ID
+    return self.snapshot.Meta.ID
 }
 
 func (self *MemorySnapshotWriter) Cancel() error {
@@ -324,9 +323,7 @@ func (self *MemoryStateMachine) Apply(p []byte) []byte {
 }
 
 func (self *MemoryStateMachine) getID(term, index uint64) string {
-    id := fmt.Sprintf(
-        "Term:%d Index:%d", lastIncludedTerm, lastIncludedIndex)
-    return id
+    return fmt.Sprintf("Term:%d Index:%d", term, index)
 }
 
 func (self *MemoryStateMachine) MakeSnapshot(
@@ -334,12 +331,12 @@ func (self *MemoryStateMachine) MakeSnapshot(
     lastIncludedIndex uint64,
     conf *Config) (id string, err error) {
 
-    self.datalock.Lock()
+    self.dataLock.Lock()
     self.snapshotLock.Lock()
     defer self.dataLock.Unlock()
     defer self.snapshotLock.Unlock()
     // construct the metadata
-    id := self.getID(lastIncludedTerm, lastIncludedIndex)
+    id = self.getID(lastIncludedTerm, lastIncludedIndex)
     meta := &SnapshotMeta{
         ID:                id,
         LastIncludedTerm:  lastIncludedTerm,
@@ -391,9 +388,9 @@ func (self *MemoryStateMachine) addSnapshot(snapshot *MemorySnapshot) {
 }
 
 func (self *MemoryStateMachine) RestoreFromSnapshot(id string) error {
-    self.lock.Lock()
+    self.dataLock.Lock()
     self.snapshotLock.RLock()
-    defer self.lock.Unlock()
+    defer self.dataLock.Unlock()
     defer self.snapshotLock.RUnlock()
 
     for e := self.snapshotList.Front(); e != nil; e = e.Next() {
@@ -443,8 +440,8 @@ func (self *MemoryStateMachine) OpenSnapshot(
         if snapshot.Meta.ID == id {
             allData := make([]byte, 0)
             for elem := snapshot.Data.Front(); elem != nil; elem = elem.Next() {
-                data, _ := elem.([]byte)
-                allData = append(allData, data)
+                data, _ := elem.Value.([]byte)
+                allData = append(allData, data...)
             }
             readerCloser := NewReaderCloserWrapper(bytes.NewReader(allData))
             return snapshot.Meta, readerCloser, nil
