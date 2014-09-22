@@ -99,9 +99,11 @@ func (self *MockBackend2) GetNotifyChan() <-chan ev.NotifyEvent {
     return make(<-chan ev.NotifyEvent)
 }
 
-func setupTestRedirectClient(
-    addr ps.ServerAddr,
-    backend Backend) *RedirectClient {
+type GenRedirectClientFunc func(
+    addr ps.ServerAddr, backend Backend) (*RedirectClient, error)
+
+func setupTestMemoryRedirectClient(
+    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
 
     eventHandler := func(event ev.RaftRequestEvent) {
         backend.Send(event)
@@ -125,7 +127,36 @@ func setupTestRedirectClient(
         server,
         logger2)
     redirectClient.Start()
-    return redirectClient
+    return redirectClient, nil
+}
+
+func setupTestSocketRedirectClient(
+    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
+
+    client := cm.NewSocketClient(testConfig.CommPoolSize)
+    eventHandler := func(event ev.RaftRequestEvent) {
+        backend.Send(event)
+    }
+    logger := logging.GetLogger("Server" + "#" + addr.String())
+    server, err := cm.NewSocketServer(&addr, eventHandler, logger)
+    if err != nil {
+        return nil, err
+    }
+    logger2 := logging.GetLogger("RedirectClient" + "#" + addr.String())
+    redirectRetry := rt.NewErrorRetry().
+        MaxTries(3).
+        Delay(testConfig.HeartbeatTimeout)
+    retry := redirectRetry.Copy().OnError(LeaderUnknown).OnError(LeaderUnsync)
+    redirectClient := NewRedirectClient(
+        testConfig.ClientTimeout,
+        retry,
+        redirectRetry,
+        backend,
+        client,
+        server,
+        logger2)
+    redirectClient.Start()
+    return redirectClient, nil
 }
 
 func TestRedirectClientContruction(t *testing.T) {
@@ -142,7 +173,8 @@ func TestRedirectClientContruction(t *testing.T) {
             }
             return ev.NewClientResponseEvent(response)
         })
-    redirectClient := setupTestRedirectClient(addrs[0], backend)
+    redirectClient, err := setupTestMemoryRedirectClient(addrs[0], backend)
+    assert.Nil(t, err)
     defer redirectClient.Close()
     result, err := redirectClient.ReadOnly(data)
     assert.Equal(t, err, nil)
@@ -171,7 +203,8 @@ func TestRedirectClientRedirection(t *testing.T) {
             }
             return ev.NewLeaderRedirectResponseEvent(response)
         })
-    redirectClient1 := setupTestRedirectClient(addrs[0], backend1)
+    redirectClient1, err := setupTestMemoryRedirectClient(addrs[0], backend1)
+    assert.Nil(t, err)
     defer redirectClient1.Close()
 
     invokedCount2 := 0
@@ -184,7 +217,8 @@ func TestRedirectClientRedirection(t *testing.T) {
             }
             return ev.NewClientResponseEvent(response)
         })
-    redirectClient2 := setupTestRedirectClient(addrs[1], backend2)
+    redirectClient2, err := setupTestMemoryRedirectClient(addrs[1], backend2)
+    assert.Nil(t, err)
     defer redirectClient2.Close()
 
     result, err := redirectClient1.Append(data)

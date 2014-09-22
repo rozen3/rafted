@@ -7,16 +7,19 @@ import (
     "time"
 )
 
-func testNodeSimple(t *testing.T, genBackend GenHSMBackendFunc) {
+func testNodeSimple(
+    t *testing.T,
+    genBackend GenHSMBackendFunc,
+    genRedirectHandler GenRedirectClientFunc) {
+
     clusterSize := 3
     addrs := ps.SetupMemoryServerAddrs(clusterSize)
     nodes := make([]*RaftNode, 0, clusterSize)
     for i := 0; i < clusterSize; i++ {
         backend, err := genBackend(addrs[i], addrs)
-        if err != nil {
-            t.Error("fail to create test raft node, error")
-        }
-        client := setupTestRedirectClient(addrs[i], backend)
+        assert.Nil(t, err, "fail to create test backend")
+        client, err := genRedirectHandler(addrs[i], backend)
+        assert.Nil(t, err, "fail to create test client")
         node := NewRaftNode(backend, client)
         nodes = append(nodes, node)
     }
@@ -32,9 +35,9 @@ func testNodeSimple(t *testing.T, genBackend GenHSMBackendFunc) {
 }
 
 func TestMemoryNodeSimple(t *testing.T) {
-    testNodeSimple(t, NewTestMemoryHSMBackend)
+    testNodeSimple(t, NewTestMemoryHSMBackend, setupTestMemoryRedirectClient)
 }
 
 func TestSocketNodeSimple(t *testing.T) {
-    testNodeSimple(t, NewTestSocketHSMBackend)
+    testNodeSimple(t, NewTestSocketHSMBackend, setupTestSocketRedirectClient)
 }
