@@ -127,7 +127,7 @@ func getTestMemoryServer(
     return server
 }
 
-func getTestPeerAndLocal(eventHandler func(ev.RaftEvent)) (Peer, *MockLocal, error) {
+func getTestPeerAndLocal() (Peer, *MockLocal, error) {
     servers := testServers
     index := testIndex
     term := testTerm
@@ -158,16 +158,13 @@ func getTestPeerAndLocal(eventHandler func(ev.RaftEvent)) (Peer, *MockLocal, err
         testConfig,
         servers[1],
         client,
-        eventHandler,
         local,
         logger)
     return peer, local, nil
 }
 
-func getTestPeerAndLocalSafe(
-    t *testing.T, eventHandler func(ev.RaftEvent)) (Peer, *MockLocal) {
-
-    peer, local, err := getTestPeerAndLocal(eventHandler)
+func getTestPeerAndLocalSafe(t *testing.T) (Peer, *MockLocal) {
+    peer, local, err := getTestPeerAndLocal()
     assert.Nil(t, err)
     return peer, local
 }

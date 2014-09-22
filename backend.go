@@ -58,13 +58,6 @@ func NewHSMBackend(
         return nil, err
     }
     client := comm.NewSocketClient(config.CommPoolSize)
-    eventHandler1 := func(event ev.RaftEvent) {
-        local.Send(event)
-    }
-    eventHandler2 := func(event ev.RaftRequestEvent) {
-        local.Send(event)
-    }
-
     getLoggerForPeer := func(ps.ServerAddr) logging.Logger {
         return logger
     }
@@ -72,11 +65,13 @@ func NewHSMBackend(
         config,
         otherPeerAddrs,
         client,
-        eventHandler1,
         local,
         getLoggerForPeer,
         logger)
-    server, err := comm.NewSocketServer(&bindAddr, eventHandler2, logger)
+    eventHandler := func(event ev.RaftRequestEvent) {
+        local.Send(event)
+    }
+    server, err := comm.NewSocketServer(&bindAddr, eventHandler, logger)
     if err != nil {
         // TODO add cleanup
         return nil, err

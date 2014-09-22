@@ -45,12 +45,6 @@ func NewTestHSMBackend(
     }
     client := comm.NewMemoryClient(
         testConfig.CommPoolSize, testConfig.CommTimeout, testRegister)
-    eventHandler1 := func(event ev.RaftEvent) {
-        local.Send(event)
-    }
-    eventHandler2 := func(event ev.RaftRequestEvent) {
-        local.Send(event)
-    }
     getLoggerForPeer := func(peerAddr ps.ServerAddr) logging.Logger {
         return logging.GetLogger(
             "peer" + "#" + localAddr.String() + ">>" + peerAddr.String())
@@ -61,25 +55,86 @@ func NewTestHSMBackend(
         testConfig,
         RemoveAddr(addrs, localAddr),
         client,
-        eventHandler1,
         local,
         getLoggerForPeer,
         peerManagerLogger)
+
+    eventHandler := func(event ev.RaftRequestEvent) {
+        local.Send(event)
+    }
     serverLogger := logging.GetLogger("Server" + "#" + localAddr.String())
     server := comm.NewMemoryServer(
         &localAddr,
         testConfig.CommTimeout,
-        eventHandler2,
+        eventHandler,
         testRegister,
         serverLogger)
-    go func() {
-        server.Serve()
-    }()
+    server.Serve()
     return &HSMBackend{
         local:  local,
         peers:  peerManager,
         server: server,
     }, nil
+}
+
+func NewTestHSMBackendOnSocket(
+    localAddr ps.ServerAddr, addrs []ps.ServerAddr) (*HSMBackend, error) {
+    log := ps.NewMemoryLog()
+    firstLogIndex, err := log.FirstIndex()
+    if err != nil {
+        return nil, err
+    }
+    config := &ps.Config{
+        Servers:    addrs,
+        NewServers: nil,
+    }
+    configManager := ps.NewMemoryConfigManager(firstLogIndex, config)
+    stateMachine := ps.NewMemoryStateMachine()
+
+    localLogger := logging.GetLogger("local" + "#" + localAddr.String())
+    local, err := NewLocalManager(
+        testConfig,
+        localAddr,
+        log,
+        stateMachine,
+        configManager,
+        localLogger)
+    if err != nil {
+        return nil, err
+    }
+
+    client := comm.NewSocketClient(testConfig.CommPoolSize)
+    getLoggerForPeer := func(peerAddr ps.ServerAddr) logging.Logger {
+        return logging.GetLogger(
+            "peer" + "#" + localAddr.String() + ">>" + peerAddr.String())
+    }
+    peerManagerLogger := logging.GetLogger(
+        "peer manager" + "#" + localAddr.String())
+    peerManager := NewPeerManager(
+        testConfig,
+        RemoveAddr(addrs, localAddr),
+        client,
+        local,
+        getLoggerForPeer,
+        peerManagerLogger)
+    serverLogger := logging.GetLogger("Server" + "#" + localAddr.String())
+    eventHandler := func(event ev.RaftRequestEvent) {
+        local.Send(event)
+    }
+    server, err := comm.NewSocketServer(&localAddr, eventHandler, serverLogger)
+    if err != nil {
+        return nil, err
+    }
+    server.Serve()
+    object := &HSMBackend{
+        local:  local,
+        peers:  peerManager,
+        server: server,
+    }
+    return object, nil
+}
+
+func TestBackendOnSocket(_ *testing.T) {
 }
 
 func TestBackendOneNodeCluster(t *testing.T) {

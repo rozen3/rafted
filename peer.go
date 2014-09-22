@@ -24,7 +24,6 @@ type PeerManager struct {
 
     config           *Configuration
     client           comm.Client
-    eventHandler     func(ev.RaftEvent)
     local            Local
     getLoggerForPeer func(ps.ServerAddr) logging.Logger
     logger           logging.Logger
@@ -34,7 +33,6 @@ func NewPeerManager(
     config *Configuration,
     peerAddrs []ps.ServerAddr,
     client comm.Client,
-    eventHandler func(ev.RaftEvent),
     local Local,
     getLoggerForPeer func(ps.ServerAddr) logging.Logger,
     logger logging.Logger) *PeerManager {
@@ -43,7 +41,6 @@ func NewPeerManager(
         peerMap:          make(map[ps.ServerAddr]Peer),
         config:           config,
         client:           client,
-        eventHandler:     eventHandler,
         local:            local,
         getLoggerForPeer: getLoggerForPeer,
         logger:           logger,
@@ -75,7 +72,6 @@ func (self *PeerManager) AddPeers(peerAddrs []ps.ServerAddr) {
             self.config,
             addr,
             self.client,
-            self.eventHandler,
             self.local,
             logger)
     }
@@ -123,7 +119,6 @@ func NewPeerMan(
     config *Configuration,
     addr ps.ServerAddr,
     client comm.Client,
-    eventHandler func(ev.RaftEvent),
     local Local,
     logger logging.Logger) Peer {
 
@@ -143,7 +138,7 @@ func NewPeerMan(
     NewPipelineModePeerState(leaderPeerState, logger)
     NewPersistErrorPeerState(peerState, logger)
     hsm.NewTerminal(top)
-    peerHSM := NewPeerHSM(top, initial, addr, client, eventHandler, local)
+    peerHSM := NewPeerHSM(top, initial, addr, client, local)
     peerHSM.Init()
     return &PeerMan{peerHSM}
 }
@@ -188,9 +183,11 @@ func NewPeerHSM(
     initial hsm.State,
     addr ps.ServerAddr,
     client comm.Client,
-    eventHandler func(ev.RaftEvent),
     local Local) *PeerHSM {
 
+    handler := func(event ev.RaftEvent) {
+        local.Send(event)
+    }
     return &PeerHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypePeer, top, initial),
         dispatchChan:     make(chan hsm.Event, 1),
@@ -198,7 +195,7 @@ func NewPeerHSM(
         stopChan:         make(chan interface{}, 1),
         addr:             addr,
         client:           client,
-        eventHandler:     eventHandler,
+        eventHandler:     handler,
         local:            local,
     }
 }

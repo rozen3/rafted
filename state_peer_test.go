@@ -16,10 +16,7 @@ func TestPeerHeartbeatTimeout(t *testing.T) {
 }
 
 func TestPeerActivate(t *testing.T) {
-    responseHandler := func(event ev.RaftEvent) {
-        // empty body
-    }
-    peer, _ := getTestPeerAndLocalSafe(t, responseHandler)
+    peer, _ := getTestPeerAndLocalSafe(t)
     // test construction
     assert.Equal(t, StateDeactivatedPeerID, peer.QueryState())
     event := ev.NewPeerActivateEvent()
@@ -29,11 +26,7 @@ func TestPeerActivate(t *testing.T) {
 }
 
 func TestPeerCandidateEnterLeaderOnEnterLeaderEvent(t *testing.T) {
-    responseChan := NewReliableEventChannel()
-    responseHandler := func(event ev.RaftEvent) {
-        responseChan.Send(event)
-    }
-    peer, mockLocal := getTestPeerAndLocalSafe(t, responseHandler)
+    peer, mockLocal := getTestPeerAndLocalSafe(t)
     requestChan := NewReliableEventChannel()
     requestHandler := func(event ev.RaftRequestEvent) {
         requestChan.Send(event)
@@ -72,12 +65,7 @@ func TestPeerCandidateEnterLeaderOnAppendEntriesRequest(t *testing.T) {
     peerAddr := testServers[1]
     server := getTestMemoryServer(peerAddr, requestHandler)
 
-    responseChan := NewReliableEventChannel()
-    responseHandler := func(event ev.RaftEvent) {
-        responseChan.Send(event)
-    }
-    peer, mockLocal := getTestPeerAndLocalSafe(t, responseHandler)
-
+    peer, mockLocal := getTestPeerAndLocalSafe(t)
     peer.Send(ev.NewPeerActivateEvent())
     assert.Equal(t, StateCandidatePeerID, peer.QueryState())
 
@@ -130,11 +118,7 @@ func TestPeerLeaderHeartbeatTimeout(t *testing.T) {
     peerAddr := testServers[1]
     server := getTestMemoryServer(peerAddr, requestHandler)
 
-    responseHandler := func(_ ev.RaftEvent) {
-        // empty body
-    }
-    peer, mockLocal := getTestPeerAndLocalSafe(t, responseHandler)
-
+    peer, mockLocal := getTestPeerAndLocalSafe(t)
     peer.Send(ev.NewPeerActivateEvent())
     assert.Equal(t, StateCandidatePeerID, peer.QueryState())
     mockLocal.On("GetCurrentTerm").Return(testTerm)
@@ -201,10 +185,7 @@ func TestPeerStandardModeCatchingUp(t *testing.T) {
     peerAddr := testServers[1]
     server := getTestMemoryServer(peerAddr, requestHandler)
     // get peer
-    responseHandler := func(event ev.RaftEvent) {
-        // empty body
-    }
-    peer, mockLocal := getTestPeerAndLocalSafe(t, responseHandler)
+    peer, mockLocal := getTestPeerAndLocalSafe(t)
     // add a few log entry ahead in leader's log
     aheadCount := 3
     for i := 1; i <= aheadCount; i++ {
