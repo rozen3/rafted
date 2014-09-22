@@ -238,14 +238,17 @@ func NewSocketServer(
 }
 
 func (self *SocketServer) Serve() {
-    for {
-        conn, err := self.listener.Accept()
-        if err != nil {
-            self.logger.Error("fail to accept connection")
-            continue
+    routine := func() {
+        for {
+            conn, err := self.listener.Accept()
+            if err != nil {
+                self.logger.Error("fail to accept connection")
+                continue
+            }
+            go self.handleConn(conn)
         }
-        go self.handleConn(conn)
     }
+    go routine()
 }
 
 func (self *SocketServer) handleConn(conn net.Conn) {

@@ -81,9 +81,7 @@ func NewHSMBackend(
         // TODO add cleanup
         return nil, err
     }
-    go func() {
-        server.Serve()
-    }()
+    server.Serve()
     return &HSMBackend{
         local:  local,
         peers:  peerManager,

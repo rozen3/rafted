@@ -4,6 +4,7 @@ import (
     "bufio"
     "fmt"
     ev "github.com/hhkbp2/rafted/event"
+    logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "github.com/hhkbp2/rafted/str"
     "github.com/hhkbp2/testify/assert"
@@ -204,6 +205,35 @@ func TestSocketClient(t *testing.T) {
     require.Nil(t, err)
 }
 
-func TestSocketServer(_ *testing.T) {
-    // TODO add impl
+func TestSocketServer(t *testing.T) {
+    reqEvent, respEvent := prepareRequestAndResponse()
+    bindAddr, err := net.ResolveTCPAddr(
+        "tcp", fmt.Sprintf("%s:%d", "", TestSocketPort))
+    require.Nil(t, err)
+    serverAddr, err := net.ResolveTCPAddr(
+        "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
+    require.Nil(t, err)
+
+    handler := func(event ev.RaftRequestEvent) {
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
+        require.True(t, ok)
+        require.Equal(t, reqEvent.Request, e.Request)
+        e.SendResponse(respEvent)
+    }
+    logger := logging.GetLogger("test socket server")
+    server, err := NewSocketServer(bindAddr, handler, logger)
+    require.Nil(t, err)
+    server.Serve()
+
+    poolSize := 5
+    client := NewSocketClient(poolSize)
+    logger.Debug("here")
+    event, err := client.CallRPCTo(serverAddr, reqEvent)
+    e, ok := event.(*ev.AppendEntriesResponseEvent)
+    require.True(t, ok)
+    require.Equal(t, respEvent.Response, e.Response)
+    err = client.Close()
+    assert.Nil(t, err)
+    err = server.Close()
+    assert.Nil(t, err)
 }

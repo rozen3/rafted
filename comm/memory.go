@@ -401,31 +401,35 @@ func NewMemoryServer(
 }
 
 func (self *MemoryServer) Serve() {
-    for {
-        chunk := self.transport.ReadNextMessage()
-        if chunk == nil {
-            self.logger.Debug("memory server read no more message")
-            // server exit
-            return
-        }
-        transport, ok := self.acceptedConnections[chunk.SourceCh]
-        if ok {
-            // connection already accepted
-            transport.WriteChunk(chunk)
-            continue
-        } else {
-            addr := ps.ServerAddr{
-                Protocol: self.transport.Addr().Network(),
-                IP: fmt.Sprintf(
-                    "%s.%#v", self.transport.Addr().String(), chunk.SourceCh),
+    routine := func() {
+        for {
+            chunk := self.transport.ReadNextMessage()
+            if chunk == nil {
+                self.logger.Debug("memory server read no more message")
+                // server exit
+                return
             }
-            transport := NewMemoryServerTransport(&addr, self.timeout, self.register)
-            transport.ResponseCh = chunk.SourceCh
-            self.acceptedConnections[chunk.SourceCh] = transport
-            transport.WriteChunk(chunk)
-            go self.handleConn(transport)
+            transport, ok := self.acceptedConnections[chunk.SourceCh]
+            if ok {
+                // connection already accepted
+                transport.WriteChunk(chunk)
+                continue
+            } else {
+                addr := ps.ServerAddr{
+                    Protocol: self.transport.Addr().Network(),
+                    IP: fmt.Sprintf(
+                        "%s.%#v", self.transport.Addr().String(), chunk.SourceCh),
+                }
+                transport := NewMemoryServerTransport(
+                    &addr, self.timeout, self.register)
+                transport.ResponseCh = chunk.SourceCh
+                self.acceptedConnections[chunk.SourceCh] = transport
+                transport.WriteChunk(chunk)
+                go self.handleConn(transport)
+            }
         }
     }
+    go routine()
 }
 
 func (self *MemoryServer) handleConn(

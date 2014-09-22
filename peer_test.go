@@ -123,7 +123,7 @@ func getTestMemoryServer(
     logger := logging.GetLogger("test server #" + bindAddr.String())
     server := comm.NewMemoryServer(
         &bindAddr, testConfig.CommTimeout, eventHandler, testRegister, logger)
-    go server.Serve()
+    server.Serve()
     return server
 }
 

@@ -114,7 +114,7 @@ func NewRedirectClient(
 }
 
 func (self *RedirectClient) Start() error {
-    go self.server.Serve()
+    self.server.Serve()
     return nil
 }
 

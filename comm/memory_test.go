@@ -231,7 +231,7 @@ func TestMemoryServer(t *testing.T) {
         e.SendResponse(respEvent)
     }
     server := NewMemoryServer(&serverAddr, testTimeout, eventHandler, register, logger)
-    go server.Serve()
+    server.Serve()
     client := NewMemoryClient(testPoolSize, testTimeout, register)
     event, err := client.CallRPCTo(&serverAddr, reqEvent)
     assert.Nil(t, err)
