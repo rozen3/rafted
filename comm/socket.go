@@ -58,7 +58,8 @@ func NewSocketTransport(addr net.Addr, timeout time.Duration) *SocketTransport {
 }
 
 func (self *SocketTransport) Open() error {
-    conn, err := net.Dial(self.addr.Network(), self.addr.String())
+    conn, err := net.DialTimeout(
+        self.addr.Network(), self.addr.String(), self.readTimeout)
     if err != nil {
         return err
     }
@@ -233,6 +234,8 @@ func (self *SocketClient) Close() error {
 
 type SocketServer struct {
     bindAddr     net.Addr
+    readTimeout  time.Duration
+    writeTimeout time.Duration
     listener     net.Listener
     eventHandler func(ev.RaftRequestEvent)
     logger       logging.Logger
@@ -240,6 +243,7 @@ type SocketServer struct {
 
 func NewSocketServer(
     bindAddr net.Addr,
+    timeout time.Duration,
     eventHandler func(ev.RaftRequestEvent),
     logger logging.Logger) (*SocketServer, error) {
 
@@ -249,11 +253,21 @@ func NewSocketServer(
     }
     object := &SocketServer{
         bindAddr:     bindAddr,
+        readTimeout:  timeout,
+        writeTimeout: timeout,
         listener:     listener,
         eventHandler: eventHandler,
         logger:       logger,
     }
     return object, nil
+}
+
+func (self *SocketServer) SetReadTimeout(timeout time.Duration) {
+    self.readTimeout = timeout
+}
+
+func (self *SocketServer) SetWriteTimeout(timeout time.Duration) {
+    self.writeTimeout = timeout
 }
 
 func (self *SocketServer) Serve() {
@@ -279,6 +293,7 @@ func (self *SocketServer) handleConn(conn net.Conn) {
     encoder := codec.NewEncoder(writer, &codec.MsgpackHandle{})
 
     for {
+        conn.SetReadDeadline(time.Now().Add(self.readTimeout))
         if err := self.handleCommand(
             reader, writer, decoder, encoder); err != nil {
 
@@ -289,6 +304,7 @@ func (self *SocketServer) handleConn(conn net.Conn) {
             }
             return
         }
+        conn.SetWriteDeadline(time.Now().Add(self.writeTimeout))
         if err := writer.Flush(); err != nil {
             self.logger.Error("fail to write to connection: %s, error: %s",
                 conn.RemoteAddr().String(), err)

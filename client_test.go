@@ -139,7 +139,8 @@ func setupTestSocketRedirectClient(
         backend.Send(event)
     }
     logger := logging.GetLogger("Server" + "#" + addr.String())
-    server, err := cm.NewSocketServer(&addr, eventHandler, logger)
+    server, err := cm.NewSocketServer(
+        &addr, testConfig.CommTimeout, eventHandler, logger)
     if err != nil {
         return nil, err
     }

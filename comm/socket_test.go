@@ -221,7 +221,7 @@ func TestSocketServer(t *testing.T) {
         e.SendResponse(respEvent)
     }
     logger := logging.GetLogger("test socket server")
-    server, err := NewSocketServer(bindAddr, handler, logger)
+    server, err := NewSocketServer(bindAddr, testTimeout, handler, logger)
     require.Nil(t, err)
     server.Serve()
 

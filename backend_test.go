@@ -125,7 +125,8 @@ func NewTestSocketHSMBackend(
     eventHandler := func(event ev.RaftRequestEvent) {
         local.Send(event)
     }
-    server, err := comm.NewSocketServer(&localAddr, eventHandler, serverLogger)
+    server, err := comm.NewSocketServer(
+        &localAddr, testConfig.CommTimeout, eventHandler, serverLogger)
     if err != nil {
         return nil, err
     }

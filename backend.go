@@ -73,7 +73,8 @@ func NewHSMBackend(
     eventHandler := func(event ev.RaftRequestEvent) {
         local.Send(event)
     }
-    server, err := comm.NewSocketServer(&bindAddr, eventHandler, logger)
+    server, err := comm.NewSocketServer(
+        &bindAddr, config.CommTimeout, eventHandler, logger)
     if err != nil {
         // TODO add cleanup
         return nil, err
