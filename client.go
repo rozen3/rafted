@@ -8,6 +8,7 @@ import (
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     rt "github.com/hhkbp2/rafted/retry"
+    "io"
     "time"
 )
 
@@ -27,6 +28,7 @@ type Client interface {
     ReadOnly(data []byte) (result []byte, err error)
     GetConfig() (servers []ps.ServerAddr, err error)
     ChangeConfig(oldServers []ps.ServerAddr, newServers []ps.ServerAddr) error
+    io.Closer
 }
 
 type SimpleClient struct {
@@ -80,6 +82,11 @@ func (self *SimpleClient) ChangeConfig(
     _, err := doRequest(self.backend, reqEvent, self.timeout, self.retry,
         self.retry, dummyRedirectHandler)
     return err
+}
+
+func (self *SimpleClient) Close() error {
+    // empty body
+    return nil
 }
 
 type RedirectClient struct {

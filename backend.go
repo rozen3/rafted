@@ -5,6 +5,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
+    "io"
 )
 
 type Notifiable interface {
@@ -13,7 +14,7 @@ type Notifiable interface {
 
 type Backend interface {
     Send(event ev.RaftRequestEvent)
-    Close()
+    io.Closer
     Notifiable
 }
 
@@ -31,10 +32,11 @@ func (self *HSMBackend) GetNotifyChan() <-chan ev.NotifyEvent {
     return self.local.Notifier().GetNotifyChan()
 }
 
-func (self *HSMBackend) Close() {
+func (self *HSMBackend) Close() error {
     self.local.Close()
     self.peers.Close()
     self.server.Close()
+    return nil
 }
 
 func NewHSMBackend(

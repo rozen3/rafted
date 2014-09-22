@@ -38,7 +38,7 @@ func (self *ServerAddr) String() string {
     if len(self.Protocol) == 0 {
         return fmt.Sprintf("%s:%d", self.IP, self.Port)
     }
-    return fmt.Sprintf("%s://%s:%d", self.Protocol, self.IP, self.Port)
+    return fmt.Sprintf("%s:%d", self.IP, self.Port)
 }
 
 func AddrEqual(addr1 *ServerAddr, addr2 *ServerAddr) bool {
@@ -107,6 +107,19 @@ func CopyConfig(conf *Config) *Config {
         Servers:    conf.Servers[:],
         NewServers: conf.NewServers[:],
     }
+}
+
+func SetupSocketServerAddrs(number int) []ServerAddr {
+    addrs := make([]ServerAddr, 0, number)
+    for i := 0; i < number; i++ {
+        addr := ServerAddr{
+            Protocol: "tcp",
+            IP:       "127.0.0.1",
+            Port:     uint16(6152 + i),
+        }
+        addrs = append(addrs, addr)
+    }
+    return addrs
 }
 
 func SetupMemoryServerAddrs(number int) []ServerAddr {

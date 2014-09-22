@@ -112,8 +112,9 @@ func (self *MockPeers) RemovePeers(peerAddrs []ps.ServerAddr) {
     self.Mock.Called(peerAddrs)
 }
 
-func (self *MockPeers) Close() {
-    self.Mock.Called()
+func (self *MockPeers) Close() error {
+    args := self.Mock.Called()
+    return args.Error(0)
 }
 
 func getTestLocalSafe(t *testing.T) Local {

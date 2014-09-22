@@ -17,7 +17,7 @@ type Decoder interface {
 
 type Transport interface {
     Open() error
-    Close() error
+    io.Closer
 
     io.Reader
     io.Writer
@@ -25,7 +25,7 @@ type Transport interface {
 
 type Connection interface {
     Open() error
-    Close() error
+    io.Closer
 
     PeerAddr() net.Addr
     CallRPC(request event.RaftEvent) (response event.RaftEvent, err error)
@@ -35,10 +35,10 @@ type Client interface {
     CallRPCTo(
         target net.Addr,
         request event.RaftEvent) (response event.RaftEvent, err error)
-    Close() error
+    io.Closer
 }
 
 type Server interface {
     Serve()
-    Close() error
+    io.Closer
 }

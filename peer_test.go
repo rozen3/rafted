@@ -48,8 +48,9 @@ func (self *MockLocal) SendPrior(event hsm.Event) {
     self.Mock.Called(event)
 }
 
-func (self *MockLocal) Close() {
-    self.Mock.Called()
+func (self *MockLocal) Close() error {
+    args := self.Mock.Called()
+    return args.Error(0)
 }
 
 func (self *MockLocal) QueryState() string {

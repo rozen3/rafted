@@ -242,8 +242,9 @@ func (self *SocketServer) Serve() {
         for {
             conn, err := self.listener.Accept()
             if err != nil {
-                self.logger.Error("fail to accept connection")
-                continue
+                self.logger.Debug(
+                    "error: %s on accept, server about to exit", err)
+                return
             }
             go self.handleConn(conn)
         }

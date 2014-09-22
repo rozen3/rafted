@@ -24,3 +24,9 @@ func NewRaftNode(backend *HSMBackend, client *RedirectClient) *RaftNode {
 func (self *RaftNode) GetNotifyChan() <-chan ev.NotifyEvent {
     return self.backend.GetNotifyChan()
 }
+
+func (self *RaftNode) Close() error {
+    self.backend.Close()
+    self.client.Close()
+    return nil
+}

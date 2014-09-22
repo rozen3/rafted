@@ -7,6 +7,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
+    "io"
     "sync"
     "sync/atomic"
     "time"
@@ -390,7 +391,7 @@ func InitMemberChangeStatus(
 type Local interface {
     Send(event hsm.Event)
     SendPrior(event hsm.Event)
-    Close()
+    io.Closer
 
     QueryState() string
     GetCurrentTerm() uint64
@@ -464,8 +465,9 @@ func (self *LocalManager) SendPrior(event hsm.Event) {
     self.localHSM.SelfDispatch(event)
 }
 
-func (self *LocalManager) Close() {
+func (self *LocalManager) Close() error {
     self.localHSM.Terminate()
+    return nil
 }
 
 func (self *LocalManager) QueryState() string {

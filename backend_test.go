@@ -20,7 +20,10 @@ func RemoveAddr(addrs []ps.ServerAddr, addr ps.ServerAddr) []ps.ServerAddr {
     return result
 }
 
-func NewTestHSMBackend(
+type GenHSMBackendFunc func(
+    localAddr ps.ServerAddr, addrs []ps.ServerAddr) (*HSMBackend, error)
+
+func NewTestMemoryHSMBackend(
     localAddr ps.ServerAddr, addrs []ps.ServerAddr) (*HSMBackend, error) {
 
     log := ps.NewMemoryLog()
@@ -77,7 +80,7 @@ func NewTestHSMBackend(
     }, nil
 }
 
-func NewTestHSMBackendOnSocket(
+func NewTestSocketHSMBackend(
     localAddr ps.ServerAddr, addrs []ps.ServerAddr) (*HSMBackend, error) {
     log := ps.NewMemoryLog()
     firstLogIndex, err := log.FirstIndex()
@@ -134,10 +137,10 @@ func NewTestHSMBackendOnSocket(
     return object, nil
 }
 
-func TestBackendOneNodeCluster(t *testing.T) {
+func TestMemoryBackendOneNodeCluster(t *testing.T) {
     servers := testServers[0:1]
     serverAddr := servers[0]
-    backend, err := NewTestHSMBackend(serverAddr, servers)
+    backend, err := NewTestMemoryHSMBackend(serverAddr, servers)
     assert.Nil(t, err)
     assert.NotNil(t, backend)
     time.Sleep(testConfig.ElectionTimeout)
@@ -149,12 +152,13 @@ func TestBackendOneNodeCluster(t *testing.T) {
     assertGetClientResponseEvent(t, reqEvent, true, testData)
 }
 
-func TestBackendContruction(t *testing.T) {
-    clusterSize := 3
-    servers := ps.SetupMemoryServerAddrs(clusterSize)
+func testBackendConstruction(
+    t *testing.T, servers []ps.ServerAddr, genBackend GenHSMBackendFunc) {
+
+    clusterSize := len(servers)
     backends := make([]Backend, 0, clusterSize)
     for i := 0; i < clusterSize; i++ {
-        backend, err := NewTestHSMBackend(servers[i], servers)
+        backend, err := genBackend(servers[i], servers)
         assert.Nil(t, err)
         backends = append(backends, backend)
     }
@@ -184,9 +188,18 @@ Outermost:
     }
     // cleanup
     for _, backend := range backends {
-        backend.Close()
+        assert.Nil(t, backend.Close())
     }
 }
 
-func TestBackendOnSocket(_ *testing.T) {
+func TestMemoryBackendContruction(t *testing.T) {
+    clusterSize := 3
+    servers := ps.RandomMemoryServerAddrs(clusterSize)
+    testBackendConstruction(t, servers, NewTestMemoryHSMBackend)
+}
+
+func TestSocketBackendConstruction(t *testing.T) {
+    clusterSize := 3
+    servers := ps.SetupSocketServerAddrs(clusterSize)
+    testBackendConstruction(t, servers, NewTestSocketHSMBackend)
 }

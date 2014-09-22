@@ -6,6 +6,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
+    "io"
     "strings"
     "sync"
     "time"
@@ -15,7 +16,7 @@ type Peers interface {
     Broadcast(event hsm.Event)
     AddPeers(peerAddrs []ps.ServerAddr)
     RemovePeers(peerAddrs []ps.ServerAddr)
-    Close()
+    io.Closer
 }
 
 type PeerManager struct {
@@ -92,7 +93,7 @@ func (self *PeerManager) RemovePeers(peerAddrs []ps.ServerAddr) {
     }
 }
 
-func (self *PeerManager) Close() {
+func (self *PeerManager) Close() error {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
     self.logger.Debug("PeerManager.Close()")
@@ -101,6 +102,7 @@ func (self *PeerManager) Close() {
         delete(self.peerMap, addr)
     }
     self.client.Close()
+    return nil
 }
 
 type Peer interface {

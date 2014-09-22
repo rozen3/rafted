@@ -42,8 +42,9 @@ func (self *MockBackend) Send(event ev.RaftRequestEvent) {
     event.SendResponse(ev.NewClientResponseEvent(response))
 }
 
-func (self *MockBackend) Close() {
+func (self *MockBackend) Close() error {
     // empty body
+    return nil
 }
 
 func (self *MockBackend) GetNotifyChan() <-chan ev.NotifyEvent {
@@ -88,8 +89,9 @@ func (self *MockBackend2) Send(event ev.RaftRequestEvent) {
     event.SendResponse(respEvent)
 }
 
-func (self *MockBackend2) Close() {
+func (self *MockBackend2) Close() error {
     // empty body
+    return nil
 }
 
 func (self *MockBackend2) GetNotifyChan() <-chan ev.NotifyEvent {
