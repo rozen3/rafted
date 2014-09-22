@@ -10,6 +10,7 @@ import (
     "io"
     "net"
     "sync"
+    "time"
 )
 
 func ReadN(reader io.Reader, b []byte) (int, error) {
@@ -42,13 +43,17 @@ func WriteN(writer io.Writer, b []byte) (int, error) {
 }
 
 type SocketTransport struct {
-    addr net.Addr
-    conn net.Conn
+    addr         net.Addr
+    conn         net.Conn
+    readTimeout  time.Duration
+    writeTimeout time.Duration
 }
 
-func NewSocketTransport(addr net.Addr) *SocketTransport {
+func NewSocketTransport(addr net.Addr, timeout time.Duration) *SocketTransport {
     return &SocketTransport{
-        addr: addr,
+        addr:         addr,
+        readTimeout:  timeout,
+        writeTimeout: timeout,
     }
 }
 
@@ -66,15 +71,25 @@ func (self *SocketTransport) Close() error {
 }
 
 func (self *SocketTransport) Read(b []byte) (int, error) {
+    self.conn.SetReadDeadline(time.Now().Add(self.readTimeout))
     return self.conn.Read(b)
 }
 
 func (self *SocketTransport) Write(b []byte) (int, error) {
+    self.conn.SetWriteDeadline(time.Now().Add(self.writeTimeout))
     return self.conn.Write(b)
 }
 
 func (self *SocketTransport) PeerAddr() net.Addr {
     return self.conn.RemoteAddr()
+}
+
+func (self *SocketTransport) SetReadTimeout(timeout time.Duration) {
+    self.readTimeout = timeout
+}
+
+func (self *SocketTransport) SetWriteTimeout(timeout time.Duration) {
+    self.writeTimeout = timeout
 }
 
 type SocketConnection struct {
@@ -85,9 +100,11 @@ type SocketConnection struct {
     decoder Decoder
 }
 
-func NewSocketConnection(addr net.Addr) *SocketConnection {
+func NewSocketConnection(
+    addr net.Addr, timeout time.Duration) *SocketConnection {
+
     conn := &SocketConnection{
-        SocketTransport: NewSocketTransport(addr),
+        SocketTransport: NewSocketTransport(addr, timeout),
     }
     conn.reader = bufio.NewReader(conn.SocketTransport)
     conn.writer = bufio.NewWriter(conn.SocketTransport)
@@ -118,12 +135,14 @@ type SocketClient struct {
     connectionPoolLock sync.Mutex
 
     poolSize int
+    timeout  time.Duration
 }
 
-func NewSocketClient(poolSize int) *SocketClient {
+func NewSocketClient(poolSize int, timeout time.Duration) *SocketClient {
     return &SocketClient{
         connectionPool: make(map[string][]*SocketConnection),
         poolSize:       poolSize,
+        timeout:        timeout,
     }
 }
 
@@ -190,7 +209,7 @@ func (self *SocketClient) getConnection(
     }
 
     // if there is no pooled connection, create a new one
-    connection = NewSocketConnection(target)
+    connection = NewSocketConnection(target, self.timeout)
     if err := connection.Open(); err != nil {
         return nil, err
     }

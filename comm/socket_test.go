@@ -83,7 +83,7 @@ func TestSocketTransport(t *testing.T) {
     addr, err := net.ResolveTCPAddr(
         "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
 
-    transport := NewSocketTransport(addr)
+    transport := NewSocketTransport(addr, testTimeout)
     // test Open()
     err = transport.Open()
     require.Nil(t, err)
@@ -171,7 +171,7 @@ func TestSocketConnection(t *testing.T) {
     addr, err := net.ResolveTCPAddr(
         "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
 
-    conn := NewSocketConnection(addr)
+    conn := NewSocketConnection(addr, testTimeout)
     // test Open()
     err = conn.Open()
     require.Nil(t, err)
@@ -196,7 +196,7 @@ func TestSocketClient(t *testing.T) {
         "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
 
     poolSize := 10
-    client := NewSocketClient(poolSize)
+    client := NewSocketClient(poolSize, testTimeout)
     event, err := client.CallRPCTo(addr, reqEvent)
     e, ok := event.(*ev.AppendEntriesResponseEvent)
     require.True(t, ok)
@@ -226,7 +226,7 @@ func TestSocketServer(t *testing.T) {
     server.Serve()
 
     poolSize := 5
-    client := NewSocketClient(poolSize)
+    client := NewSocketClient(poolSize, testTimeout)
     logger.Debug("here")
     event, err := client.CallRPCTo(serverAddr, reqEvent)
     e, ok := event.(*ev.AppendEntriesResponseEvent)

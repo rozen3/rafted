@@ -106,7 +106,8 @@ func NewTestSocketHSMBackend(
         return nil, err
     }
 
-    client := comm.NewSocketClient(testConfig.CommPoolSize)
+    client := comm.NewSocketClient(
+        testConfig.CommPoolSize, testConfig.CommTimeout)
     getLoggerForPeer := func(peerAddr ps.ServerAddr) logging.Logger {
         return logging.GetLogger(
             "peer" + "#" + localAddr.String() + ">>" + peerAddr.String())

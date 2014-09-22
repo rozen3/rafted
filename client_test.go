@@ -133,7 +133,8 @@ func setupTestMemoryRedirectClient(
 func setupTestSocketRedirectClient(
     addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
 
-    client := cm.NewSocketClient(testConfig.CommPoolSize)
+    client := cm.NewSocketClient(
+        testConfig.CommPoolSize, testConfig.CommTimeout)
     eventHandler := func(event ev.RaftRequestEvent) {
         backend.Send(event)
     }
