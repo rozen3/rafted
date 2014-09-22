@@ -127,6 +127,7 @@ func (self *RedirectClient) genRedirectHandler() RedirectResponseHandler {
         respEvent *ev.LeaderRedirectResponseEvent,
         reqEvent ev.RaftRequestEvent) (ev.RaftEvent, error) {
 
+        self.logger.Debug("redirect to leader: %s", respEvent.Response.Leader)
         return self.client.CallRPCTo(&respEvent.Response.Leader, reqEvent)
     }
 }

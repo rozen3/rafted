@@ -19,8 +19,8 @@ func TestNode(t *testing.T) {
         node := NewRaftNode(backend, client)
         nodes = append(nodes, node)
     }
-    data := TestData
+    data := testData
     result, err := nodes[0].Append(data)
-    assert.Equal(t, err, nil)
-    assert.Equal(t, result, data)
+    assert.Equal(t, nil, err)
+    assert.Equal(t, data, result)
 }

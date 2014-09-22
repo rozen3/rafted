@@ -134,9 +134,6 @@ func NewTestHSMBackendOnSocket(
     return object, nil
 }
 
-func TestBackendOnSocket(_ *testing.T) {
-}
-
 func TestBackendOneNodeCluster(t *testing.T) {
     servers := testServers[0:1]
     serverAddr := servers[0]
@@ -189,4 +186,7 @@ Outermost:
     for _, backend := range backends {
         backend.Close()
     }
+}
+
+func TestBackendOnSocket(_ *testing.T) {
 }

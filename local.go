@@ -431,8 +431,8 @@ func NewLocalManager(
     followerMemberChangeState := NewFollowerMemberChangeState(
         followerState, logger)
     NewFollowerOldNewConfigSeenState(followerMemberChangeState, logger)
-    NewFollowerOldNewConfigCommittedState(followerState, logger)
-    NewFollowerNewConfigSeenState(followerState, logger)
+    NewFollowerOldNewConfigCommittedState(followerMemberChangeState, logger)
+    NewFollowerNewConfigSeenState(followerMemberChangeState, logger)
     needPeersState := NewNeedPeersState(localState, logger)
     NewCandidateState(
         needPeersState, config.ElectionTimeout, config.MaxTimeoutJitter, logger)

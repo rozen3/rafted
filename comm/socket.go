@@ -364,6 +364,27 @@ func ReadRequest(
         }
         event := ev.NewInstallSnapshotRequestEvent(request)
         return event, nil
+    case ev.EventClientAppendRequest:
+        request := &ev.ClientAppendRequest{}
+        if err := decoder.Decode(request); err != nil {
+            return nil, err
+        }
+        event := ev.NewClientAppendRequestEvent(request)
+        return event, nil
+    case ev.EventClientReadOnlyRequest:
+        request := &ev.ClientReadOnlyRequest{}
+        if err := decoder.Decode(request); err != nil {
+            return nil, err
+        }
+        event := ev.NewClientReadOnlyRequestEvent(request)
+        return event, nil
+    case ev.EventClientMemberChangeRequest:
+        request := &ev.ClientMemberChangeRequest{}
+        if err := decoder.Decode(request); err != nil {
+            return nil, err
+        }
+        event := ev.NewClientMemberChangeRequestEvent(request)
+        return event, nil
     default:
         return nil, errors.New("not request event")
     }
@@ -397,6 +418,38 @@ func ReadResponse(
         if err := decoder.Decode(response); err != nil {
             return nil, err
         }
+        event := ev.NewInstallSnapshotResponseEvent(response)
+        return event, nil
+    case ev.EventClientResponse:
+        response := &ev.ClientResponse{}
+        if err := decoder.Decode(response); err != nil {
+            return nil, err
+        }
+        event := ev.NewClientResponseEvent(response)
+        return event, nil
+    case ev.EventLeaderRedirectResponse:
+        response := &ev.LeaderRedirectResponse{}
+        if err := decoder.Decode(response); err != nil {
+            return nil, err
+        }
+        event := ev.NewLeaderRedirectResponseEvent(response)
+        return event, nil
+    case ev.EventLeaderUnknownResponse:
+        event := ev.NewLeaderUnknownResponseEvent()
+        return event, nil
+    case ev.EventLeaderUnsyncResponse:
+        event := ev.NewLeaderUnsyncResponseEvent()
+        return event, nil
+    case ev.EventLeaderInMemberChangeResponse:
+        event := ev.NewLeaderInMemberChangeResponseEvent()
+        return event, nil
+    case ev.EventPersistErrorResponse:
+        var err error
+        if err := decoder.Decode(err); err != nil {
+            return nil, err
+        }
+        event := ev.NewPersistErrorResponseEvent(err)
+        return event, nil
     }
     return nil, errors.New("not request event")
 }

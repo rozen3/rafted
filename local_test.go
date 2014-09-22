@@ -19,6 +19,7 @@ func testConfiguration() *Configuration {
     config.HeartbeatTimeout = time.Millisecond * 200
     config.ElectionTimeout = time.Second * 1
     config.MaxTimeoutJitter = 0.2
+    config.ClientTimeout = config.HeartbeatTimeout
     return config
 }
 

@@ -13,15 +13,6 @@ import (
     "time"
 )
 
-const (
-    TestTimeout = time.Second * 5
-    TestDelay   = time.Second * 2
-)
-
-var (
-    TestData = []byte("abcdefg")
-)
-
 var (
     testRegister = cm.NewMemoryTransportRegister()
 )
@@ -62,17 +53,17 @@ func (self *MockBackend) GetNotifyChan() <-chan ev.NotifyEvent {
 
 func TestSimpleClient(t *testing.T) {
     backend := NewMockBackend()
-    timeout := TestTimeout
+    timeout := testConfig.ClientTimeout
     retry := rt.NewOnceRetry(time.Sleep, time.Second*1)
     client := NewSimpleClient(backend, timeout, retry)
 
-    result, err := client.Append(TestData)
+    result, err := client.Append(testData)
     assert.Equal(t, err, nil)
-    assert.Equal(t, result, TestData)
+    assert.Equal(t, result, testData)
 
-    result, err = client.ReadOnly(TestData)
+    result, err = client.ReadOnly(testData)
     assert.Equal(t, err, nil)
-    assert.Equal(t, result, TestData)
+    assert.Equal(t, result, testData)
 
     oldServers := make([]ps.ServerAddr, 0)
     newServers := make([]ps.ServerAddr, 0)
@@ -121,10 +112,16 @@ func setupTestRedirectClient(
     logger2 := logging.GetLogger("RedirectClient" + "#" + addr.String())
     redirectRetry := rt.NewErrorRetry().
         MaxTries(3).
-        Delay(time.Millisecond * 50)
+        Delay(testConfig.HeartbeatTimeout)
     retry := redirectRetry.Copy().OnError(LeaderUnknown).OnError(LeaderUnsync)
     redirectClient := NewRedirectClient(
-        TestTimeout, retry, redirectRetry, backend, client, server, logger2)
+        testConfig.ClientTimeout,
+        retry,
+        redirectRetry,
+        backend,
+        client,
+        server,
+        logger2)
     redirectClient.Start()
     return redirectClient
 }
@@ -132,7 +129,7 @@ func setupTestRedirectClient(
 func TestRedirectClientContruction(t *testing.T) {
     testRegister.Reset()
     addrs := ps.SetupMemoryServerAddrs(1)
-    data := TestData
+    data := testData
     invokedCount := 0
     backend := NewMockBackend2(
         func(event ev.RaftRequestEvent) ev.RaftEvent {
@@ -162,7 +159,7 @@ func TestRedirectClientContruction(t *testing.T) {
 func TestRedirectClientRedirection(t *testing.T) {
     testRegister.Reset()
     addrs := ps.SetupMemoryServerAddrs(2)
-    data := TestData
+    data := testData
     invokedCount1 := 0
     backend1 := NewMockBackend2(
         func(event ev.RaftRequestEvent) ev.RaftEvent {

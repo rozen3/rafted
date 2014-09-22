@@ -14,6 +14,7 @@ type Configuration struct {
     MaxSnapshotChunkSize            uint64
     CommTimeout                     time.Duration
     CommPoolSize                    int
+    ClientTimeout                   time.Duration
 }
 
 func DefaultConfiguration() *Configuration {
@@ -27,5 +28,6 @@ func DefaultConfiguration() *Configuration {
         MaxSnapshotChunkSize:            uint64(1000),
         CommTimeout:                     time.Millisecond * 50,
         CommPoolSize:                    10,
+        ClientTimeout:                   time.Millisecond * 100,
     }
 }

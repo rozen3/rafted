@@ -497,7 +497,7 @@ func NewPersistErrorResponseEvent(err error) *PersistErrorResponseEvent {
 }
 
 func (self *PersistErrorResponseEvent) Message() interface{} {
-    return nil
+    return self.Error
 }
 
 // ------------------------------------------------------------
