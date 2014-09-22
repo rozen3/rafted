@@ -32,7 +32,7 @@ func NewTestHSMBackend(
     configManager := ps.NewMemoryConfigManager(firstLogIndex, config)
     stateMachine := ps.NewMemoryStateMachine()
 
-    localLogger := logging.GetLogger("leader" + "#" + localAddr.String())
+    localLogger := logging.GetLogger("local" + "#" + localAddr.String())
     local, err := NewLocalManager(
         testConfig,
         localAddr,
@@ -98,8 +98,8 @@ func TestBackendOneNodeCluster(t *testing.T) {
 }
 
 func TestBackendContruction(t *testing.T) {
-    servers := testServers
     clusterSize := 3
+    servers := ps.SetupMemoryServerAddrs(clusterSize)
     backends := make([]Backend, 0, clusterSize)
     for i := 0; i < clusterSize; i++ {
         backend, err := NewTestHSMBackend(servers[i], servers)

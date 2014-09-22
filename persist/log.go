@@ -1,5 +1,9 @@
 package persist
 
+import (
+    "errors"
+)
+
 // LogType is used to describe different types of log entries.
 type LogType uint8
 
@@ -54,7 +58,7 @@ type LogEntry struct {
 }
 
 var (
-    ErrorLogEntryNotFound error = errors.new("Log entry not found")
+    ErrorLogEntryNotFound error = errors.New("Log entry not found")
 )
 
 // Log is the interface for local durable log in raft.
