@@ -1,16 +1,20 @@
 package comm
 
 import (
+    "bufio"
     "fmt"
+    ev "github.com/hhkbp2/rafted/event"
+    ps "github.com/hhkbp2/rafted/persist"
     "github.com/hhkbp2/rafted/str"
     "github.com/hhkbp2/testify/assert"
     "github.com/hhkbp2/testify/require"
+    "github.com/ugorji/go/codec"
     "io"
     "net"
     "testing"
 )
 
-type TestSocketServer struct {
+type MockSocketServer struct {
     host     string
     port     int
     listener net.Listener
@@ -18,15 +22,15 @@ type TestSocketServer struct {
     connHandler func(net.Conn)
 }
 
-func NewTestSocketServer(
-    host string, port int, connHandler func(net.Conn)) (*TestSocketServer, error) {
+func NewMockSocketServer(
+    host string, port int, connHandler func(net.Conn)) (*MockSocketServer, error) {
 
     listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
     if err != nil {
         return nil, err
     }
 
-    object := &TestSocketServer{
+    object := &MockSocketServer{
         host:        host,
         port:        port,
         listener:    listener,
@@ -35,7 +39,7 @@ func NewTestSocketServer(
     return object, nil
 }
 
-func (self *TestSocketServer) Serve() {
+func (self *MockSocketServer) Serve() {
     routine := func() {
         for {
             conn, err := self.listener.Accept()
@@ -48,7 +52,7 @@ func (self *TestSocketServer) Serve() {
     go routine()
 }
 
-func (self *TestSocketServer) Close() error {
+func (self *MockSocketServer) Close() error {
     return self.listener.Close()
 }
 
@@ -71,23 +75,135 @@ func TestSocketTransport(t *testing.T) {
         assert.Nil(t, err)
         assert.Equal(t, size, n)
     }
-    server, err := NewTestSocketServer(TestSocketHost, TestSocketPort, handler)
+    server, err := NewMockSocketServer(TestSocketHost, TestSocketPort, handler)
     require.Nil(t, err)
     server.Serve()
     defer server.Close()
-
     addr, err := net.ResolveTCPAddr(
         "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
+
     transport := NewSocketTransport(addr)
+    // test Open()
     err = transport.Open()
     require.Nil(t, err)
+    // test Write()
     n, err := WriteN(transport, []byte(message))
     require.Nil(t, err)
     buf := make([]byte, size)
+    // test Read()
     n, err = ReadN(transport, buf)
     require.Nil(t, err)
     require.Equal(t, size, n)
     require.Equal(t, message, string(buf))
+    // test PeerAddr()
+    peerAddr := transport.PeerAddr()
+    require.Equal(t, addr.Network(), peerAddr.Network())
+    require.Equal(t, addr.String(), peerAddr.String())
+    // test Close()
     err = transport.Close()
     require.Nil(t, err)
+}
+
+func prepareRequestAndResponse() (*ev.AppendEntriesRequestEvent, *ev.AppendEntriesResponseEvent) {
+
+    term := uint64(100)
+    index := uint64(12004)
+    entries := []*ps.LogEntry{
+        &ps.LogEntry{
+            Term:  term,
+            Index: index,
+            Type:  ps.LogCommand,
+            Data:  []byte(str.RandomString(50)),
+            Conf: &ps.Config{
+                Servers:    ps.RandomMemoryServerAddrs(5),
+                NewServers: nil,
+            },
+        },
+    }
+    request := &ev.AppendEntriesRequest{
+        Term:              term,
+        Leader:            ps.RandomMemoryServerAddr(),
+        PrevLogIndex:      uint64(12003),
+        PrevLogTerm:       uint64(99),
+        Entries:           entries,
+        LeaderCommitIndex: uint64(9998),
+    }
+    reqEvent := ev.NewAppendEntriesRequestEvent(request)
+    response := &ev.AppendEntriesResponse{
+        Term:         term,
+        LastLogIndex: uint64(12000),
+        Success:      false,
+    }
+    respEvent := ev.NewAppendEntriesResponseEvent(response)
+    return reqEvent, respEvent
+}
+
+func prepareConnHandler(
+    t *testing.T,
+    reqEvent *ev.AppendEntriesRequestEvent,
+    respEvent *ev.AppendEntriesResponseEvent) func(conn net.Conn) {
+
+    handler := func(conn net.Conn) {
+        defer conn.Close()
+        reader := bufio.NewReader(conn)
+        writer := bufio.NewWriter(conn)
+        decoder := codec.NewDecoder(reader, &codec.MsgpackHandle{})
+        encoder := codec.NewEncoder(writer, &codec.MsgpackHandle{})
+        event, err := ReadRequest(reader, decoder)
+        require.Nil(t, err)
+        e, ok := event.(*ev.AppendEntriesRequestEvent)
+        require.True(t, ok)
+        require.Equal(t, reqEvent.Request, e.Request)
+        err = WriteEvent(writer, encoder, respEvent)
+        require.Nil(t, err)
+    }
+    return handler
+}
+
+func TestSocketConnection(t *testing.T) {
+    reqEvent, respEvent := prepareRequestAndResponse()
+    handler := prepareConnHandler(t, reqEvent, respEvent)
+    server, err := NewMockSocketServer(TestSocketHost, TestSocketPort, handler)
+    require.Nil(t, err)
+    server.Serve()
+    defer server.Close()
+    addr, err := net.ResolveTCPAddr(
+        "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
+
+    conn := NewSocketConnection(addr)
+    // test Open()
+    err = conn.Open()
+    require.Nil(t, err)
+    // test CallRPC()
+    event, err := conn.CallRPC(reqEvent)
+    require.True(t, (err == io.EOF) || (err == nil))
+    e, ok := event.(*ev.AppendEntriesResponseEvent)
+    require.True(t, ok)
+    require.Equal(t, respEvent.Response, e.Response)
+    err = conn.Close()
+    require.Nil(t, err)
+}
+
+func TestSocketClient(t *testing.T) {
+    reqEvent, respEvent := prepareRequestAndResponse()
+    handler := prepareConnHandler(t, reqEvent, respEvent)
+    server, err := NewMockSocketServer(TestSocketHost, TestSocketPort, handler)
+    require.Nil(t, err)
+    server.Serve()
+    defer server.Close()
+    addr, err := net.ResolveTCPAddr(
+        "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
+
+    poolSize := 10
+    client := NewSocketClient(poolSize)
+    event, err := client.CallRPCTo(addr, reqEvent)
+    e, ok := event.(*ev.AppendEntriesResponseEvent)
+    require.True(t, ok)
+    require.Equal(t, respEvent.Response, e.Response)
+    err = client.Close()
+    require.Nil(t, err)
+}
+
+func TestSocketServer(_ *testing.T) {
+    // TODO add impl
 }
