@@ -53,6 +53,10 @@ type LogEntry struct {
     Conf  *Config
 }
 
+var (
+    ErrorLogEntryNotFound error = errors.new("Log entry not found")
+)
+
 // Log is the interface for local durable log in raft.
 // It provides functions to store and retrieve LogEntry.
 // Any implementation of this interface should ensure the duration.

@@ -512,6 +512,7 @@ type StandardModePeerState struct {
     *LogStateHead
 
     maxAppendEntriesSize uint64
+    matchIndexUpdated    bool
 }
 
 func NewStandardModePeerState(
@@ -537,6 +538,7 @@ func (self *StandardModePeerState) Entry(
     self.Debug("STATE: %s, -> Entry", self.ID())
     peerHSM, ok := sm.(*PeerHSM)
     hsm.AssertTrue(ok)
+    self.matchIndexUpdated = false
     peerHSM.SelfDispatch(self.SetupReplicating(peerHSM))
     return nil
 }
