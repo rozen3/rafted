@@ -12,6 +12,35 @@ import (
     "sync"
 )
 
+func ReadN(reader io.Reader, b []byte) (int, error) {
+    length := len(b)
+    i := 0
+    for i < length {
+        n, err := reader.Read(b[i:])
+        if err == io.EOF {
+            i += n
+            return i, err
+        } else if err != nil {
+            return i, err
+        }
+        i += n
+    }
+    return i, nil
+}
+
+func WriteN(writer io.Writer, b []byte) (int, error) {
+    length := len(b)
+    i := 0
+    for i < length {
+        n, err := writer.Write(b[i:])
+        if err != nil {
+            return i, err
+        }
+        i += n
+    }
+    return i, nil
+}
+
 type SocketTransport struct {
     addr net.Addr
     conn net.Conn
