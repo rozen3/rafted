@@ -1,6 +1,7 @@
 package rafted
 
 import (
+    "github.com/hhkbp2/go-hsm"
     "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -204,4 +205,10 @@ func TestSocketBackendConstruction(t *testing.T) {
     clusterSize := 3
     servers := ps.SetupSocketServerAddrs(clusterSize)
     testBackendConstruction(t, servers, NewTestSocketHSMBackend)
+}
+
+func TestXXX(t *testing.T) {
+    assert.Equal(t, hsm.EventType(100+4), ev.EventTerm)
+    assert.Equal(t, hsm.EventType(1047), ev.EventClientUser)
+    assert.Equal(t, hsm.EventType(1058), ev.EventNotifyPersistError)
 }
