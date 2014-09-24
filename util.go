@@ -615,3 +615,15 @@ func EntriesInfo(entries []*ps.LogEntry) []string {
     }
     return result
 }
+
+func ParallelDo(todo []func()) {
+    todoGroup := sync.WaitGroup{}
+    for _, f := range todo {
+        todoGroup.Add(1)
+        go func() {
+            defer todoGroup.Done()
+            f()
+        }()
+    }
+    todoGroup.Wait()
+}

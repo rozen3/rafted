@@ -48,9 +48,14 @@ Outermost:
     require.Equal(t, nil, err)
     require.Equal(t, data, result)
     // cleanup
+    todo := make([]func(), len(nodes))
     for _, node := range nodes {
-        assert.Nil(t, node.Close())
+        f := func() {
+            assert.Nil(t, node.Close())
+        }
+        todo = append(todo, f)
     }
+    ParallelDo(todo)
 }
 
 func TestMemoryNodeSimple(t *testing.T) {

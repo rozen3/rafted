@@ -132,16 +132,11 @@ func (self *CandidateState) Handle(
             localHSM.SelfDispatch(event)
             return nil
         }
-        if e.Request.Term < term {
-            response := &ev.RequestVoteResponse{
-                Term:    term,
-                Granted: false,
-            }
-            e.SendResponse(ev.NewRequestVoteResponseEvent(response))
-            return nil
+        response := &ev.RequestVoteResponse{
+            Term:    term,
+            Granted: false,
         }
-        localHSM.SelfDispatch(ev.NewStepdownEvent())
-        localHSM.SelfDispatch(event)
+        e.SendResponse(ev.NewRequestVoteResponseEvent(response))
         return nil
     case event.Type() == ev.EventRequestVoteResponse:
         e, ok := event.(*ev.RequestVoteResponseEvent)

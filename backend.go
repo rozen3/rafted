@@ -33,9 +33,9 @@ func (self *HSMBackend) GetNotifyChan() <-chan ev.NotifyEvent {
 }
 
 func (self *HSMBackend) Close() error {
-    self.local.Close()
-    self.peers.Close()
     self.server.Close()
+    self.peers.Close()
+    self.local.Close()
     return nil
 }
 
