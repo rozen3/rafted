@@ -224,7 +224,7 @@ func TestMemoryServer(t *testing.T) {
     register := NewMemoryTransportRegister()
     logger := logging.GetLogger("test")
     reqEvent, respEvent := getTestAppendEntriesEvents(serverAddr)
-    eventHandler := func(event ev.RaftRequestEvent) {
+    eventHandler := func(event ev.RequestEvent) {
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         assert.True(t, ok)
         assert.Equal(t, reqEvent.Request, e.Request)

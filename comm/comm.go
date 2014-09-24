@@ -28,13 +28,13 @@ type Connection interface {
     io.Closer
 
     PeerAddr() net.Addr
-    CallRPC(request event.RaftEvent) (response event.RaftEvent, err error)
+    CallRPC(request event.Event) (response event.Event, err error)
 }
 
 type Client interface {
     CallRPCTo(
         target net.Addr,
-        request event.RaftEvent) (response event.RaftEvent, err error)
+        request event.Event) (response event.Event, err error)
     io.Closer
 }
 
@@ -43,5 +43,5 @@ type Server interface {
     io.Closer
 }
 
-type RaftRequestEventHandler func(event.RaftRequestEvent)
-type RaftEventHandler func(event.RaftEvent)
+type RequestEventHandler func(event.RequestEvent)
+type EventHandler func(event.Event)

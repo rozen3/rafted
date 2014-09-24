@@ -95,10 +95,10 @@ type RPCClientResponse struct {
 }
 
 type RPCClient struct {
-    eventHandler RaftRequestEventHandler
+    eventHandler RequestEventHandler
 }
 
-func NewRPCClient(eventHandler RaftRequestEventHandler) *RPCClient {
+func NewRPCClient(eventHandler RequestEventHandler) *RPCClient {
     return &RPCClient{
         eventHandler: eventHandler,
     }

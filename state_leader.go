@@ -46,7 +46,7 @@ func (self *LeaderState) Entry(
     // activate member change hsm
     self.MemberChangeHSM.SetLocalHSM(localHSM)
     self.MemberChangeHSM.Dispatch(ev.NewLeaderMemberChangeActivateEvent())
-    ignoreResponse := func(event ev.RaftEvent) {
+    ignoreResponse := func(event ev.Event) {
         e, ok := event.(*ev.ClientResponseEvent)
         hsm.AssertTrue(ok)
         self.Info("orphan client response: %t", e.Response.Success)
@@ -244,7 +244,7 @@ func (self *LeaderState) Handle(
 }
 
 func (self *LeaderState) HandleClientRequest(
-    localHSM *LocalHSM, requestData []byte, resultChan chan ev.RaftEvent) {
+    localHSM *LocalHSM, requestData []byte, resultChan chan ev.Event) {
 
     err := self.StartFlight(localHSM, ps.LogCommand, requestData, resultChan)
     if err != nil {
@@ -257,7 +257,7 @@ func (self *LeaderState) StartFlight(
     localHSM *LocalHSM,
     logType ps.LogType,
     logData []byte,
-    resultChan chan ev.RaftEvent) error {
+    resultChan chan ev.Event) error {
 
     term := localHSM.GetCurrentTerm()
     log := localHSM.Log()
@@ -371,7 +371,7 @@ func (self *UnsyncState) Entry(
     self.Debug("STATE: %s, -> Entry", self.ID())
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
-    handleNoopResponse := func(event ev.RaftEvent) {
+    handleNoopResponse := func(event ev.Event) {
         if event.Type() != ev.EventClientResponse {
             self.Error("unsync receive response event: %s",
                 ev.EventString(event))
@@ -408,7 +408,7 @@ func (self *UnsyncState) Handle(
     hsm.AssertTrue(ok)
     switch event.Type() {
     case ev.EventClientReadOnlyRequest:
-        e, ok := event.(ev.RaftRequestEvent)
+        e, ok := event.(ev.RequestEvent)
         hsm.AssertTrue(ok)
         e.SendResponse(ev.NewLeaderUnsyncResponseEvent())
         return nil

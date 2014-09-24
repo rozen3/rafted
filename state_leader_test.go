@@ -11,7 +11,7 @@ import (
 )
 
 var (
-    testMockPeersRequests []ev.RaftRequestEvent
+    testMockPeersRequests []ev.RequestEvent
 )
 
 func getLocalAndPeersForLeader(t *testing.T) (Local, *MockPeers) {

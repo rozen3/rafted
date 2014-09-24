@@ -170,7 +170,7 @@ func (self *FollowerState) Handle(
         }
         return nil
     case ev.IsClientEvent(event.Type()):
-        e, ok := event.(ev.RaftRequestEvent)
+        e, ok := event.(ev.RequestEvent)
         hsm.AssertTrue(ok)
         // redirect client to current leader
         leader := localHSM.GetLeader()

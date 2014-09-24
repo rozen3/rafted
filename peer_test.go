@@ -117,7 +117,7 @@ func (self *MockLocal) SetPeers(peers Peers) {
 
 func getTestMemoryServer(
     addr ps.ServerAddr,
-    eventHandler cm.RaftRequestEventHandler) *cm.MemoryServer {
+    eventHandler cm.RequestEventHandler) *cm.MemoryServer {
 
     bindAddr := testServers[1]
     logger := logging.GetLogger("test server #" + bindAddr.String())

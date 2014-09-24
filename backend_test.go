@@ -63,7 +63,7 @@ func NewTestMemoryHSMBackend(
         getLoggerForPeer,
         peerManagerLogger)
 
-    eventHandler := func(event ev.RaftRequestEvent) {
+    eventHandler := func(event ev.RequestEvent) {
         local.Send(event)
     }
     serverLogger := logging.GetLogger("Server" + "#" + localAddr.String())
@@ -123,7 +123,7 @@ func NewTestSocketHSMBackend(
         getLoggerForPeer,
         peerManagerLogger)
     serverLogger := logging.GetLogger("Server" + "#" + localAddr.String())
-    eventHandler := func(event ev.RaftRequestEvent) {
+    eventHandler := func(event ev.RequestEvent) {
         local.Send(event)
     }
     server, err := comm.NewSocketServer(

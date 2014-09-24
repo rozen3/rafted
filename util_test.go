@@ -72,7 +72,7 @@ func TestReliableInflightEntryChannel(t *testing.T) {
                 Servers: ps.SetupMemoryServerAddrs(3),
             },
         },
-        ResultChan: make(chan ev.RaftEvent),
+        ResultChan: make(chan ev.Event),
     }
     entry1 := NewInflightEntry(request)
     ch.Send(entry1)
@@ -140,7 +140,7 @@ func TestClientEventListener(t *testing.T) {
     endCh := make(chan int)
     reqEvent := ev.NewClientResponseEvent(response)
     // test Start()
-    fn := func(event ev.RaftEvent) {
+    fn := func(event ev.Event) {
         assert.Equal(t, ev.EventClientResponse, event.Type())
         e, ok := event.(*ev.ClientResponseEvent)
         assert.True(t, ok)
@@ -541,7 +541,7 @@ func TestApplierLeaderCommit(t *testing.T) {
             NewServers: nil,
         },
     }
-    resultChan := make(chan ev.RaftEvent)
+    resultChan := make(chan ev.Event)
     inflightRequest := &InflightRequest{
         LogEntry:   logEntry,
         ResultChan: resultChan,

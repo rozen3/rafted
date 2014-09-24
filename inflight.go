@@ -100,7 +100,7 @@ func (self *MemberChangeCommitCondition) IsCommitted() bool {
 
 type InflightRequest struct {
     LogEntry   *ps.LogEntry
-    ResultChan chan ev.RaftEvent
+    ResultChan chan ev.Event
 }
 
 type InflightEntry struct {

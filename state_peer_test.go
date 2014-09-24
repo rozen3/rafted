@@ -28,7 +28,7 @@ func TestPeerActivate(t *testing.T) {
 func TestPeerCandidateEnterLeaderOnEnterLeaderEvent(t *testing.T) {
     peer, mockLocal := getTestPeerAndLocalSafe(t)
     requestChan := NewReliableEventChannel()
-    requestHandler := func(event ev.RaftRequestEvent) {
+    requestHandler := func(event ev.RequestEvent) {
         requestChan.Send(event)
     }
     leaderAddr := testServers[0]
@@ -57,7 +57,7 @@ func TestPeerCandidateEnterLeaderOnAppendEntriesRequest(t *testing.T) {
         Success:      true,
     }
     respEvent := ev.NewAppendEntriesResponseEvent(response)
-    requestHandler := func(event ev.RaftRequestEvent) {
+    requestHandler := func(event ev.RequestEvent) {
         requestChan.Send(event)
         event.SendResponse(respEvent)
     }
@@ -110,7 +110,7 @@ func TestPeerLeaderHeartbeatTimeout(t *testing.T) {
         Success:      true,
     }
     respEvent := ev.NewAppendEntriesResponseEvent(response)
-    requestHandler := func(event ev.RaftRequestEvent) {
+    requestHandler := func(event ev.RequestEvent) {
         requestChan.Send(event)
         event.SendResponse(respEvent)
     }
@@ -151,7 +151,7 @@ func TestPeerStandardModeCatchingUp(t *testing.T) {
     requestCount := 0
     peerLogIndex := testIndex
     // a simple simulation for a peer which accept one log entry on every AE rpc
-    requestHandler := func(event ev.RaftRequestEvent) {
+    requestHandler := func(event ev.RequestEvent) {
         assert.Equal(t, ev.EventAppendEntriesRequest, event.Type(),
             "expect %s but actual %s",
             ev.EventTypeString(ev.EventAppendEntriesRequest),

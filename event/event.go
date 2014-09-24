@@ -183,46 +183,46 @@ func IsClientEvent(eventType hsm.EventType) bool {
 // Raft Events
 // ------------------------------------------------------------
 
-type RaftEvent interface {
+type Event interface {
     hsm.Event
     Message() interface{}
 }
 
-type RaftRequestEvent interface {
-    RaftEvent
-    SendResponse(RaftEvent)
-    RecvResponse() RaftEvent
-    GetResponseChan() <-chan RaftEvent
+type RequestEvent interface {
+    Event
+    SendResponse(Event)
+    RecvResponse() Event
+    GetResponseChan() <-chan Event
 }
 
-type RaftRequestEventHead struct {
+type RequestEventHead struct {
     *hsm.StdEvent
-    ResultChan chan RaftEvent
+    ResultChan chan Event
 }
 
-func (self *RaftRequestEventHead) SendResponse(event RaftEvent) {
+func (self *RequestEventHead) SendResponse(event Event) {
     self.ResultChan <- event
 }
 
-func (self *RaftRequestEventHead) RecvResponse() RaftEvent {
+func (self *RequestEventHead) RecvResponse() Event {
     response := <-self.ResultChan
     return response
 }
 
-func (self *RaftRequestEventHead) GetResponseChan() <-chan RaftEvent {
+func (self *RequestEventHead) GetResponseChan() <-chan Event {
     return self.ResultChan
 }
 
-func NewRaftRequestEventHead(eventType hsm.EventType) *RaftRequestEventHead {
-    return &RaftRequestEventHead{
+func NewRequestEventHead(eventType hsm.EventType) *RequestEventHead {
+    return &RequestEventHead{
         StdEvent:   hsm.NewStdEvent(eventType),
-        ResultChan: make(chan RaftEvent, 1),
+        ResultChan: make(chan Event, 1),
     }
 }
 
 // Event for AppendEntriesRequest message.
 type AppendEntriesRequestEvent struct {
-    *RaftRequestEventHead
+    *RequestEventHead
     Request *AppendEntriesRequest
 }
 
@@ -230,9 +230,8 @@ func NewAppendEntriesRequestEvent(
     request *AppendEntriesRequest) *AppendEntriesRequestEvent {
 
     return &AppendEntriesRequestEvent{
-        RaftRequestEventHead: NewRaftRequestEventHead(
-            EventAppendEntriesRequest),
-        Request: request,
+        RequestEventHead: NewRequestEventHead(EventAppendEntriesRequest),
+        Request:          request,
     }
 }
 func (self *AppendEntriesRequestEvent) Message() interface{} {
@@ -260,7 +259,7 @@ func (self *AppendEntriesResponseEvent) Message() interface{} {
 
 // Event for RequestVoteRequest message.
 type RequestVoteRequestEvent struct {
-    *RaftRequestEventHead
+    *RequestEventHead
     Request *RequestVoteRequest
 }
 
@@ -268,8 +267,8 @@ func NewRequestVoteRequestEvent(
     request *RequestVoteRequest) *RequestVoteRequestEvent {
 
     return &RequestVoteRequestEvent{
-        RaftRequestEventHead: NewRaftRequestEventHead(EventRequestVoteRequest),
-        Request:              request,
+        RequestEventHead: NewRequestEventHead(EventRequestVoteRequest),
+        Request:          request,
     }
 }
 
@@ -299,16 +298,15 @@ func (self *RequestVoteResponseEvent) Message() interface{} {
 
 // Event for InstallSnapshotRequest message.
 type InstallSnapshotRequestEvent struct {
-    *RaftRequestEventHead
+    *RequestEventHead
     Request *InstallSnapshotRequest
 }
 
 func NewInstallSnapshotRequestEvent(
     request *InstallSnapshotRequest) *InstallSnapshotRequestEvent {
     return &InstallSnapshotRequestEvent{
-        RaftRequestEventHead: NewRaftRequestEventHead(
-            EventInstallSnapshotRequest),
-        Request: request,
+        RequestEventHead: NewRequestEventHead(EventInstallSnapshotRequest),
+        Request:          request,
     }
 }
 
@@ -340,7 +338,7 @@ func (self *InstallSnapshotResponseEvent) Message() interface{} {
 // ------------------------------------------------------------
 // Event for ClientAppendRequest message.
 type ClientAppendRequestEvent struct {
-    *RaftRequestEventHead
+    *RequestEventHead
     Request *ClientAppendRequest
 }
 
@@ -348,8 +346,8 @@ func NewClientAppendRequestEvent(
     request *ClientAppendRequest) *ClientAppendRequestEvent {
 
     return &ClientAppendRequestEvent{
-        RaftRequestEventHead: NewRaftRequestEventHead(EventClientAppendRequest),
-        Request:              request,
+        RequestEventHead: NewRequestEventHead(EventClientAppendRequest),
+        Request:          request,
     }
 }
 
@@ -359,7 +357,7 @@ func (self *ClientAppendRequestEvent) Message() interface{} {
 
 // Event for ClientReadOnlyRequest message.
 type ClientReadOnlyRequestEvent struct {
-    *RaftRequestEventHead
+    *RequestEventHead
     Request *ClientReadOnlyRequest
 }
 
@@ -367,9 +365,8 @@ func NewClientReadOnlyRequestEvent(
     request *ClientReadOnlyRequest) *ClientReadOnlyRequestEvent {
 
     return &ClientReadOnlyRequestEvent{
-        RaftRequestEventHead: NewRaftRequestEventHead(
-            EventClientReadOnlyRequest),
-        Request: request,
+        RequestEventHead: NewRequestEventHead(EventClientReadOnlyRequest),
+        Request:          request,
     }
 }
 
@@ -378,7 +375,7 @@ func (self *ClientReadOnlyRequestEvent) Message() interface{} {
 }
 
 type ClientGetConfigRequestEvent struct {
-    *RaftRequestEventHead
+    *RequestEventHead
     Request *ClientGetConfigRequest
 }
 
@@ -386,9 +383,8 @@ func NewClientGetConfigRequestEvent(
     request *ClientGetConfigRequest) *ClientGetConfigRequestEvent {
 
     return &ClientGetConfigRequestEvent{
-        RaftRequestEventHead: NewRaftRequestEventHead(
-            EventClientGetConfigRequest),
-        Request: request,
+        RequestEventHead: NewRequestEventHead(EventClientGetConfigRequest),
+        Request:          request,
     }
 }
 
@@ -398,7 +394,7 @@ func (self *ClientGetConfigRequestEvent) Message() interface{} {
 
 // Event for ClientChangeConfigRequest message.
 type ClientChangeConfigRequestEvent struct {
-    *RaftRequestEventHead
+    *RequestEventHead
     Request *ClientChangeConfigRequest
 }
 
@@ -406,9 +402,8 @@ func NewClientChangeConfigRequestEvent(
     request *ClientChangeConfigRequest) *ClientChangeConfigRequestEvent {
 
     return &ClientChangeConfigRequestEvent{
-        RaftRequestEventHead: NewRaftRequestEventHead(
-            EventClientChangeConfigRequest),
-        Request: request,
+        RequestEventHead: NewRequestEventHead(EventClientChangeConfigRequest),
+        Request:          request,
     }
 }
 
@@ -548,12 +543,12 @@ func (self *PersistErrorResponseEvent) Message() interface{} {
 // ------------------------------------------------------------
 
 type QueryStateRequestEvent struct {
-    *RaftRequestEventHead
+    *RequestEventHead
 }
 
 func NewQueryStateRequestEvent() *QueryStateRequestEvent {
     return &QueryStateRequestEvent{
-        RaftRequestEventHead: NewRaftRequestEventHead(EventQueryStateRequest),
+        RequestEventHead: NewRequestEventHead(EventQueryStateRequest),
     }
 }
 

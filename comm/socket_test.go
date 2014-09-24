@@ -214,7 +214,7 @@ func TestSocketServer(t *testing.T) {
         "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
     require.Nil(t, err)
 
-    handler := func(event ev.RaftRequestEvent) {
+    handler := func(event ev.RequestEvent) {
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         require.True(t, ok)
         require.Equal(t, reqEvent.Request, e.Request)

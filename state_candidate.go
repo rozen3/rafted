@@ -202,7 +202,7 @@ func (self *CandidateState) Handle(
     case ev.IsClientEvent(event.Type()):
         // Don't know whether there is a leader or who is leader.
         // Return a error response.
-        e, ok := event.(ev.RaftRequestEvent)
+        e, ok := event.(ev.RequestEvent)
         hsm.AssertTrue(ok)
         e.SendResponse(ev.NewLeaderUnknownResponseEvent())
         return nil

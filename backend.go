@@ -13,7 +13,7 @@ type Notifiable interface {
 }
 
 type Backend interface {
-    Send(event ev.RaftRequestEvent)
+    Send(event ev.RequestEvent)
     io.Closer
     Notifiable
 }
@@ -24,7 +24,7 @@ type HSMBackend struct {
     server comm.Server
 }
 
-func (self *HSMBackend) Send(event ev.RaftRequestEvent) {
+func (self *HSMBackend) Send(event ev.RequestEvent) {
     self.local.Send(event)
 }
 
@@ -70,7 +70,7 @@ func NewHSMBackend(
         local,
         getLoggerForPeer,
         logger)
-    eventHandler := func(event ev.RaftRequestEvent) {
+    eventHandler := func(event ev.RequestEvent) {
         local.Send(event)
     }
     server, err := comm.NewSocketServer(

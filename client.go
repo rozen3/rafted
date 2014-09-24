@@ -129,7 +129,7 @@ func (self *RedirectClient) Close() error {
 func (self *RedirectClient) genRedirectHandler() RedirectResponseHandler {
     return func(
         respEvent *ev.LeaderRedirectResponseEvent,
-        reqEvent ev.RaftRequestEvent) (ev.RaftEvent, error) {
+        reqEvent ev.RequestEvent) (ev.Event, error) {
 
         self.logger.Debug("redirect to leader: %s", respEvent.Response.Leader)
         return self.client.CallRPCTo(&respEvent.Response.Leader, reqEvent)
@@ -171,8 +171,8 @@ func (self *RedirectClient) ChangeConfig(conf *ps.Config) error {
 
 func sendToBackend(
     backend Backend,
-    reqEvent ev.RaftRequestEvent,
-    timeout time.Duration) (event ev.RaftEvent, err error) {
+    reqEvent ev.RequestEvent,
+    timeout time.Duration) (event ev.Event, err error) {
 
     backend.Send(reqEvent)
     timeChan := time.After(timeout)
@@ -185,14 +185,13 @@ func sendToBackend(
 }
 
 type RedirectResponseHandler func(
-    *ev.LeaderRedirectResponseEvent, ev.RaftRequestEvent) (ev.RaftEvent, error)
+    *ev.LeaderRedirectResponseEvent, ev.RequestEvent) (ev.Event, error)
 
-type InavaliableResponseHandler func(
-    ev.RaftEvent, ev.RaftRequestEvent) ([]byte, error)
+type InavaliableResponseHandler func(ev.Event, ev.RequestEvent) ([]byte, error)
 
 func doRequest(
     backend Backend,
-    reqEvent ev.RaftRequestEvent,
+    reqEvent ev.RequestEvent,
     timeout time.Duration,
     retry rt.Retry,
     redirectRetry rt.Retry,
@@ -248,7 +247,7 @@ func doRequest(
 
 func dummyRedirectHandler(
     respEvent *ev.LeaderRedirectResponseEvent,
-    _ ev.RaftRequestEvent) (ev.RaftEvent, error) {
+    _ ev.RequestEvent) (ev.Event, error) {
 
     return respEvent, nil
 }

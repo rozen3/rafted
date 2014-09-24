@@ -251,7 +251,7 @@ func NewMemoryConnection(
 }
 
 func (self *MemoryConnection) CallRPC(
-    request ev.RaftEvent) (response ev.RaftEvent, err error) {
+    request ev.Event) (response ev.Event, err error) {
 
     if err := WriteEvent(self.writer, self.encoder, request); err != nil {
         self.Close()
@@ -290,7 +290,7 @@ func NewMemoryClient(
 
 func (self *MemoryClient) CallRPCTo(
     target net.Addr,
-    request ev.RaftEvent) (response ev.RaftEvent, err error) {
+    request ev.Event) (response ev.Event, err error) {
 
     connection, err := self.getConnection(target)
     if err != nil {
@@ -377,14 +377,14 @@ type MemoryServer struct {
     register            *MemoryTransportRegister
     transport           *MemoryServerTransport
     acceptedConnections map[chan []byte]*MemoryServerTransport
-    eventHandler        RaftRequestEventHandler
+    eventHandler        RequestEventHandler
     logger              logging.Logger
 }
 
 func NewMemoryServer(
     bindAddr net.Addr,
     timeout time.Duration,
-    eventHandler RaftRequestEventHandler,
+    eventHandler RequestEventHandler,
     register *MemoryTransportRegister,
     logger logging.Logger) *MemoryServer {
 

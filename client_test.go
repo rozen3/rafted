@@ -24,7 +24,7 @@ func NewMockBackend() *MockBackend {
     return &MockBackend{}
 }
 
-func (self *MockBackend) Send(event ev.RaftRequestEvent) {
+func (self *MockBackend) Send(event ev.RequestEvent) {
     response := &ev.ClientResponse{
         Success: true,
     }
@@ -77,18 +77,18 @@ func TestSimpleClient(t *testing.T) {
 }
 
 type MockBackend2 struct {
-    SendFunc func(event ev.RaftRequestEvent) ev.RaftEvent
+    SendFunc func(event ev.RequestEvent) ev.Event
 }
 
 func NewMockBackend2(
-    sendFunc func(event ev.RaftRequestEvent) ev.RaftEvent) *MockBackend2 {
+    sendFunc func(event ev.RequestEvent) ev.Event) *MockBackend2 {
 
     return &MockBackend2{
         SendFunc: sendFunc,
     }
 }
 
-func (self *MockBackend2) Send(event ev.RaftRequestEvent) {
+func (self *MockBackend2) Send(event ev.RequestEvent) {
     respEvent := self.SendFunc(event)
     event.SendResponse(respEvent)
 }
@@ -109,7 +109,7 @@ type GenRedirectClientFunc func(
 func setupTestMemoryRedirectClient(
     addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
 
-    eventHandler := func(event ev.RaftRequestEvent) {
+    eventHandler := func(event ev.RequestEvent) {
         backend.Send(event)
     }
     logger := logging.GetLogger("Server" + "#" + addr.String())
@@ -139,7 +139,7 @@ func setupTestSocketRedirectClient(
 
     client := cm.NewSocketClient(
         testConfig.CommPoolSize, testConfig.CommClientTimeout)
-    eventHandler := func(event ev.RaftRequestEvent) {
+    eventHandler := func(event ev.RequestEvent) {
         backend.Send(event)
     }
     logger := logging.GetLogger("Server" + "#" + addr.String())
@@ -171,7 +171,7 @@ func TestRedirectClientContruction(t *testing.T) {
     data := testData
     invokedCount := 0
     backend := NewMockBackend2(
-        func(event ev.RaftRequestEvent) ev.RaftEvent {
+        func(event ev.RequestEvent) ev.Event {
             invokedCount++
             response := &ev.ClientResponse{
                 Success: true,
@@ -186,7 +186,7 @@ func TestRedirectClientContruction(t *testing.T) {
     assert.Equal(t, err, nil)
     assert.Equal(t, result, data)
     assert.Equal(t, invokedCount, 1)
-    backend.SendFunc = func(event ev.RaftRequestEvent) ev.RaftEvent {
+    backend.SendFunc = func(event ev.RequestEvent) ev.Event {
         invokedCount++
         return ev.NewPersistErrorResponseEvent(errors.New("some error"))
     }
@@ -202,7 +202,7 @@ func TestRedirectClientRedirection(t *testing.T) {
     data := testData
     invokedCount1 := 0
     backend1 := NewMockBackend2(
-        func(event ev.RaftRequestEvent) ev.RaftEvent {
+        func(event ev.RequestEvent) ev.Event {
             invokedCount1++
             response := &ev.LeaderRedirectResponse{
                 Leader: addrs[1],
@@ -215,7 +215,7 @@ func TestRedirectClientRedirection(t *testing.T) {
 
     invokedCount2 := 0
     backend2 := NewMockBackend2(
-        func(event ev.RaftRequestEvent) ev.RaftEvent {
+        func(event ev.RequestEvent) ev.Event {
             invokedCount2++
             response := &ev.ClientResponse{
                 Success: true,

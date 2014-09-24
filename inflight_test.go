@@ -74,7 +74,7 @@ func TestInflightAdd(t *testing.T) {
     }
     inflight := NewInflight(conf)
     // test Add()
-    resultChan := make(chan ev.RaftEvent)
+    resultChan := make(chan ev.Event)
     logEntry := &ps.LogEntry{
         Term:  testTerm,
         Index: testIndex,
@@ -115,7 +115,7 @@ func TestInflightAddAll(t *testing.T) {
     }
     inflight := NewInflight(conf)
     // test AddAll()
-    resultChan := make(chan ev.RaftEvent)
+    resultChan := make(chan ev.Event)
     logEntries := []*ps.LogEntry{
         &ps.LogEntry{
             Term:  testTerm,

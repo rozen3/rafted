@@ -152,7 +152,7 @@ func assertGetAppendEntriesRequestEvent(
 }
 
 func assertGetRequestVoteResponseEvent(
-    t *testing.T, reqEvent ev.RaftRequestEvent, granted bool, term uint64) {
+    t *testing.T, reqEvent ev.RequestEvent, granted bool, term uint64) {
 
     respEvent := reqEvent.RecvResponse()
     assert.Equal(t, ev.EventRequestVoteResponse, respEvent.Type())
@@ -163,7 +163,7 @@ func assertGetRequestVoteResponseEvent(
 }
 
 func assertGetAppendEntriesResponseEvent(t *testing.T,
-    reqEvent ev.RaftRequestEvent, success bool, term, index uint64) {
+    reqEvent ev.RequestEvent, success bool, term, index uint64) {
 
     respEvent := reqEvent.RecvResponse()
     assert.Equal(t, ev.EventAppendEntriesResponse, respEvent.Type())
@@ -178,7 +178,7 @@ func assertGetAppendEntriesResponseEvent(t *testing.T,
 // client events related
 // ------------------------------------------------------------
 
-func assertGetLeaderUnknownResponse(t *testing.T, reqEvent ev.RaftRequestEvent) {
+func assertGetLeaderUnknownResponse(t *testing.T, reqEvent ev.RequestEvent) {
     respEvent := reqEvent.RecvResponse()
     assert.Equal(t, ev.EventLeaderUnknownResponse, respEvent.Type(),
         "expect %s but actual %s",
@@ -188,7 +188,7 @@ func assertGetLeaderUnknownResponse(t *testing.T, reqEvent ev.RaftRequestEvent) 
     assert.True(t, ok)
 }
 
-func assertGetLeaderUnsyncResponseEvent(t *testing.T, reqEvent ev.RaftRequestEvent) {
+func assertGetLeaderUnsyncResponseEvent(t *testing.T, reqEvent ev.RequestEvent) {
     respEvent := reqEvent.RecvResponse()
     assert.Equal(t, ev.EventLeaderUnsyncResponse, respEvent.Type(),
         "expect %s but actual %s",
@@ -199,7 +199,8 @@ func assertGetLeaderUnsyncResponseEvent(t *testing.T, reqEvent ev.RaftRequestEve
 }
 
 func assertGetClientResponseEvent(
-    t *testing.T, reqEvent ev.RaftRequestEvent, success bool, data []byte) {
+    t *testing.T, reqEvent ev.RequestEvent, success bool, data []byte) {
+
     respEvent := reqEvent.RecvResponse()
     assert.Equal(t, ev.EventClientResponse, respEvent.Type(),
         "expect %s but actual %s",

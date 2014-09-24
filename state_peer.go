@@ -870,7 +870,7 @@ func (self *SnapshotModePeerState) Handle(
     local := peerHSM.Local()
     switch event.Type() {
     case ev.EventInstallSnapshotRequest:
-        e, ok := event.(ev.RaftEvent)
+        e, ok := event.(ev.Event)
         hsm.AssertTrue(ok)
         peerAddr := peerHSM.Addr()
         respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)

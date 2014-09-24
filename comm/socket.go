@@ -115,7 +115,7 @@ func NewSocketConnection(
 }
 
 func (self *SocketConnection) CallRPC(
-    request ev.RaftEvent) (response ev.RaftEvent, err error) {
+    request ev.Event) (response ev.Event, err error) {
 
     if err := WriteEvent(self.writer, self.encoder, request); err != nil {
         self.Close()
@@ -149,7 +149,7 @@ func NewSocketClient(poolSize int, timeout time.Duration) *SocketClient {
 
 func (self *SocketClient) CallRPCTo(
     target net.Addr,
-    request ev.RaftEvent) (response ev.RaftEvent, err error) {
+    request ev.Event) (response ev.Event, err error) {
 
     connection, err := self.getConnection(target)
     if err != nil {
@@ -237,14 +237,14 @@ type SocketServer struct {
     readTimeout  time.Duration
     writeTimeout time.Duration
     listener     net.Listener
-    eventHandler RaftRequestEventHandler
+    eventHandler RequestEventHandler
     logger       logging.Logger
 }
 
 func NewSocketServer(
     bindAddr net.Addr,
     timeout time.Duration,
-    eventHandler RaftRequestEventHandler,
+    eventHandler RequestEventHandler,
     logger logging.Logger) (*SocketServer, error) {
 
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
@@ -357,7 +357,7 @@ func NewSocketNetworkLayer(
 func WriteEvent(
     writer *bufio.Writer,
     encoder Encoder,
-    event ev.RaftEvent) error {
+    event ev.Event) error {
     // write event type as first byte
     if err := writer.WriteByte(byte(event.Type())); err != nil {
         return err
@@ -372,7 +372,7 @@ func WriteEvent(
 
 func ReadRequest(
     reader *bufio.Reader,
-    decoder Decoder) (ev.RaftRequestEvent, error) {
+    decoder Decoder) (ev.RequestEvent, error) {
 
     eventType, err := reader.ReadByte()
     if err != nil {
@@ -435,7 +435,7 @@ func ReadRequest(
 
 func ReadResponse(
     reader *bufio.Reader,
-    decoder Decoder) (ev.RaftEvent, error) {
+    decoder Decoder) (ev.Event, error) {
 
     eventType, err := reader.ReadByte()
     if err != nil {

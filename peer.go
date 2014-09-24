@@ -176,7 +176,7 @@ type PeerHSM struct {
 
     addr         ps.ServerAddr
     client       cm.Client
-    eventHandler cm.RaftEventHandler
+    eventHandler cm.EventHandler
     local        Local
 }
 
@@ -187,7 +187,7 @@ func NewPeerHSM(
     client cm.Client,
     local Local) *PeerHSM {
 
-    handler := func(event ev.RaftEvent) {
+    handler := func(event ev.Event) {
         local.Send(event)
     }
     return &PeerHSM{
@@ -264,7 +264,7 @@ func (self *PeerHSM) Client() cm.Client {
     return self.client
 }
 
-func (self *PeerHSM) EventHandler() cm.RaftEventHandler {
+func (self *PeerHSM) EventHandler() cm.EventHandler {
     return self.eventHandler
 }
 

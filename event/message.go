@@ -171,5 +171,5 @@ type MemberChangeNewConf struct {
 
 type LeaderForwardMemberChangePhase struct {
     Conf       *ps.Config
-    ResultChan chan RaftEvent
+    ResultChan chan Event
 }
