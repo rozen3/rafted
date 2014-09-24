@@ -115,8 +115,7 @@ type ClientReadOnlyRequest struct {
 
 // ClientMemberChangeRequest is a request for a member change in cluster.
 type ClientMemberChangeRequest struct {
-    OldServers []ps.ServerAddr
-    NewServers []ps.ServerAddr
+    Conf *ps.Config
 }
 
 // ClientResponse is a general response of raft module answer to client.

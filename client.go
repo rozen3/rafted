@@ -26,8 +26,8 @@ var (
 type Client interface {
     Append(data []byte) (result []byte, err error)
     ReadOnly(data []byte) (result []byte, err error)
-    GetConfig() (servers []ps.ServerAddr, err error)
-    ChangeConfig(oldServers []ps.ServerAddr, newServers []ps.ServerAddr) error
+    GetConfig() (conf *ps.Config, err error)
+    ChangeConfig(conf *ps.Config) error
     io.Closer
 }
 
@@ -66,17 +66,14 @@ func (self *SimpleClient) ReadOnly(data []byte) (result []byte, err error) {
 
 }
 
-func (self *SimpleClient) GetConfig() (servers []ps.ServerAddr, err error) {
+func (self *SimpleClient) GetConfig() (conf *ps.Config, err error) {
     // TODO add impl
     return nil, nil
 }
 
-func (self *SimpleClient) ChangeConfig(
-    oldServers []ps.ServerAddr, newServers []ps.ServerAddr) error {
-
+func (self *SimpleClient) ChangeConfig(conf *ps.Config) error {
     request := &ev.ClientMemberChangeRequest{
-        OldServers: oldServers,
-        NewServers: newServers,
+        Conf: conf,
     }
     reqEvent := ev.NewClientMemberChangeRequestEvent(request)
     _, err := doRequest(self.backend, reqEvent, self.timeout, self.retry,
@@ -157,17 +154,14 @@ func (self *RedirectClient) ReadOnly(data []byte) (result []byte, err error) {
         self.redirectRetry, self.genRedirectHandler())
 }
 
-func (self *RedirectClient) GetConfig() (servers []ps.ServerAddr, err error) {
+func (self *RedirectClient) GetConfig() (conf *ps.Config, err error) {
     // TODO add impl
     return nil, nil
 }
 
-func (self *RedirectClient) ChangeConfig(
-    oldServers []ps.ServerAddr, newServers []ps.ServerAddr) error {
-
+func (self *RedirectClient) ChangeConfig(conf *ps.Config) error {
     request := &ev.ClientMemberChangeRequest{
-        OldServers: oldServers,
-        NewServers: newServers,
+        Conf: conf,
     }
     reqEvent := ev.NewClientMemberChangeRequestEvent(request)
     _, err := doRequest(self.backend, reqEvent, self.timeout, self.retry,

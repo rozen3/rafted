@@ -68,7 +68,11 @@ func TestSimpleClient(t *testing.T) {
 
     oldServers := make([]ps.ServerAddr, 0)
     newServers := make([]ps.ServerAddr, 0)
-    err = client.ChangeConfig(oldServers, newServers)
+    conf := &ps.Config{
+        Servers:    oldServers,
+        NewServers: newServers,
+    }
+    err = client.ChangeConfig(conf)
     assert.Equal(t, err, nil)
 }
 

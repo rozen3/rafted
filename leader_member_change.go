@@ -267,17 +267,14 @@ func (self *LeaderNotInMemberChangeState) Handle(
             return nil
         }
         if !(ps.IsNormalConfig(conf) &&
-            ps.AddrsEqual(conf.Servers, e.Request.OldServers)) {
+            ps.AddrsEqual(conf.Servers, e.Request.Conf.Servers)) {
 
             err = DispatchInconsistantError(localHSM)
             resultChan <- ev.NewPersistErrorResponseEvent(err)
             return nil
         }
 
-        newConf := &ps.Config{
-            Servers:    e.Request.OldServers[:],
-            NewServers: e.Request.NewServers[:],
-        }
+        newConf := e.Request.Conf
 
         lastLogIndex, err := localHSM.Log().LastIndex()
         if err != nil {
