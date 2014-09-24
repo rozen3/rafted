@@ -42,3 +42,6 @@ type Server interface {
     Serve()
     io.Closer
 }
+
+type RaftRequestEventHandler func(event.RaftRequestEvent)
+type RaftEventHandler func(event.RaftEvent)

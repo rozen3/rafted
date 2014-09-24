@@ -3,8 +3,7 @@ package rafted
 import (
     "fmt"
     hsm "github.com/hhkbp2/go-hsm"
-    "github.com/hhkbp2/rafted/comm"
-    ev "github.com/hhkbp2/rafted/event"
+    cm "github.com/hhkbp2/rafted/comm"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
     "github.com/hhkbp2/testify/assert"
@@ -118,11 +117,11 @@ func (self *MockLocal) SetPeers(peers Peers) {
 
 func getTestMemoryServer(
     addr ps.ServerAddr,
-    eventHandler func(ev.RaftRequestEvent)) *comm.MemoryServer {
+    eventHandler cm.RaftRequestEventHandler) *cm.MemoryServer {
 
     bindAddr := testServers[1]
     logger := logging.GetLogger("test server #" + bindAddr.String())
-    server := comm.NewMemoryServer(
+    server := cm.NewMemoryServer(
         &bindAddr,
         testConfig.CommServerTimeout,
         eventHandler,
@@ -155,7 +154,7 @@ func getTestPeerAndLocal() (Peer, *MockLocal, error) {
     configManager := ps.NewMemoryConfigManager(index, conf)
     notifier := NewNotifier()
     local := NewMockLocal(log, stateMachine, configManager, notifier)
-    client := comm.NewMemoryClient(
+    client := cm.NewMemoryClient(
         testConfig.CommPoolSize, testConfig.CommClientTimeout, testRegister)
     logger := logging.GetLogger("test peer")
 

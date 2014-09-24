@@ -377,14 +377,14 @@ type MemoryServer struct {
     register            *MemoryTransportRegister
     transport           *MemoryServerTransport
     acceptedConnections map[chan []byte]*MemoryServerTransport
-    eventHandler        func(ev.RaftRequestEvent)
+    eventHandler        RaftRequestEventHandler
     logger              logging.Logger
 }
 
 func NewMemoryServer(
     bindAddr net.Addr,
     timeout time.Duration,
-    eventHandler func(ev.RaftRequestEvent),
+    eventHandler RaftRequestEventHandler,
     register *MemoryTransportRegister,
     logger logging.Logger) *MemoryServer {
 

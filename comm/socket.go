@@ -237,14 +237,14 @@ type SocketServer struct {
     readTimeout  time.Duration
     writeTimeout time.Duration
     listener     net.Listener
-    eventHandler func(ev.RaftRequestEvent)
+    eventHandler RaftRequestEventHandler
     logger       logging.Logger
 }
 
 func NewSocketServer(
     bindAddr net.Addr,
     timeout time.Duration,
-    eventHandler func(ev.RaftRequestEvent),
+    eventHandler RaftRequestEventHandler,
     logger logging.Logger) (*SocketServer, error) {
 
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())

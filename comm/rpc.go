@@ -94,7 +94,15 @@ type RPCClientResponse struct {
     Error  string
 }
 
-type RPCClient int
+type RPCClient struct {
+    eventHandler RaftRequestEventHandler
+}
+
+func NewRPCClient(eventHandler RaftRequestEventHandler) *RPCClient {
+    return &RPCClient{
+        eventHandler: eventHandler,
+    }
+}
 
 func (self *RPCClient) Append(
     args *RPCClientAppendRequest, reply *RPCClientResponse) error {

@@ -2,7 +2,7 @@ package rafted
 
 import (
     hsm "github.com/hhkbp2/go-hsm"
-    "github.com/hhkbp2/rafted/comm"
+    cm "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
@@ -24,7 +24,7 @@ type PeerManager struct {
     peerLock sync.RWMutex
 
     config           *Configuration
-    client           comm.Client
+    client           cm.Client
     local            Local
     getLoggerForPeer func(ps.ServerAddr) logging.Logger
     logger           logging.Logger
@@ -33,7 +33,7 @@ type PeerManager struct {
 func NewPeerManager(
     config *Configuration,
     peerAddrs []ps.ServerAddr,
-    client comm.Client,
+    client cm.Client,
     local Local,
     getLoggerForPeer func(ps.ServerAddr) logging.Logger,
     logger logging.Logger) *PeerManager {
@@ -120,7 +120,7 @@ type PeerMan struct {
 func NewPeerMan(
     config *Configuration,
     addr ps.ServerAddr,
-    client comm.Client,
+    client cm.Client,
     local Local,
     logger logging.Logger) Peer {
 
@@ -175,8 +175,8 @@ type PeerHSM struct {
     group            sync.WaitGroup
 
     addr         ps.ServerAddr
-    client       comm.Client
-    eventHandler func(ev.RaftEvent)
+    client       cm.Client
+    eventHandler cm.RaftEventHandler
     local        Local
 }
 
@@ -184,7 +184,7 @@ func NewPeerHSM(
     top hsm.State,
     initial hsm.State,
     addr ps.ServerAddr,
-    client comm.Client,
+    client cm.Client,
     local Local) *PeerHSM {
 
     handler := func(event ev.RaftEvent) {
@@ -260,11 +260,11 @@ func (self *PeerHSM) Addr() ps.ServerAddr {
     return self.addr
 }
 
-func (self *PeerHSM) Client() comm.Client {
+func (self *PeerHSM) Client() cm.Client {
     return self.client
 }
 
-func (self *PeerHSM) EventHandler() func(ev.RaftEvent) {
+func (self *PeerHSM) EventHandler() cm.RaftEventHandler {
     return self.eventHandler
 }
 
