@@ -255,8 +255,8 @@ func (self *LeaderNotInMemberChangeState) Handle(
     localHSM := memberChangeHSM.LocalHSM
     leaderState := memberChangeHSM.LeaderState
     switch event.Type() {
-    case ev.EventClientMemberChangeRequest:
-        e, ok := event.(*ev.ClientMemberChangeRequestEvent)
+    case ev.EventClientChangeConfigRequest:
+        e, ok := event.(*ev.ClientChangeConfigRequestEvent)
         hsm.AssertTrue(ok)
         resultChan := e.ResultChan
         conf, err := localHSM.ConfigManager().RNth(0)
@@ -377,8 +377,8 @@ func (self *LeaderInMemberChangeState) Handle(
     self.Debug("STATE: %s, -> Handle event: %s", self.ID(),
         ev.EventString(event))
     switch event.Type() {
-    case ev.EventClientMemberChangeRequest:
-        e, ok := event.(*ev.ClientMemberChangeRequestEvent)
+    case ev.EventClientChangeConfigRequest:
+        e, ok := event.(*ev.ClientChangeConfigRequestEvent)
         hsm.AssertTrue(ok)
         e.SendResponse(ev.NewLeaderInMemberChangeResponseEvent())
         return nil

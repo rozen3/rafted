@@ -232,7 +232,7 @@ func (self *LeaderState) Handle(
             ev.RaftStateLeader, ev.RaftStateFollower))
         sm.QTran(StateFollowerID)
         return nil
-    case ev.EventClientMemberChangeRequest:
+    case ev.EventClientChangeConfigRequest:
         fallthrough
     case ev.EventLeaderReenterMemberChangeState:
         fallthrough

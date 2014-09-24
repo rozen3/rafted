@@ -113,8 +113,11 @@ type ClientReadOnlyRequest struct {
     Data []byte
 }
 
-// ClientMemberChangeRequest is a request for a member change in cluster.
-type ClientMemberChangeRequest struct {
+type ClientGetConfigRequest struct {
+}
+
+// ClientChangeConfigRequest is a request for a member change in cluster.
+type ClientChangeConfigRequest struct {
     Conf *ps.Config
 }
 
@@ -130,6 +133,10 @@ type ClientResponse struct {
 type LeaderRedirectResponse struct {
     // The network address of leader
     Leader ps.ServerAddr
+}
+
+type ClientGetConfigResponse struct {
+    Conf *ps.Config
 }
 
 // ------------------------------------------------------------

@@ -414,12 +414,19 @@ func ReadRequest(
         }
         event := ev.NewClientReadOnlyRequestEvent(request)
         return event, nil
-    case ev.EventClientMemberChangeRequest:
-        request := &ev.ClientMemberChangeRequest{}
+    case ev.EventClientGetConfigRequest:
+        request := &ev.ClientGetConfigRequest{}
         if err := decoder.Decode(request); err != nil {
             return nil, err
         }
-        event := ev.NewClientMemberChangeRequestEvent(request)
+        event := ev.NewClientGetConfigRequestEvent(request)
+        return event, nil
+    case ev.EventClientChangeConfigRequest:
+        request := &ev.ClientChangeConfigRequest{}
+        if err := decoder.Decode(request); err != nil {
+            return nil, err
+        }
+        event := ev.NewClientChangeConfigRequestEvent(request)
         return event, nil
     default:
         return nil, errors.New("not request event")
@@ -462,6 +469,13 @@ func ReadResponse(
             return nil, err
         }
         event := ev.NewClientResponseEvent(response)
+        return event, nil
+    case ev.EventClientGetConfigResponse:
+        response := &ev.ClientGetConfigResponse{}
+        if err := decoder.Decode(response); err != nil {
+            return nil, err
+        }
+        event := ev.NewClientGetConfigResponseEvent(response)
         return event, nil
     case ev.EventLeaderRedirectResponse:
         response := &ev.LeaderRedirectResponse{}

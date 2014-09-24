@@ -72,10 +72,10 @@ func (self *SimpleClient) GetConfig() (conf *ps.Config, err error) {
 }
 
 func (self *SimpleClient) ChangeConfig(conf *ps.Config) error {
-    request := &ev.ClientMemberChangeRequest{
+    request := &ev.ClientChangeConfigRequest{
         Conf: conf,
     }
-    reqEvent := ev.NewClientMemberChangeRequestEvent(request)
+    reqEvent := ev.NewClientChangeConfigRequestEvent(request)
     _, err := doRequest(self.backend, reqEvent, self.timeout, self.retry,
         self.retry, dummyRedirectHandler)
     return err
@@ -160,10 +160,10 @@ func (self *RedirectClient) GetConfig() (conf *ps.Config, err error) {
 }
 
 func (self *RedirectClient) ChangeConfig(conf *ps.Config) error {
-    request := &ev.ClientMemberChangeRequest{
+    request := &ev.ClientChangeConfigRequest{
         Conf: conf,
     }
-    reqEvent := ev.NewClientMemberChangeRequestEvent(request)
+    reqEvent := ev.NewClientChangeConfigRequestEvent(request)
     _, err := doRequest(self.backend, reqEvent, self.timeout, self.retry,
         self.redirectRetry, self.genRedirectHandler())
     return err

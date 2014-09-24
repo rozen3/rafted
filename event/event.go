@@ -42,9 +42,11 @@ const (
     EventClientRequestBegin
     EventClientAppendRequest
     EventClientReadOnlyRequest
-    EventClientMemberChangeRequest
+    EventClientGetConfigRequest
+    EventClientChangeConfigRequest
     EventClientRequestEnd
     EventClientResponse
+    EventClientGetConfigResponse
     EventLeaderRedirectResponse
     EventLeaderUnknownResponse
     EventLeaderUnsyncResponse
@@ -121,10 +123,14 @@ func EventTypeString(event hsm.EventType) string {
         return "ClientAppendRequestEvent"
     case EventClientReadOnlyRequest:
         return "ClientReadOnlyRequestEvent"
-    case EventClientMemberChangeRequest:
-        return "ClientMemberChangeRequestEvent"
+    case EventClientGetConfigRequest:
+        return "ClientGetConfigRequestEvent"
+    case EventClientChangeConfigRequest:
+        return "ClientChangeConfigRequestEvent"
     case EventClientResponse:
         return "ClientResponseEvent"
+    case EventClientGetConfigResponse:
+        return "ClientGetConfigResponseEvent"
     case EventLeaderRedirectResponse:
         return "LeaderRedirectResponseEvent"
     case EventLeaderUnknownResponse:
@@ -371,23 +377,42 @@ func (self *ClientReadOnlyRequestEvent) Message() interface{} {
     return self.Request
 }
 
-// Event for ClientMemberChangeRequest message.
-type ClientMemberChangeRequestEvent struct {
+type ClientGetConfigRequestEvent struct {
     *RaftRequestEventHead
-    Request *ClientMemberChangeRequest
+    Request *ClientGetConfigRequest
 }
 
-func NewClientMemberChangeRequestEvent(
-    request *ClientMemberChangeRequest) *ClientMemberChangeRequestEvent {
+func NewClientGetConfigRequestEvent(
+    request *ClientGetConfigRequest) *ClientGetConfigRequestEvent {
 
-    return &ClientMemberChangeRequestEvent{
+    return &ClientGetConfigRequestEvent{
         RaftRequestEventHead: NewRaftRequestEventHead(
-            EventClientMemberChangeRequest),
+            EventClientGetConfigRequest),
         Request: request,
     }
 }
 
-func (self *ClientMemberChangeRequestEvent) Message() interface{} {
+func (self *ClientGetConfigRequestEvent) Message() interface{} {
+    return nil
+}
+
+// Event for ClientChangeConfigRequest message.
+type ClientChangeConfigRequestEvent struct {
+    *RaftRequestEventHead
+    Request *ClientChangeConfigRequest
+}
+
+func NewClientChangeConfigRequestEvent(
+    request *ClientChangeConfigRequest) *ClientChangeConfigRequestEvent {
+
+    return &ClientChangeConfigRequestEvent{
+        RaftRequestEventHead: NewRaftRequestEventHead(
+            EventClientChangeConfigRequest),
+        Request: request,
+    }
+}
+
+func (self *ClientChangeConfigRequestEvent) Message() interface{} {
     return self.Request
 }
 
@@ -410,7 +435,25 @@ func (self *ClientResponseEvent) Message() interface{} {
     return self.Response
 }
 
-// LeaderUnknownResponseEvent is to tell client we are not leader and
+type ClientGetConfigResponseEvent struct {
+    *hsm.StdEvent
+    Response *ClientGetConfigResponse
+}
+
+func NewClientGetConfigResponseEvent(
+    response *ClientGetConfigResponse) *ClientGetConfigResponseEvent {
+
+    return &ClientGetConfigResponseEvent{
+        StdEvent: hsm.NewStdEvent(EventClientGetConfigResponse),
+        Response: response,
+    }
+}
+
+func (self *ClientGetConfigResponseEvent) Message() interface{} {
+    return self.Response
+}
+
+// LeaderRedirectResponseEvent is to tell client we are not leader and
 // the leader address at this moment for client to redirect.
 type LeaderRedirectResponseEvent struct {
     *hsm.StdEvent
