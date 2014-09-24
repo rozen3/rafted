@@ -48,7 +48,7 @@ func NewTestMemoryHSMBackend(
         return nil, err
     }
     client := comm.NewMemoryClient(
-        testConfig.CommPoolSize, testConfig.CommTimeout, testRegister)
+        testConfig.CommPoolSize, testConfig.CommClientTimeout, testRegister)
     getLoggerForPeer := func(peerAddr ps.ServerAddr) logging.Logger {
         return logging.GetLogger(
             "peer" + "#" + localAddr.String() + ">>" + peerAddr.String())
@@ -69,7 +69,7 @@ func NewTestMemoryHSMBackend(
     serverLogger := logging.GetLogger("Server" + "#" + localAddr.String())
     server := comm.NewMemoryServer(
         &localAddr,
-        testConfig.CommTimeout,
+        testConfig.CommServerTimeout,
         eventHandler,
         testRegister,
         serverLogger)
@@ -108,7 +108,7 @@ func NewTestSocketHSMBackend(
     }
 
     client := comm.NewSocketClient(
-        testConfig.CommPoolSize, testConfig.CommTimeout)
+        testConfig.CommPoolSize, testConfig.CommClientTimeout)
     getLoggerForPeer := func(peerAddr ps.ServerAddr) logging.Logger {
         return logging.GetLogger(
             "peer" + "#" + localAddr.String() + ">>" + peerAddr.String())
@@ -127,7 +127,10 @@ func NewTestSocketHSMBackend(
         local.Send(event)
     }
     server, err := comm.NewSocketServer(
-        &localAddr, testConfig.CommTimeout, eventHandler, serverLogger)
+        &localAddr,
+        testConfig.CommServerTimeout,
+        eventHandler,
+        serverLogger)
     if err != nil {
         return nil, err
     }

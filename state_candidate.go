@@ -122,6 +122,8 @@ func (self *CandidateState) Handle(
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
         term := localHSM.GetCurrentTerm()
+        self.Debug("candidate receive RequestVoteRequest %#v, local term: %d",
+            e.Request, term)
         if e.Request.Term > term {
             self.Debug("candidate receive RequestVoteRequest with term: %d "+
                 "> local term: %d", e.Request.Term, term)
@@ -130,16 +132,24 @@ func (self *CandidateState) Handle(
             localHSM.SelfDispatch(event)
             return nil
         }
-        response := &ev.RequestVoteResponse{
-            Term:    term,
-            Granted: false,
+        if e.Request.Term < term {
+            response := &ev.RequestVoteResponse{
+                Term:    term,
+                Granted: false,
+            }
+            e.SendResponse(ev.NewRequestVoteResponseEvent(response))
+            return nil
         }
-        e.SendResponse(ev.NewRequestVoteResponseEvent(response))
+        localHSM.SelfDispatch(ev.NewStepdownEvent())
+        localHSM.SelfDispatch(event)
         return nil
     case event.Type() == ev.EventRequestVoteResponse:
         e, ok := event.(*ev.RequestVoteResponseEvent)
         hsm.AssertTrue(ok)
         term := localHSM.GetCurrentTerm()
+        self.Debug(
+            "candidate receive RequestVoteResponse %#v, from: %s, local term: %d",
+            e.Response, e.FromAddr.String(), term)
         if e.Response.Term < term {
             // ignore stale response for old term
             return nil
@@ -173,11 +183,13 @@ func (self *CandidateState) Handle(
         hsm.AssertTrue(ok)
         // step down to follower state if local term is not greater than
         // the remote one
-        if e.Request.Term >= localHSM.GetCurrentTerm() {
+        term := localHSM.GetCurrentTerm()
+        self.Debug("candidate receive AppendEntriesRequest %#v, from %s, "+
+            "local term: %d", e.Request, e.Request.Leader.String(), term)
+        if e.Request.Term >= term {
             localHSM.SelfDispatch(ev.NewStepdownEvent())
             localHSM.SelfDispatch(event)
         } else {
-            term := localHSM.GetCurrentTerm()
             lastLogIndex, err := localHSM.Log().LastIndex()
             if err != nil {
                 localHSM.SelfDispatch(ev.NewPersistErrorEvent(errors.New(

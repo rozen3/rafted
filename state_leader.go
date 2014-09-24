@@ -128,6 +128,7 @@ func (self *LeaderState) Handle(
     case ev.EventAppendEntriesResponse:
         e, ok := event.(*ev.AppendEntriesResponseEvent)
         hsm.AssertTrue(ok)
+        self.Debug("leader receive AppendEntriesResponse: %#v", e.Response)
         peerUpdate := &ev.PeerReplicateLog{
             Peer:       localHSM.GetLocalAddr(),
             MatchIndex: e.Response.LastLogIndex,
@@ -137,6 +138,9 @@ func (self *LeaderState) Handle(
     case ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
+        self.Debug(
+            "leader receive AppendEntriesRequest: %#v from: %s, local term: %d",
+            e.Request, e.Request.Leader.String(), localHSM.GetCurrentTerm())
         // step down to follower state if local term is not greater than
         // the remote one
         if e.Request.Term > localHSM.GetCurrentTerm() {
@@ -160,6 +164,9 @@ func (self *LeaderState) Handle(
     case ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
+        self.Debug(
+            "leader receive RequestVoteRequest: %#v from: %s, local term: %d",
+            e.Request, e.Request.Candidate.String(), localHSM.GetCurrentTerm())
         if e.Request.Term > localHSM.GetCurrentTerm() {
             localHSM.SelfDispatch(ev.NewStepdownEvent())
             localHSM.SelfDispatch(event)
@@ -199,6 +206,8 @@ func (self *LeaderState) Handle(
     case ev.EventPeerReplicateLog:
         e, ok := event.(*ev.PeerReplicateLogEvent)
         hsm.AssertTrue(ok)
+        self.Debug("leader receive PeerReplicateLog: %#v from: %s",
+            e.Message, e.Message.Peer.String())
         goodToCommit, err := self.Inflight.Replicate(
             e.Message.Peer, e.Message.MatchIndex)
         if err != nil {

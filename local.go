@@ -47,7 +47,7 @@ type NotifiableHSM interface {
 
 type LocalHSM struct {
     *hsm.StdHSM
-    dispatchChan     chan hsm.Event
+    dispatchChan     *ReliableEventChannel
     selfDispatchChan *ReliableEventChannel
     stopChan         chan interface{}
     group            sync.WaitGroup
@@ -109,7 +109,7 @@ func NewLocalHSM(
     object := &LocalHSM{
         // hsm
         StdHSM:           hsm.NewStdHSM(HSMTypeLocal, top, initial),
-        dispatchChan:     make(chan hsm.Event, 1),
+        dispatchChan:     NewReliableEventChannel(),
         selfDispatchChan: NewReliableEventChannel(),
         stopChan:         make(chan interface{}, 1),
         group:            sync.WaitGroup{},
@@ -142,6 +142,7 @@ func (self *LocalHSM) loop() {
         defer self.group.Done()
         // loop forever to process incoming event
         priorityChan := self.selfDispatchChan.GetOutChan()
+        eventChan := self.dispatchChan.GetOutChan()
         for {
             // Event in selfDispatchChan has higher priority to be processed
             select {
@@ -158,7 +159,7 @@ func (self *LocalHSM) loop() {
                 return
             case event := <-priorityChan:
                 self.StdHSM.Dispatch2(self, event)
-            case event := <-self.dispatchChan:
+            case event := <-eventChan:
                 self.StdHSM.Dispatch2(self, event)
             }
         }
@@ -168,7 +169,7 @@ func (self *LocalHSM) loop() {
 }
 
 func (self *LocalHSM) Dispatch(event hsm.Event) {
-    self.dispatchChan <- event
+    self.dispatchChan.Send(event)
 }
 
 func (self *LocalHSM) QTran(targetStateID string) {
@@ -189,6 +190,7 @@ func (self *LocalHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
     self.stopChan <- self
     self.group.Wait()
+    self.dispatchChan.Close()
     self.selfDispatchChan.Close()
     self.applier.Close()
     self.notifier.Close()

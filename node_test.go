@@ -1,6 +1,7 @@
 package rafted
 
 import (
+    ev "github.com/hhkbp2/rafted/event"
     ps "github.com/hhkbp2/rafted/persist"
     "github.com/hhkbp2/testify/assert"
     "github.com/hhkbp2/testify/require"
@@ -25,7 +26,23 @@ func testNodeSimple(
         node := NewRaftNode(backend, client)
         nodes = append(nodes, node)
     }
-    time.Sleep(testConfig.ElectionTimeout)
+    // leader should be elected before 10 rounds
+    timeout := testConfig.ElectionTimeout * 10
+    notifyChan := nodes[0].GetNotifyChan()
+    // wait for a leader to step up
+Outermost:
+    for {
+        select {
+        case event := <-notifyChan:
+            assert.True(t, ev.IsNotifyEvent(event.Type()))
+            if event.Type() == ev.EventNotifyLeaderChange {
+                break Outermost
+            }
+        case <-time.After(timeout):
+            require.True(t, false)
+        }
+    }
+    // start to Append()
     data := testData
     result, err := nodes[0].Append(data)
     require.Equal(t, nil, err)

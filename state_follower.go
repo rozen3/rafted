@@ -95,6 +95,9 @@ func (self *FollowerState) Handle(
     case event.Type() == ev.EventRequestVoteRequest:
         e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
+        self.Debug(
+            "follower receive RequestVoteRequestEvent %#v, local term: %d",
+            e.Request, localHSM.GetCurrentTerm())
         self.UpdateLastContact(localHSM)
         // Update to latest term if we see newer term
         if e.Request.Term > localHSM.GetCurrentTerm() {
@@ -111,7 +114,8 @@ func (self *FollowerState) Handle(
     case event.Type() == ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
-        self.Debug("*** %#v", e.Request)
+        self.Debug("follower receive AppendEntriesRequest: %#v, local term: %d",
+            e.Request, localHSM.GetCurrentTerm())
         // Update to latest term if we see newer term
         if e.Request.Term > localHSM.GetCurrentTerm() {
             localHSM.SetCurrentTermWithNotify(e.Request.Term)

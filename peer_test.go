@@ -123,7 +123,11 @@ func getTestMemoryServer(
     bindAddr := testServers[1]
     logger := logging.GetLogger("test server #" + bindAddr.String())
     server := comm.NewMemoryServer(
-        &bindAddr, testConfig.CommTimeout, eventHandler, testRegister, logger)
+        &bindAddr,
+        testConfig.CommServerTimeout,
+        eventHandler,
+        testRegister,
+        logger)
     server.Serve()
     return server
 }
@@ -152,7 +156,7 @@ func getTestPeerAndLocal() (Peer, *MockLocal, error) {
     notifier := NewNotifier()
     local := NewMockLocal(log, stateMachine, configManager, notifier)
     client := comm.NewMemoryClient(
-        testConfig.CommPoolSize, testConfig.CommTimeout, testRegister)
+        testConfig.CommPoolSize, testConfig.CommClientTimeout, testRegister)
     logger := logging.GetLogger("test peer")
 
     peer := NewPeerMan(

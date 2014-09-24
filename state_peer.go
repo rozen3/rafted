@@ -170,22 +170,33 @@ func (self *ActivatedPeerState) Handle(
     hsm.AssertTrue(ok)
     switch event.Type() {
     case ev.EventRequestVoteRequest:
-        e, ok := event.(ev.RaftEvent)
+        e, ok := event.(*ev.RequestVoteRequestEvent)
         hsm.AssertTrue(ok)
         peerAddr := peerHSM.Addr()
-        response, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
+        self.Debug("peer to send RequestVoteRequest %#v to %s",
+            e.Request, peerAddr.String())
+        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
         if err != nil {
             self.Error(
                 "fail to call rpc RequestVoteRequest to peer: %s, error: %s",
                 peerAddr.String(), err)
             return nil
         }
-        peerHSM.SelfDispatch(response)
+        requestVoteResponseEvent, ok := respEvent.(*ev.RequestVoteResponseEvent)
+        if !ok {
+            self.Error("receive non RequestVoteResponse for RequestVoteRequest")
+            return nil
+        }
+        requestVoteResponseEvent.FromAddr = peerHSM.Addr()
+        self.Debug("peer receive RequestVoteResponse %#v from %s",
+            requestVoteResponseEvent.Response, peerAddr.String())
+        peerHSM.SelfDispatch(respEvent)
         return nil
     case ev.EventRequestVoteResponse:
         e, ok := event.(*ev.RequestVoteResponseEvent)
         hsm.AssertTrue(ok)
-        e.FromAddr = peerHSM.Addr()
+        self.Debug("peer to dispatch RequestVoteResponse %#v from %s to local",
+            e.Response, e.FromAddr.String())
         peerHSM.EventHandler()(e)
         return nil
     case ev.EventPeerDeactivate:
@@ -346,6 +357,13 @@ func (self *LeaderPeerState) Handle(
     case ev.EventAppendEntriesRequest:
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         hsm.AssertTrue(ok)
+        matchIndex, _ := self.GetIndexInfo()
+        if e.Request.PrevLogIndex < matchIndex {
+            self.Debug("ignore stale AppendEntriesRequest %#v, "+
+                "PrevLogIndex: %d < matchIndex: %d",
+                e.Request, e.Request.PrevLogIndex, matchIndex)
+            return nil
+        }
         self.Debug("call AE RPC to peer with Term: %d, PrevLogTerm: %d, "+
             "PrevLogIndex: %d, Entries size: %d, LeaderCommitIndex: %d, "+
             "entries info: %s",
@@ -493,7 +511,10 @@ func (self *LeaderPeerState) UpdateLastContact() {
 }
 
 func (self *LeaderPeerState) HandleAppendEntriesResponse(local Local, peerHSM *PeerHSM, response *ev.AppendEntriesResponse) {
-    if response.Term > local.GetCurrentTerm() {
+    term := local.GetCurrentTerm()
+    if response.Term > term {
+        self.Debug("receive AppendEntriesResponse with newer term: %d, "+
+            "local term: %d, about to stepdown", response.Term, term)
         local.SendPrior(ev.NewStepdownEvent())
     }
     matchIndex, _ := self.GetIndexInfo()

@@ -110,9 +110,9 @@ func setupTestMemoryRedirectClient(
     }
     logger := logging.GetLogger("Server" + "#" + addr.String())
     client := cm.NewMemoryClient(
-        testConfig.CommPoolSize, testConfig.CommTimeout, testRegister)
+        testConfig.CommPoolSize, testConfig.CommClientTimeout, testRegister)
     server := cm.NewMemoryServer(
-        &addr, testConfig.CommTimeout, eventHandler, testRegister, logger)
+        &addr, testConfig.CommServerTimeout, eventHandler, testRegister, logger)
     logger2 := logging.GetLogger("RedirectClient" + "#" + addr.String())
     redirectRetry := rt.NewErrorRetry().
         MaxTries(3).
@@ -134,13 +134,13 @@ func setupTestSocketRedirectClient(
     addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
 
     client := cm.NewSocketClient(
-        testConfig.CommPoolSize, testConfig.CommTimeout)
+        testConfig.CommPoolSize, testConfig.CommClientTimeout)
     eventHandler := func(event ev.RaftRequestEvent) {
         backend.Send(event)
     }
     logger := logging.GetLogger("Server" + "#" + addr.String())
     server, err := cm.NewSocketServer(
-        &addr, testConfig.CommTimeout, eventHandler, logger)
+        &addr, testConfig.CommServerTimeout, eventHandler, logger)
     if err != nil {
         return nil, err
     }

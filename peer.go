@@ -169,7 +169,7 @@ func (self *PeerMan) QueryState() string {
 
 type PeerHSM struct {
     *hsm.StdHSM
-    dispatchChan     chan hsm.Event
+    dispatchChan     *ReliableEventChannel
     selfDispatchChan *ReliableEventChannel
     stopChan         chan interface{}
     group            sync.WaitGroup
@@ -192,7 +192,7 @@ func NewPeerHSM(
     }
     return &PeerHSM{
         StdHSM:           hsm.NewStdHSM(HSMTypePeer, top, initial),
-        dispatchChan:     make(chan hsm.Event, 1),
+        dispatchChan:     NewReliableEventChannel(),
         selfDispatchChan: NewReliableEventChannel(),
         stopChan:         make(chan interface{}, 1),
         addr:             addr,
@@ -211,6 +211,7 @@ func (self *PeerHSM) loop() {
     routine := func() {
         defer self.group.Done()
         priorityChan := self.selfDispatchChan.GetOutChan()
+        eventChan := self.dispatchChan.GetOutChan()
         for {
             select {
             case <-self.stopChan:
@@ -226,7 +227,7 @@ func (self *PeerHSM) loop() {
                 return
             case event := <-priorityChan:
                 self.StdHSM.Dispatch2(self, event)
-            case event := <-self.dispatchChan:
+            case event := <-eventChan:
                 self.StdHSM.Dispatch2(self, event)
             }
         }
@@ -236,7 +237,7 @@ func (self *PeerHSM) loop() {
 }
 
 func (self *PeerHSM) Dispatch(event hsm.Event) {
-    self.dispatchChan <- event
+    self.dispatchChan.Send(event)
 }
 
 func (self *PeerHSM) QTran(targetStateID string) {

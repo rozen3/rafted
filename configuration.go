@@ -12,7 +12,8 @@ type Configuration struct {
     PersistErrorNotifyTimeout       time.Duration
     MaxAppendEntriesSize            uint64
     MaxSnapshotChunkSize            uint64
-    CommTimeout                     time.Duration
+    CommClientTimeout               time.Duration
+    CommServerTimeout               time.Duration
     CommPoolSize                    int
     ClientTimeout                   time.Duration
 }
@@ -26,7 +27,8 @@ func DefaultConfiguration() *Configuration {
         PersistErrorNotifyTimeout:       time.Millisecond * 100,
         MaxAppendEntriesSize:            uint64(10),
         MaxSnapshotChunkSize:            uint64(1000),
-        CommTimeout:                     time.Millisecond * 50,
+        CommClientTimeout:               time.Millisecond * 500,
+        CommServerTimeout:               time.Minute * 30,
         CommPoolSize:                    10,
         ClientTimeout:                   time.Millisecond * 100,
     }
