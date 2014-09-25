@@ -227,13 +227,10 @@ func TestSocketServer(t *testing.T) {
 
     poolSize := 5
     client := NewSocketClient(poolSize, testTimeout)
-    logger.Debug("here")
     event, err := client.CallRPCTo(serverAddr, reqEvent)
     e, ok := event.(*ev.AppendEntriesResponseEvent)
     require.True(t, ok)
     require.Equal(t, respEvent.Response, e.Response)
-    err = client.Close()
-    assert.Nil(t, err)
-    err = server.Close()
-    assert.Nil(t, err)
+    assert.Nil(t, client.Close())
+    assert.Nil(t, server.Close())
 }

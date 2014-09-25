@@ -195,7 +195,7 @@ func (self *PersistErrorState) Handle(
         self.Error("already in state: %s, ignore event: %s", self.ID(),
             ev.EventString(event))
         return nil
-    case ev.IsClientEvent(event.Type()):
+    case ev.IsClientRequestEvent(event.Type()):
         e, ok := event.(ev.RequestEvent)
         hsm.AssertTrue(ok)
         e.SendResponse(ev.NewPersistErrorResponseEvent(self.err))

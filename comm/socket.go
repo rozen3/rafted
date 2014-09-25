@@ -148,8 +148,7 @@ func NewSocketClient(poolSize int, timeout time.Duration) *SocketClient {
 }
 
 func (self *SocketClient) CallRPCTo(
-    target net.Addr,
-    request ev.Event) (response ev.Event, err error) {
+    target net.Addr, request ev.Event) (response ev.Event, err error) {
 
     connection, err := self.getConnection(target)
     if err != nil {
@@ -237,6 +236,7 @@ type SocketServer struct {
     readTimeout  time.Duration
     writeTimeout time.Duration
     listener     net.Listener
+    group        sync.WaitGroup
     eventHandler RequestEventHandler
     logger       logging.Logger
 }
@@ -272,6 +272,8 @@ func (self *SocketServer) SetWriteTimeout(timeout time.Duration) {
 
 func (self *SocketServer) Serve() {
     routine := func() {
+        self.group.Add(1)
+        defer self.group.Done()
         for {
             conn, err := self.listener.Accept()
             if err != nil {
@@ -337,7 +339,9 @@ func (self *SocketServer) handleCommand(
 }
 
 func (self *SocketServer) Close() error {
-    return self.listener.Close()
+    err := self.listener.Close()
+    self.group.Wait()
+    return err
 }
 
 type SocketNetworkLayer struct {

@@ -199,7 +199,7 @@ func (self *CandidateState) Handle(
             e.SendResponse(ev.NewAppendEntriesResponseEvent(response))
         }
         return nil
-    case ev.IsClientEvent(event.Type()):
+    case ev.IsClientRequestEvent(event.Type()):
         // Don't know whether there is a leader or who is leader.
         // Return a error response.
         e, ok := event.(ev.RequestEvent)
