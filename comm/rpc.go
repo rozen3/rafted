@@ -1,6 +1,7 @@
 package comm
 
 import (
+    hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     ps "github.com/hhkbp2/rafted/persist"
     // "modules/rpcplus"
@@ -42,7 +43,15 @@ RPCClientGetConfig
 RPCClientChangeConfig
 */
 
-type RPCRaft int
+type RPCRaft struct {
+    eventHandler RequestEventHandler
+}
+
+func NewRPCRaft(eventHandler RequestEventHandler) *RPCRaft {
+    return &RPCRaft{
+        eventHandler: eventHandler,
+    }
+}
 
 type RPCAppendEntriesRequest ev.AppendEntriesRequest
 type RPCAppendEntriesResponse ev.AppendEntriesResponse
@@ -53,19 +62,40 @@ type RPCInstallSnapshotResponse ev.InstallSnapshotResponse
 
 func (self *RPCRaft) AppendEntires(
     args *RPCAppendEntriesRequest, reply *RPCAppendEntriesResponse) error {
-    // TODO add impl
+
+    request := (*ev.AppendEntriesRequest)(args)
+    reqEvent := ev.NewAppendEntriesRequestEvent(request)
+    self.eventHandler(reqEvent)
+    event := reqEvent.RecvResponse()
+    e, ok := event.(*ev.AppendEntriesResponseEvent)
+    hsm.AssertTrue(ok)
+    reply = (*RPCAppendEntriesResponse)(e.Response)
     return nil
 }
 
 func (self *RPCRaft) RequestVote(
     args *RPCRequestVoteRequest, reply *RPCRequestVoteResponse) error {
-    // TODO add impl
+
+    request := (*ev.RequestVoteRequest)(args)
+    reqEvent := ev.NewRequestVoteRequestEvent(request)
+    self.eventHandler(reqEvent)
+    event := reqEvent.RecvResponse()
+    e, ok := event.(*ev.RequestVoteResponseEvent)
+    hsm.AssertTrue(ok)
+    reply = (*RPCRequestVoteResponse)(e.Response)
     return nil
 }
 
 func (self *RPCRaft) InstallStapshot(
     args *RPCInstallSnapshotRequest, reply *RPCInstallSnapshotResponse) error {
-    // TODO add impl
+
+    request := (*ev.InstallSnapshotRequest)(args)
+    reqEvent := ev.NewInstallSnapshotRequestEvent(request)
+    self.eventHandler(reqEvent)
+    event := reqEvent.RecvResponse()
+    e, ok := event.(*ev.InstallSnapshotResponseEvent)
+    hsm.AssertTrue(ok)
+    reply = (*RPCInstallSnapshotResponse)(e.Response)
     return nil
 }
 
@@ -79,11 +109,13 @@ type RPCResultType int
 const (
     RPCResultUnknown RPCResultType = iota
     RPCResultSuccess
+    RPCResultFail
     RPCResultLeaderUnknown
     RPCResultLeaderUnsync
     RPCResultLeaderRedirect
     RPCResultInMemberChange
     RPCResultPersistError
+    RPCResultGetConfig
 )
 
 type RPCClientResponse struct {
@@ -92,6 +124,41 @@ type RPCClientResponse struct {
     Conf   *ps.Config
     Leader ps.ServerAddr
     Error  string
+}
+
+func setRPCClientResponse(event ev.Event, reply *RPCClientResponse) {
+    switch event.Type() {
+    case ev.EventClientResponse:
+        e, ok := event.(*ev.ClientResponseEvent)
+        hsm.AssertTrue(ok)
+        if e.Response.Success {
+            reply.Result = RPCResultSuccess
+        } else {
+            reply.Result = RPCResultFail
+        }
+        reply.Data = e.Response.Data
+    case ev.EventLeaderUnknownResponse:
+        reply.Result = RPCResultLeaderUnknown
+    case ev.EventLeaderUnsyncResponse:
+        reply.Result = RPCResultLeaderUnsync
+    case ev.EventLeaderRedirectResponse:
+        e, ok := event.(*ev.LeaderRedirectResponseEvent)
+        hsm.AssertTrue(ok)
+        reply.Result = RPCResultLeaderRedirect
+        reply.Leader = e.Response.Leader
+    case ev.EventPersistErrorResponse:
+        e, ok := event.(*ev.PersistErrorResponseEvent)
+        hsm.AssertTrue(ok)
+        reply.Result = RPCResultPersistError
+        reply.Error = e.Error.Error()
+    case ev.EventClientGetConfigResponse:
+        e, ok := event.(*ev.ClientGetConfigResponseEvent)
+        hsm.AssertTrue(ok)
+        reply.Result = RPCResultGetConfig
+        reply.Conf = e.Response.Conf
+    default:
+        reply.Result = RPCResultUnknown
+    }
 }
 
 type RPCClient struct {
@@ -107,27 +174,43 @@ func NewRPCClient(eventHandler RequestEventHandler) *RPCClient {
 func (self *RPCClient) Append(
     args *RPCClientAppendRequest, reply *RPCClientResponse) error {
 
-    // TODO add impl
+    request := (*ev.ClientAppendRequest)(args)
+    reqEvent := ev.NewClientAppendRequestEvent(request)
+    self.eventHandler(reqEvent)
+    event := reqEvent.RecvResponse()
+    setRPCClientResponse(event, reply)
     return nil
 }
 
 func (self *RPCClient) ReadOnly(
     args *RPCClientReadOnlyRequest, reply *RPCClientResponse) error {
 
-    // TODO add impl
+    request := (*ev.ClientReadOnlyRequest)(args)
+    reqEvent := ev.NewClientReadOnlyRequestEvent(request)
+    self.eventHandler(reqEvent)
+    event := reqEvent.RecvResponse()
+    setRPCClientResponse(event, reply)
     return nil
 }
 
 func (self *RPCClient) GetConfig(
-    args *RPCClientReadOnlyRequest, reply *RPCClientResponse) error {
+    args *RPCClientGetConfigRequest, reply *RPCClientResponse) error {
 
-    // TODO add impl
+    request := (*ev.ClientGetConfigRequest)(args)
+    reqEvent := ev.NewClientGetConfigRequestEvent(request)
+    self.eventHandler(reqEvent)
+    event := reqEvent.RecvResponse()
+    setRPCClientResponse(event, reply)
     return nil
 }
 
 func (self *RPCClient) ChangeConfig(
     args *RPCClientChangeConfigRequest, reply *RPCClientResponse) error {
 
-    // TODO add impl
+    request := (*ev.ClientChangeConfigRequest)(args)
+    reqEvent := ev.NewClientChangeConfigRequestEvent(request)
+    self.eventHandler(reqEvent)
+    event := reqEvent.RecvResponse()
+    setRPCClientResponse(event, reply)
     return nil
 }
