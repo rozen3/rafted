@@ -2,8 +2,8 @@ package retry
 
 import (
     "errors"
-    "github.com/deckarep/golang-set"
-    "math"
+	"github.com/deckarep/golang-set"
+	"math"
     "math/rand"
     "time"
 )

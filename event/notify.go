@@ -2,7 +2,7 @@ package event
 
 import (
     hsm "github.com/hhkbp2/go-hsm"
-    ps "github.com/hhkbp2/rafted/persist"
+    ps "github.com/zonas/rafted/persist"
     "time"
 )
 

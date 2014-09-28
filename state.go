@@ -2,7 +2,7 @@ package rafted
 
 import (
     hsm "github.com/hhkbp2/go-hsm"
-    logging "github.com/hhkbp2/rafted/logging"
+    logging "github.com/zonas/rafted/logging"
 )
 
 const (

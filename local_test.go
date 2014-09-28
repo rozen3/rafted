@@ -2,10 +2,10 @@ package rafted
 
 import (
     hsm "github.com/hhkbp2/go-hsm"
-    ev "github.com/hhkbp2/rafted/event"
-    logging "github.com/hhkbp2/rafted/logging"
-    ps "github.com/hhkbp2/rafted/persist"
-    "github.com/hhkbp2/rafted/str"
+    ev "github.com/zonas/rafted/event"
+    logging "github.com/zonas/rafted/logging"
+    ps "github.com/zonas/rafted/persist"
+    "github.com/zonas/rafted/str"
     "github.com/hhkbp2/testify/assert"
     "github.com/hhkbp2/testify/mock"
     "testing"

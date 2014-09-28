@@ -1,7 +1,7 @@
 package persist
 
 import (
-    "github.com/hhkbp2/rafted/str"
+    "github.com/zonas/rafted/str"
     "github.com/hhkbp2/testify/assert"
     "testing"
 )

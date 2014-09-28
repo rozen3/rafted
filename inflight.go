@@ -3,8 +3,8 @@ package rafted
 import (
     "errors"
     "fmt"
-    ev "github.com/hhkbp2/rafted/event"
-    ps "github.com/hhkbp2/rafted/persist"
+    ev "github.com/zonas/rafted/event"
+    ps "github.com/zonas/rafted/persist"
     "sync"
 )
 

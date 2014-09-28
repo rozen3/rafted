@@ -1,7 +1,7 @@
 package rafted
 
 import (
-    rt "github.com/hhkbp2/rafted/retry"
+    rt "github.com/zonas/rafted/retry"
     "sync"
     "time"
 )

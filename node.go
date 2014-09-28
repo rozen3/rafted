@@ -1,7 +1,7 @@
 package rafted
 
 import (
-    ev "github.com/hhkbp2/rafted/event"
+    ev "github.com/zonas/rafted/event"
 )
 
 type Node interface {

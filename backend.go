@@ -1,10 +1,10 @@
 package rafted
 
 import (
-    "github.com/hhkbp2/rafted/comm"
-    ev "github.com/hhkbp2/rafted/event"
-    logging "github.com/hhkbp2/rafted/logging"
-    ps "github.com/hhkbp2/rafted/persist"
+    "github.com/zonas/rafted/comm"
+    ev "github.com/zonas/rafted/event"
+    logging "github.com/zonas/rafted/logging"
+    ps "github.com/zonas/rafted/persist"
     "io"
 )
 

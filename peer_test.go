@@ -3,9 +3,9 @@ package rafted
 import (
     "fmt"
     hsm "github.com/hhkbp2/go-hsm"
-    cm "github.com/hhkbp2/rafted/comm"
-    logging "github.com/hhkbp2/rafted/logging"
-    ps "github.com/hhkbp2/rafted/persist"
+    cm "github.com/zonas/rafted/comm"
+    logging "github.com/zonas/rafted/logging"
+    ps "github.com/zonas/rafted/persist"
     "github.com/hhkbp2/testify/assert"
     "github.com/hhkbp2/testify/mock"
     "testing"

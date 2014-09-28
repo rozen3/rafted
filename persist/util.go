@@ -4,7 +4,7 @@ import (
     "bytes"
     "container/list"
     "fmt"
-    "github.com/hhkbp2/rafted/str"
+    "github.com/zonas/rafted/str"
     "math/rand"
     "time"
 )

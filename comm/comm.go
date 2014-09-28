@@ -4,7 +4,7 @@ import (
     "io"
     "net"
 
-    "github.com/hhkbp2/rafted/event"
+    "github.com/zonas/rafted/event"
 )
 
 type Encoder interface {
