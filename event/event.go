@@ -174,7 +174,7 @@ func IsTimeoutEvent(eventType hsm.EventType) bool {
     return IsEventBetween(eventType, EventTimeoutBegin, EventTimeoutEnd)
 }
 
-func IsClientEvent(eventType hsm.EventType) bool {
+func IsClientRequestEvent(eventType hsm.EventType) bool {
     return IsEventBetween(
         eventType, EventClientRequestBegin, EventClientRequestEnd)
 }
