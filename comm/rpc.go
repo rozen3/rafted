@@ -60,11 +60,17 @@ func NewRPCRaftService(eventHandler RequestEventHandler) *RPCRaftService {
 }
 
 type RPCAppendEntriesRequest ev.AppendEntriesRequest
-type RPCAppendEntriesResponse ev.AppendEntriesResponse
+type RPCAppendEntriesResponse struct {
+    Response *ev.AppendEntriesResponse
+}
 type RPCRequestVoteRequest ev.RequestVoteRequest
-type RPCRequestVoteResponse ev.RequestVoteResponse
+type RPCRequestVoteResponse struct {
+    Response *ev.RequestVoteResponse
+}
 type RPCInstallSnapshotRequest ev.InstallSnapshotRequest
-type RPCInstallSnapshotResponse ev.InstallSnapshotResponse
+type RPCInstallSnapshotResponse struct {
+    Response *ev.InstallSnapshotResponse
+}
 
 func (self *RPCRaftService) AppendEntries(
     args *RPCAppendEntriesRequest, reply *RPCAppendEntriesResponse) error {
@@ -75,7 +81,7 @@ func (self *RPCRaftService) AppendEntries(
     event := reqEvent.RecvResponse()
     e, ok := event.(*ev.AppendEntriesResponseEvent)
     hsm.AssertTrue(ok)
-    reply = (*RPCAppendEntriesResponse)(e.Response)
+    reply.Response = e.Response
     return nil
 }
 
@@ -88,7 +94,7 @@ func (self *RPCRaftService) RequestVote(
     event := reqEvent.RecvResponse()
     e, ok := event.(*ev.RequestVoteResponseEvent)
     hsm.AssertTrue(ok)
-    reply = (*RPCRequestVoteResponse)(e.Response)
+    reply.Response = e.Response
     return nil
 }
 
@@ -101,7 +107,7 @@ func (self *RPCRaftService) InstallStapshot(
     event := reqEvent.RecvResponse()
     e, ok := event.(*ev.InstallSnapshotResponseEvent)
     hsm.AssertTrue(ok)
-    reply = (*RPCInstallSnapshotResponse)(e.Response)
+    reply.Response = e.Response
     return nil
 }
 
@@ -314,8 +320,7 @@ func (self *RPCConnection) CallRPC(
         if err != nil {
             return nil, err
         }
-        response := (*ev.AppendEntriesResponse)(reply)
-        event := ev.NewAppendEntriesResponseEvent(response)
+        event := ev.NewAppendEntriesResponseEvent(reply.Response)
         return event, nil
     case ev.EventRequestVoteRequest:
         e, ok := request.(*ev.RequestVoteRequestEvent)
@@ -326,8 +331,7 @@ func (self *RPCConnection) CallRPC(
         if err != nil {
             return nil, err
         }
-        response := (*ev.RequestVoteResponse)(reply)
-        event := ev.NewRequestVoteResponseEvent(response)
+        event := ev.NewRequestVoteResponseEvent(reply.Response)
         return event, nil
     case ev.EventInstallSnapshotRequest:
         e, ok := request.(*ev.InstallSnapshotRequestEvent)
@@ -338,8 +342,7 @@ func (self *RPCConnection) CallRPC(
         if err != nil {
             return nil, err
         }
-        response := (*ev.InstallSnapshotResponse)(reply)
-        event := ev.NewInstallSnapshotResponseEvent(response)
+        event := ev.NewInstallSnapshotResponseEvent(reply.Response)
         return event, nil
     case ev.EventClientAppendRequest:
         e, ok := request.(*ev.ClientAppendRequestEvent)
@@ -495,22 +498,13 @@ func NewRPCServer(
     // Re-register the same service would return error.
     auth.LoadCredentialsFromJson([]byte(`{"username":["pwd1"]}`))
     rpcServer := rpcplus.NewServer()
-    if err := rpcServer.Register(new(RPCRaftService)); err != nil {
+    if err := rpcServer.Register(NewRPCRaftService(eventHandler)); err != nil {
         return nil, err
     }
-    if err := rpcServer.Register(new(RPCClientService)); err != nil {
+    if err := rpcServer.Register(NewRPCClientService(eventHandler)); err != nil {
         return nil, err
     }
     rpcwrap.ServerServeRPC(rpcServer, "msgpack", msgpackrpc.NewServerCodec)
-
-    // if err := rpcwrap.Register(new(RPCRaftService)); err != nil {
-    //     return nil, err
-    // }
-    // if err := rpcwrap.Register(new(RPCClientService)); err != nil {
-    //     return nil, err
-    // }
-    // change the rpc codec to msgpack
-    // rpcwrap.ServeRPC("msgpack", msgpackrpc.NewServerCodec)
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
     if err != nil {
         return nil, err
