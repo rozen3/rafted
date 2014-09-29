@@ -161,6 +161,17 @@ func prepareConnHandler(
     return handler
 }
 
+func prepareAddrs(
+    t *testing.T, host string, port int) (bindAddr, serverAddr net.Addr) {
+
+    bindAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
+    require.Nil(t, err)
+    serverAddr, err = net.ResolveTCPAddr(
+        "tcp", fmt.Sprintf("%s:%d", host, port))
+    require.Nil(t, err)
+    return bindAddr, serverAddr
+}
+
 func TestSocketConnection(t *testing.T) {
     reqEvent, respEvent := prepareRequestAndResponse()
     handler := prepareConnHandler(t, reqEvent, respEvent)
@@ -207,12 +218,7 @@ func TestSocketClient(t *testing.T) {
 
 func TestSocketServer(t *testing.T) {
     reqEvent, respEvent := prepareRequestAndResponse()
-    bindAddr, err := net.ResolveTCPAddr(
-        "tcp", fmt.Sprintf("%s:%d", "", TestSocketPort))
-    require.Nil(t, err)
-    serverAddr, err := net.ResolveTCPAddr(
-        "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
-    require.Nil(t, err)
+    bindAddr, serverAddr := prepareAddrs(t, TestSocketHost, TestSocketPort)
 
     handler := func(event ev.RequestEvent) {
         e, ok := event.(*ev.AppendEntriesRequestEvent)

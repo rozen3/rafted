@@ -106,45 +106,17 @@ func (self *MockBackend2) GetNotifyChan() <-chan ev.NotifyEvent {
 type GenRedirectClientFunc func(
     addr ps.ServerAddr, backend Backend) (*RedirectClient, error)
 
-func setupTestMemoryRedirectClient(
-    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
+func setupTestRedirectClientWith(
+    addr ps.ServerAddr,
+    backend Backend,
+    client cm.Client,
+    genServer GenServerFunc) (*RedirectClient, error) {
 
     eventHandler := func(event ev.RequestEvent) {
         backend.Send(event)
     }
     logger := logging.GetLogger("Server" + "#" + addr.String())
-    client := cm.NewMemoryClient(
-        testConfig.CommPoolSize, testConfig.CommClientTimeout, testRegister)
-    server := cm.NewMemoryServer(
-        &addr, testConfig.CommServerTimeout, eventHandler, testRegister, logger)
-    logger2 := logging.GetLogger("RedirectClient" + "#" + addr.String())
-    redirectRetry := rt.NewErrorRetry().
-        MaxTries(3).
-        Delay(testConfig.HeartbeatTimeout)
-    retry := redirectRetry.Copy().OnError(LeaderUnknown).OnError(LeaderUnsync)
-    redirectClient := NewRedirectClient(
-        testConfig.ClientTimeout,
-        retry,
-        redirectRetry,
-        backend,
-        client,
-        server,
-        logger2)
-    redirectClient.Start()
-    return redirectClient, nil
-}
-
-func setupTestSocketRedirectClient(
-    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
-
-    client := cm.NewSocketClient(
-        testConfig.CommPoolSize, testConfig.CommClientTimeout)
-    eventHandler := func(event ev.RequestEvent) {
-        backend.Send(event)
-    }
-    logger := logging.GetLogger("Server" + "#" + addr.String())
-    server, err := cm.NewSocketServer(
-        &addr, testConfig.CommServerTimeout, eventHandler, logger)
+    server, err := genServer(eventHandler, logger)
     if err != nil {
         return nil, err
     }
@@ -163,6 +135,54 @@ func setupTestSocketRedirectClient(
         logger2)
     redirectClient.Start()
     return redirectClient, nil
+}
+
+func setupTestMemoryRedirectClient(
+    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
+
+    client := cm.NewMemoryClient(
+        testConfig.CommPoolSize, testConfig.CommClientTimeout, testRegister)
+    genServer := func(
+        handler cm.RequestEventHandler,
+        logger logging.Logger) (cm.Server, error) {
+
+        server := cm.NewMemoryServer(
+            &addr, testConfig.CommServerTimeout, handler, testRegister, logger)
+        return server, nil
+    }
+    return setupTestRedirectClientWith(addr, backend, client, genServer)
+}
+
+func setupTestSocketRedirectClient(
+    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
+
+    client := cm.NewSocketClient(
+        testConfig.CommPoolSize, testConfig.CommClientTimeout)
+    genServer := func(
+        handler cm.RequestEventHandler,
+        logger logging.Logger) (cm.Server, error) {
+
+        return cm.NewSocketServer(
+            &addr, testConfig.CommServerTimeout, handler, logger)
+    }
+    return setupTestRedirectClientWith(addr, backend, client, genServer)
+}
+
+func setupTestRPCRediectClient(
+    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
+
+    client := cm.NewRPCClient(testConfig.CommClientTimeout)
+    genServer := func(
+        handler cm.RequestEventHandler,
+        logger logging.Logger) (cm.Server, error) {
+
+        return cm.NewRPCServer(
+            &addr,
+            testConfig.CommServerTimeout,
+            handler,
+            logger)
+    }
+    return setupTestRedirectClientWith(addr, backend, client, genServer)
 }
 
 func TestRedirectClientContruction(t *testing.T) {

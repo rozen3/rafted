@@ -618,7 +618,8 @@ func EntriesInfo(entries []*ps.LogEntry) []string {
 
 func ParallelDo(todo []func()) {
     todoGroup := sync.WaitGroup{}
-    for _, f := range todo {
+    for _, f1 := range todo {
+        f := f1
         todoGroup.Add(1)
         go func() {
             defer todoGroup.Done()

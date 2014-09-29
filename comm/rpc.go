@@ -504,13 +504,16 @@ func NewRPCServer(
     if err := rpcServer.Register(NewRPCClientService(eventHandler)); err != nil {
         return nil, err
     }
-    rpcwrap.ServerServeRPC(rpcServer, "msgpack", msgpackrpc.NewServerCodec)
+    serverMux := http.NewServeMux()
+    rpcwrap.ServerServeRPC(
+        serverMux, rpcServer, "msgpack", msgpackrpc.NewServerCodec)
     listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
     if err != nil {
         return nil, err
     }
     server := &http.Server{
         Addr:         bindAddr.String(),
+        Handler:      serverMux,
         ReadTimeout:  timeout,
         WriteTimeout: timeout,
     }

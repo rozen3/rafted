@@ -10,6 +10,7 @@ import (
     "github.com/hhkbp2/testify/assert"
     "github.com/hhkbp2/testify/mock"
     "io"
+    "sync"
     "testing"
     "time"
 )
@@ -627,4 +628,32 @@ func TestMapSetMinus(t *testing.T) {
         _, ok = m2[addr]
         assert.False(t, ok)
     }
+}
+
+func TestParallDo(t *testing.T) {
+    var mutex sync.Mutex
+    doneCount := 0
+    total := 4
+    todo := make([]func(), 0, 4)
+    for i := 0; i < total; i++ {
+        if i%2 == 0 {
+            f := func() {
+                mutex.Lock()
+                defer mutex.Unlock()
+                doneCount++
+            }
+            todo = append(todo, f)
+        } else {
+            f := func() {
+                mutex.Lock()
+                defer mutex.Unlock()
+                doneCount--
+            }
+            todo = append(todo, f)
+        }
+    }
+    logger := logging.GetLogger("test ParallelDo")
+    logger.Debug("%#v", todo)
+    ParallelDo(todo)
+    assert.Equal(t, doneCount, 0)
 }

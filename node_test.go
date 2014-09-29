@@ -48,10 +48,11 @@ Outermost:
     require.Equal(t, nil, err)
     require.Equal(t, data, result)
     // cleanup
-    todo := make([]func(), len(nodes))
+    todo := make([]func(), 0, len(nodes))
     for _, node := range nodes {
+        n := node
         f := func() {
-            assert.Nil(t, node.Close())
+            assert.Nil(t, n.Close())
         }
         todo = append(todo, f)
     }
@@ -72,4 +73,12 @@ func TestSocketNodeSimple(t *testing.T) {
     testNodeSimple(
         t, addrs[:clusterSize], addrs[clusterSize:],
         NewTestSocketHSMBackend, setupTestSocketRedirectClient)
+}
+
+func TestRPCNodeSimple(t *testing.T) {
+    clusterSize := 3
+    addrs := ps.SetupSocketServerAddrs(clusterSize * 2)
+    testNodeSimple(
+        t, addrs[:clusterSize], addrs[clusterSize:],
+        NewTestRPCHSMBackend, setupTestRPCRediectClient)
 }
