@@ -8,6 +8,7 @@ import (
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
+    "io"
     "sync"
 )
 
@@ -624,6 +625,19 @@ func ParallelDo(todo []func()) {
         go func() {
             defer todoGroup.Done()
             f()
+        }()
+    }
+    todoGroup.Wait()
+}
+
+func ParallelClose(closers []io.Closer) {
+    todoGroup := sync.WaitGroup{}
+    for _, closer1 := range closers {
+        closer := closer1
+        todoGroup.Add(1)
+        go func() {
+            defer todoGroup.Done()
+            closer.Close()
         }()
     }
     todoGroup.Wait()

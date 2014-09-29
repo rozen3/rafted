@@ -630,30 +630,64 @@ func TestMapSetMinus(t *testing.T) {
     }
 }
 
-func TestParallDo(t *testing.T) {
+func TestParallelDo(t *testing.T) {
     var mutex sync.Mutex
-    doneCount := 0
+    count := 0
     total := 4
-    todo := make([]func(), 0, 4)
+    todo := make([]func(), 0, total)
     for i := 0; i < total; i++ {
         if i%2 == 0 {
             f := func() {
                 mutex.Lock()
                 defer mutex.Unlock()
-                doneCount++
+                count++
             }
             todo = append(todo, f)
         } else {
             f := func() {
                 mutex.Lock()
                 defer mutex.Unlock()
-                doneCount--
+                count--
             }
             todo = append(todo, f)
         }
     }
-    logger := logging.GetLogger("test ParallelDo")
-    logger.Debug("%#v", todo)
     ParallelDo(todo)
-    assert.Equal(t, doneCount, 0)
+    assert.Equal(t, count, 0)
+}
+
+type testCloser struct {
+    f func() error
+}
+
+func (self *testCloser) Close() error {
+    return self.f()
+}
+
+func TestParallelClose(t *testing.T) {
+    var mutex sync.Mutex
+    count := 0
+    total := 4
+    toClose := make([]io.Closer, 0, total)
+    for i := 0; i < total; i++ {
+        if i%2 == 0 {
+            f := func() error {
+                mutex.Lock()
+                defer mutex.Unlock()
+                count++
+                return nil
+            }
+            toClose = append(toClose, &testCloser{f})
+        } else {
+            f := func() error {
+                mutex.Lock()
+                defer mutex.Unlock()
+                count--
+                return nil
+            }
+            toClose = append(toClose, &testCloser{f})
+        }
+    }
+    ParallelClose(toClose)
+    assert.Equal(t, count, 0)
 }

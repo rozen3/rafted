@@ -33,20 +33,9 @@ func (self *HSMBackend) GetNotifyChan() <-chan ev.NotifyEvent {
 }
 
 func (self *HSMBackend) Close() error {
-    todo := make([]func(), 0, 3)
-    f := func() {
-        self.server.Close()
-    }
-    todo = append(todo, f)
-    f = func() {
-        self.peers.Close()
-    }
-    todo = append(todo, f)
-    f = func() {
-        self.local.Close()
-    }
-    todo = append(todo, f)
-    ParallelDo(todo)
+    toClose := make([]io.Closer, 0, 3)
+    toClose = append(toClose, self.server, self.peers, self.local)
+    ParallelClose(toClose)
     return nil
 }
 
