@@ -25,13 +25,6 @@ const (
     LogBarrier
 )
 
-// ServerAddr represents the network address of any node in the cluster.
-type ServerAddr struct {
-    Protocol string
-    IP       string
-    Port     uint16
-}
-
 // Config represents the membership of the cluster.
 type Config struct {
     // There are three possible combinations of Servers and NewServers:
@@ -44,8 +37,60 @@ type Config struct {
     // 3. Servers == nil, NewServers != nil
     //     It's in member change procedure phase 2. NewServers contains
     //     all the new members of the cluster.
-    Servers    []ServerAddr
-    NewServers []ServerAddr
+    Servers    *ServerAddressSlice
+    NewServers *ServerAddressSlice
+}
+
+func (self *Config) IsInMemeberChange() bool {
+    return (self.NewServers != nil)
+}
+
+func (self *Config) IsNormalConfig() bool {
+    return (self.Servers != nil) && (self.NewServers == nil)
+}
+
+func (self *Config) IsOldNewConfig() bool {
+    return (self.Servers != nil) && (self.NewServers != nil)
+}
+
+func (self *Config) IsNewConfig() bool {
+    return (self.Servers == nil) && (self.NewServers != nil)
+}
+
+func ConfigEqual(conf1 *Config, conf2 *Config) bool {
+    if (conf1.Servers == nil) && (conf2.Servers == nil) {
+        if (conf1.NewServers == nil) && (conf2.NewServers == nil) {
+            return true
+        } else if (conf1.NewServers == nil) || (conf2.NewServers == nil) {
+            return false
+        }
+        return MultiAddrSliceEqual(conf1.NewServers, conf2.NewServers)
+    } else if (conf1.Servers == nil) || (conf1.Servers == nil) {
+        return false
+    }
+
+    if (conf1.NewServers == nil) && (conf2.NewServers == nil) {
+        return MultiAddrSliceEqual(conf1.Servers, conf2.Servers)
+    } else if (conf1.NewServers == nil) || (conf2.NewServers == nil) {
+        return false
+    }
+    return (MultiAddrSliceEqual(conf1.Servers, conf2.Servers) &&
+        MultiAddrSliceEqual(conf1.NewServers, conf2.NewServers))
+}
+
+func ConfigNotEqual(conf1 *Config, conf2 *Config) bool {
+    return !ConfigEqual(conf1, conf2)
+}
+
+func ConfigCopy(conf *Config) *Config {
+    return &Config{
+        Servers: &ServerAddressSlice{
+            Addresses: conf.Servers.Addresses[:],
+        },
+        NewServers: &ServerAddressSlice{
+            Addresses: conf.NewServers.Addresses[:],
+        },
+    }
 }
 
 // LogEntry is the element of replicated log in raft.

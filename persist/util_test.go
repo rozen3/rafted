@@ -21,37 +21,37 @@ func TestBinaryReadWrite(t *testing.T) {
 }
 
 func TestAddrEqual(t *testing.T) {
-    addr1 := RandomMemoryServerAddr()
-    addr2 := RandomMemoryServerAddr()
-    assert.False(t, AddrEqual(nil, &addr1))
-    assert.False(t, AddrEqual(&addr1, nil))
-    assert.True(t, AddrEqual(nil, nil))
-    assert.True(t, AddrEqual(&addr1, &addr1))
-    assert.True(t, AddrEqual(&addr2, &addr2))
-    assert.False(t, AddrEqual(&addr2, &addr1))
+    addr1 := RandomMemoryMultiAddr()
+    addr2 := RandomMemoryMultiAddr()
+    assert.False(t, MultiAddrEqual(nil, addr1))
+    assert.False(t, MultiAddrEqual(addr1, nil))
+    assert.True(t, MultiAddrEqual(nil, nil))
+    assert.True(t, MultiAddrEqual(addr1, addr1))
+    assert.True(t, MultiAddrEqual(addr2, addr2))
+    assert.False(t, MultiAddrEqual(addr2, addr1))
 }
 
 func TestAddrNotEqual(t *testing.T) {
-    addr1 := RandomMemoryServerAddr()
-    addr2 := RandomMemoryServerAddr()
-    assert.True(t, AddrNotEqual(nil, &addr1))
-    assert.True(t, AddrNotEqual(&addr1, nil))
-    assert.False(t, AddrNotEqual(nil, nil))
-    assert.False(t, AddrNotEqual(&addr1, &addr1))
-    assert.False(t, AddrNotEqual(&addr2, &addr2))
-    assert.True(t, AddrNotEqual(&addr2, &addr1))
+    addr1 := RandomMemoryMultiAddr()
+    addr2 := RandomMemoryMultiAddr()
+    assert.True(t, MultiAddrNotEqual(nil, addr1))
+    assert.True(t, MultiAddrNotEqual(addr1, nil))
+    assert.False(t, MultiAddrNotEqual(nil, nil))
+    assert.False(t, MultiAddrNotEqual(addr1, addr1))
+    assert.False(t, MultiAddrNotEqual(addr2, addr2))
+    assert.True(t, MultiAddrNotEqual(addr2, addr1))
 }
 
 func TestAddrsEqual(t *testing.T) {
     size := 10
-    addrs1 := RandomMemoryServerAddrs(size)
-    addrs2 := RandomMemoryServerAddrs(size)
-    assert.False(t, AddrsEqual(nil, addrs1))
-    assert.False(t, AddrsEqual(addrs1, nil))
-    assert.True(t, AddrsEqual(nil, nil))
-    assert.True(t, AddrsEqual(addrs1, addrs1))
-    assert.True(t, AddrsEqual(addrs2, addrs2))
-    assert.False(t, AddrsEqual(addrs1, addrs2))
+    slice1 := RandomMemoryMultiAddrSlice(size)
+    slice2 := RandomMemoryMultiAddrSlice(size)
+    assert.False(t, MultiAddrSliceEqual(nil, slice1))
+    assert.False(t, MultiAddrSliceEqual(slice1, nil))
+    assert.True(t, MultiAddrSliceEqual(nil, nil))
+    assert.True(t, MultiAddrSliceEqual(slice1, slice1))
+    assert.True(t, MultiAddrSliceEqual(slice2, slice2))
+    assert.False(t, MultiAddrSliceEqual(slice1, slice2))
 }
 
 func TestAddrsNotEqual(t *testing.T) {

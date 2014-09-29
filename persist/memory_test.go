@@ -39,7 +39,7 @@ func getTestLogEntry(term, index uint64) *LogEntry {
         Type:  LogCommand,
         Data:  testData,
         Conf: &Config{
-            Servers:    SetupMemoryServerAddrs(5),
+            Servers:    SetupMemoryMultiAddrSlice(5),
             NewServers: nil,
         },
     }
@@ -130,7 +130,7 @@ func TestMemoryStateMachine(t *testing.T) {
     term := uint64(100)
     index := uint64(23355)
     conf := &Config{
-        Servers:    SetupMemoryServerAddrs(5),
+        Servers:    SetupMemoryMultiAddrSlice(5),
         NewServers: nil,
     }
     id, err := stateMachine.MakeSnapshot(term, index, conf)
@@ -210,8 +210,8 @@ func TestMemoryStateMachine(t *testing.T) {
 func TestMemoryConfigManager(t *testing.T) {
     firstIndex := uint64(333)
     conf := &Config{
-        Servers:    SetupMemoryServerAddrs(5),
-        NewServers: SetupMemoryServerAddrs(5),
+        Servers:    SetupMemoryMultiAddrSlice(5),
+        NewServers: SetupMemoryMultiAddrSlice(5),
     }
     manager := NewMemoryConfigManager(firstIndex, conf)
     // test RNth()
