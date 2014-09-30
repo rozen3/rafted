@@ -14,7 +14,7 @@ import (
 type AppendEntriesRequest struct {
     // Provide the current term and leader ID
     Term   uint64
-    Leader ps.ServerAddr
+    Leader *ps.ServerAddress
 
     // Provide the previous entries for integrity checking
     PrevLogIndex uint64
@@ -45,7 +45,7 @@ type AppendEntriesResponse struct {
 type RequestVoteRequest struct {
     // Provide the term and our ID
     Term      uint64
-    Candidate ps.ServerAddr
+    Candidate *ps.ServerAddress
 
     // Used to ensure safety
     LastLogIndex uint64
@@ -68,7 +68,7 @@ type InstallSnapshotRequest struct {
     // Leader's current term
     Term uint64
     // Leader ID
-    Leader ps.ServerAddr
+    Leader *ps.ServerAddress
 
     // the snapshot replaces all entries up through and including this index
     LastIncludedIndex uint64
@@ -132,7 +132,7 @@ type ClientResponse struct {
 // LeaderRedirectResponse contains the leader info for client to redirect.
 type LeaderRedirectResponse struct {
     // The network address of leader
-    Leader ps.ServerAddr
+    Leader *ps.ServerAddress
 }
 
 type ClientGetConfigResponse struct {
@@ -158,7 +158,7 @@ type Timeout struct {
 // a follower) to signal leader it makes some progress on log replication.
 type PeerReplicateLog struct {
     // network addr of the peer(follower)
-    Peer ps.ServerAddr
+    Peer *ps.ServerAddress
     // index of highest log entry known to replicated to follower
     MatchIndex uint64
 }

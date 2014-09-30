@@ -19,9 +19,9 @@ var (
 )
 
 func TestMemoryServerTransport(t *testing.T) {
-    addr := ps.RandomMemoryServerAddr()
+    addr := ps.RandomMemoryMultiAddr()
     register := NewMemoryTransportRegister()
-    transport := NewMemoryServerTransport(&addr, testTimeout, register)
+    transport := NewMemoryServerTransport(addr, testTimeout, register)
     transport.Open()
     sourceChan := make(chan []byte, 1)
     chunk := &TransportChunk{
@@ -87,8 +87,7 @@ func TestMemoryTransportRegister(t *testing.T) {
 }
 
 func TestMemoryTransport(t *testing.T) {
-    serverAddr := ps.RandomMemoryServerAddr()
-    addr := &serverAddr
+    addr := ps.RandomMemoryMultiAddr()
     register := NewMemoryTransportRegister()
     serverTran := NewMemoryServerTransport(addr, testTimeout, register)
     err := serverTran.Open()
@@ -123,8 +122,9 @@ func TestMemoryTransport(t *testing.T) {
     serverTran.Close()
 }
 
-func getTestAppendEntriesEvents(
-    addr ps.ServerAddr) (*ev.AppendEntriesRequestEvent, *ev.AppendEntriesResponseEvent) {
+func getTestAppendEntriesEvents(addr *ps.ServerAddress) (
+    *ev.AppendEntriesRequestEvent, *ev.AppendEntriesResponseEvent) {
+
     entries := []*ps.LogEntry{
         &ps.LogEntry{
             Term:  8,
@@ -175,13 +175,12 @@ func startServerOnTran(
 }
 
 func TestMemoryConnection(t *testing.T) {
-    serverAddr := ps.RandomMemoryServerAddr()
-    addr := &serverAddr
+    addr := ps.RandomMemoryMultiAddr()
     register := NewMemoryTransportRegister()
     serverTran := NewMemoryServerTransport(addr, testTimeout, register)
     err := serverTran.Open()
     assert.Nil(t, err)
-    reqEvent, respEvent := getTestAppendEntriesEvents(serverAddr)
+    reqEvent, respEvent := getTestAppendEntriesEvents(addr)
     startServerOnTran(t, serverTran, reqEvent, respEvent)
     conn := NewMemoryConnection(addr, testTimeout, register)
     // test Open()
@@ -200,15 +199,15 @@ func TestMemoryConnection(t *testing.T) {
 }
 
 func TestMemoryClient(t *testing.T) {
-    serverAddr := ps.RandomMemoryServerAddr()
+    addr := ps.RandomMemoryMultiAddr()
     register := NewMemoryTransportRegister()
-    serverTran := NewMemoryServerTransport(&serverAddr, testTimeout, register)
+    serverTran := NewMemoryServerTransport(addr, testTimeout, register)
     serverTran.Open()
-    reqEvent, respEvent := getTestAppendEntriesEvents(serverAddr)
+    reqEvent, respEvent := getTestAppendEntriesEvents(addr)
     startServerOnTran(t, serverTran, reqEvent, respEvent)
     client := NewMemoryClient(testPoolSize, testTimeout, register)
     // test CallRPCTo()
-    event, err := client.CallRPCTo(&serverAddr, reqEvent)
+    event, err := client.CallRPCTo(addr, reqEvent)
     assert.Nil(t, err)
     assert.Equal(t, event.Type(), ev.EventAppendEntriesResponse)
     e, ok := event.(*ev.AppendEntriesResponseEvent)
@@ -220,20 +219,20 @@ func TestMemoryClient(t *testing.T) {
 }
 
 func TestMemoryServer(t *testing.T) {
-    serverAddr := ps.RandomMemoryServerAddr()
+    addr := ps.RandomMemoryMultiAddr()
     register := NewMemoryTransportRegister()
     logger := logging.GetLogger("test")
-    reqEvent, respEvent := getTestAppendEntriesEvents(serverAddr)
+    reqEvent, respEvent := getTestAppendEntriesEvents(addr)
     eventHandler := func(event ev.RequestEvent) {
         e, ok := event.(*ev.AppendEntriesRequestEvent)
         assert.True(t, ok)
         assert.Equal(t, reqEvent.Request, e.Request)
         e.SendResponse(respEvent)
     }
-    server := NewMemoryServer(&serverAddr, testTimeout, eventHandler, register, logger)
+    server := NewMemoryServer(addr, testTimeout, eventHandler, register, logger)
     server.Serve()
     client := NewMemoryClient(testPoolSize, testTimeout, register)
-    event, err := client.CallRPCTo(&serverAddr, reqEvent)
+    event, err := client.CallRPCTo(addr, reqEvent)
     assert.Nil(t, err)
     assert.Equal(t, event.Type(), ev.EventAppendEntriesResponse)
     e, ok := event.(*ev.AppendEntriesResponseEvent)

@@ -8,9 +8,16 @@ import (
     "testing"
 )
 
+var (
+    TestAuth = &RPCAuth{
+        User:     "username",
+        Password: "pwd1",
+    }
+)
+
 func TestRPC(t *testing.T) {
     reqEvent, respEvent := prepareRequestAndResponse()
-    bindAddr, serverAddr := prepareAddrs(t, TestSocketHost, TestSocketPort)
+    bindAddr, serverAddr := prepareAddrs(TestSocketHost, TestSocketPort)
 
     handler := func(event ev.RequestEvent) {
         require.Equal(t, ev.EventAppendEntriesRequest, event.Type())
@@ -21,11 +28,11 @@ func TestRPC(t *testing.T) {
     }
 
     logger := logging.GetLogger("test rpc server")
-    server, err := NewRPCServer(bindAddr, testTimeout, handler, logger)
+    server, err := NewRPCServer(bindAddr, testTimeout, TestAuth, handler, logger)
     require.Nil(t, err)
     server.Serve()
 
-    client := NewRPCClient(testTimeout)
+    client := NewRPCClient(testTimeout, TestAuth)
     event, err := client.CallRPCTo(serverAddr, reqEvent)
     require.Nil(t, err)
     e, ok := event.(*ev.AppendEntriesResponseEvent)
@@ -37,8 +44,8 @@ func TestRPC(t *testing.T) {
 
 func TestRPCMultiServers(t *testing.T) {
     reqEvent, respEvent := prepareRequestAndResponse()
-    bindAddr1, serverAddr1 := prepareAddrs(t, TestSocketHost, TestSocketPort)
-    bindAddr2, serverAddr2 := prepareAddrs(t, TestSocketHost, TestSocketPort+1)
+    bindAddr1, serverAddr1 := prepareAddrs(TestSocketHost, TestSocketPort)
+    bindAddr2, serverAddr2 := prepareAddrs(TestSocketHost, TestSocketPort+1)
 
     handler := func(event ev.RequestEvent) {
         require.Equal(t, ev.EventAppendEntriesRequest, event.Type())
@@ -50,21 +57,23 @@ func TestRPCMultiServers(t *testing.T) {
 
     logger1 := logging.GetLogger("test rpc server 1")
     logger2 := logging.GetLogger("test rpc server 2")
-    server1, err := NewRPCServer(bindAddr1, testTimeout, handler, logger1)
+    server1, err := NewRPCServer(
+        bindAddr1, testTimeout, TestAuth, handler, logger1)
     require.Nil(t, err)
     server1.Serve()
-    server2, err := NewRPCServer(bindAddr2, testTimeout, handler, logger2)
+    server2, err := NewRPCServer(
+        bindAddr2, testTimeout, TestAuth, handler, logger2)
     require.Nil(t, err)
     server2.Serve()
 
-    client1 := NewRPCClient(testTimeout)
+    client1 := NewRPCClient(testTimeout, TestAuth)
     event, err := client1.CallRPCTo(serverAddr1, reqEvent)
     require.Nil(t, err)
     e, ok := event.(*ev.AppendEntriesResponseEvent)
     require.True(t, ok)
     require.Equal(t, respEvent.Response, e.Response)
 
-    client2 := NewRPCClient(testTimeout)
+    client2 := NewRPCClient(testTimeout, TestAuth)
     event, err = client2.CallRPCTo(serverAddr2, reqEvent)
     require.Nil(t, err)
     e, ok = event.(*ev.AppendEntriesResponseEvent)

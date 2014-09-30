@@ -1,6 +1,7 @@
 package rafted
 
 import (
+    cm "github.com/hhkbp2/rafted/comm"
     "time"
 )
 
@@ -16,9 +17,15 @@ type Configuration struct {
     CommServerTimeout               time.Duration
     CommPoolSize                    int
     ClientTimeout                   time.Duration
+    RPCServerAuth                   *cm.RPCAuth
+    RPCClientAuth                   *cm.RPCAuth
 }
 
 func DefaultConfiguration() *Configuration {
+    auth := &cm.RPCAuth{
+        User:     "user",
+        Password: "password",
+    }
     return &Configuration{
         HeartbeatTimeout:                time.Millisecond * 50,
         ElectionTimeout:                 time.Millisecond * 200,
@@ -31,5 +38,7 @@ func DefaultConfiguration() *Configuration {
         CommServerTimeout:               time.Minute * 30,
         CommPoolSize:                    10,
         ClientTimeout:                   time.Millisecond * 100,
+        RPCServerAuth:                   auth,
+        RPCClientAuth:                   auth,
     }
 }

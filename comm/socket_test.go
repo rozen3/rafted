@@ -58,7 +58,7 @@ func (self *MockSocketServer) Close() error {
 }
 
 const (
-    TestSocketHost = "localhost"
+    TestSocketHost = "127.0.0.1"
     TestSocketPort = 33333
 )
 
@@ -116,14 +116,14 @@ func prepareRequestAndResponse() (*ev.AppendEntriesRequestEvent, *ev.AppendEntri
             Type:  ps.LogCommand,
             Data:  []byte(str.RandomString(50)),
             Conf: &ps.Config{
-                Servers:    ps.RandomMemoryServerAddrs(5),
+                Servers:    ps.RandomMemoryMultiAddrSlice(5),
                 NewServers: nil,
             },
         },
     }
     request := &ev.AppendEntriesRequest{
         Term:              term,
-        Leader:            ps.RandomMemoryServerAddr(),
+        Leader:            ps.RandomMemoryMultiAddr(),
         PrevLogIndex:      uint64(12003),
         PrevLogTerm:       uint64(99),
         Entries:           entries,
@@ -162,13 +162,28 @@ func prepareConnHandler(
 }
 
 func prepareAddrs(
-    t *testing.T, host string, port int) (bindAddr, serverAddr net.Addr) {
+    host string, port int) (bindAddr, serverAddr *ps.ServerAddress) {
 
-    bindAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
-    require.Nil(t, err)
-    serverAddr, err = net.ResolveTCPAddr(
-        "tcp", fmt.Sprintf("%s:%d", host, port))
-    require.Nil(t, err)
+    bindAddr = &ps.ServerAddress{
+        Addresses: []*ps.Address{
+            &ps.Address{
+                Isp:      "local",
+                Protocol: "tcp",
+                IP:       "",
+                Port:     uint16(port),
+            },
+        },
+    }
+    serverAddr = &ps.ServerAddress{
+        Addresses: []*ps.Address{
+            &ps.Address{
+                Isp:      "remote",
+                Protocol: "tcp",
+                IP:       host,
+                Port:     uint16(port),
+            },
+        },
+    }
     return bindAddr, serverAddr
 }
 
@@ -203,12 +218,10 @@ func TestSocketClient(t *testing.T) {
     require.Nil(t, err)
     server.Serve()
     defer server.Close()
-    addr, err := net.ResolveTCPAddr(
-        "tcp", fmt.Sprintf("%s:%d", TestSocketHost, TestSocketPort))
-
+    _, serverAddr := prepareAddrs(TestSocketHost, TestSocketPort)
     poolSize := 10
     client := NewSocketClient(poolSize, testTimeout)
-    event, err := client.CallRPCTo(addr, reqEvent)
+    event, err := client.CallRPCTo(serverAddr, reqEvent)
     e, ok := event.(*ev.AppendEntriesResponseEvent)
     require.True(t, ok)
     require.Equal(t, respEvent.Response, e.Response)
@@ -218,7 +231,8 @@ func TestSocketClient(t *testing.T) {
 
 func TestSocketServer(t *testing.T) {
     reqEvent, respEvent := prepareRequestAndResponse()
-    bindAddr, serverAddr := prepareAddrs(t, TestSocketHost, TestSocketPort)
+    bindAddr1, serverAddr := prepareAddrs(TestSocketHost, TestSocketPort)
+    bindAddr := FirstAddr(bindAddr1)
 
     handler := func(event ev.RequestEvent) {
         e, ok := event.(*ev.AppendEntriesRequestEvent)

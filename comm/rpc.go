@@ -2,6 +2,7 @@ package comm
 
 import (
     "errors"
+    "fmt"
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
@@ -134,7 +135,7 @@ type RPCClientResponse struct {
     Result RPCResultType
     Data   []byte
     Conf   *ps.Config
-    Leader ps.ServerAddr
+    Leader *ps.ServerAddress
     Error  string
 }
 
@@ -275,35 +276,62 @@ var (
     RPCErrorNoConnectionForTarget       = errors.New("no connection for this target")
 )
 
-type RPCConnection struct {
-    addr    net.Addr
-    timeout time.Duration
-    *rpcplus.Client
+type RPCAuth struct {
+    User     string
+    Password string
 }
 
-func NewRPCConnection(addr net.Addr, timeout time.Duration) *RPCConnection {
+func MultiAddrToRPCMap(addr ps.MultiAddr) map[string]string {
+    result := make(map[string]string)
+    addrs := addr.AllAddr()
+    for _, addr := range addrs {
+        result[addr.ISP()] = addr.String()
+    }
+    return result
+}
+
+type RPCConnection struct {
+    addr    ps.MultiAddr
+    timeout time.Duration
+    auth    *RPCAuth
+    client  *rpcwrap.MultiEndClient
+}
+
+func NewRPCConnection(
+    addr ps.MultiAddr, timeout time.Duration, auth *RPCAuth) *RPCConnection {
+
     object := &RPCConnection{
         addr:    addr,
         timeout: timeout,
+        auth:    auth,
     }
     return object
 }
 
 func (self *RPCConnection) Open() error {
-    client, err := msgpackrpc.DialAuthHTTP(
-        self.addr.Network(), self.addr.String(), "username", "pwd1", self.timeout, nil)
+
+    addrs := MultiAddrToRPCMap(self.addr)
+    client, err := rpcwrap.DialMultiEndServer(
+        addrs,
+        self.auth.User,
+        self.auth.Password,
+        "msgpack",
+        msgpackrpc.NewClientCodec,
+        self.timeout,
+        nil)
     if err != nil {
         return err
     }
-    self.Client = client
+    self.client = client
     return nil
 }
 
 func (self *RPCConnection) Close() error {
-    return self.Client.Close()
+    self.client.Close()
+    return nil
 }
 
-func (self *RPCConnection) PeerAddr() net.Addr {
+func (self *RPCConnection) PeerAddr() ps.MultiAddr {
     return self.addr
 }
 
@@ -316,7 +344,7 @@ func (self *RPCConnection) CallRPC(
         hsm.AssertTrue(ok)
         args := (*RPCAppendEntriesRequest)(e.Request)
         reply := new(RPCAppendEntriesResponse)
-        err := self.Client.Call("RPCRaftService.AppendEntries", args, reply)
+        err := self.client.Call("RPCRaftService.AppendEntries", args, reply)
         if err != nil {
             return nil, err
         }
@@ -327,7 +355,7 @@ func (self *RPCConnection) CallRPC(
         hsm.AssertTrue(ok)
         args := (*RPCRequestVoteRequest)(e.Request)
         reply := new(RPCRequestVoteResponse)
-        err := self.Client.Call("RPCRaftService.RequestVote", args, reply)
+        err := self.client.Call("RPCRaftService.RequestVote", args, reply)
         if err != nil {
             return nil, err
         }
@@ -338,7 +366,7 @@ func (self *RPCConnection) CallRPC(
         hsm.AssertTrue(ok)
         args := (*RPCInstallSnapshotRequest)(e.Request)
         reply := new(RPCInstallSnapshotResponse)
-        err := self.Client.Call("RPCRaftService.InstallSnapshot", args, reply)
+        err := self.client.Call("RPCRaftService.InstallSnapshot", args, reply)
         if err != nil {
             return nil, err
         }
@@ -349,7 +377,7 @@ func (self *RPCConnection) CallRPC(
         hsm.AssertTrue(ok)
         args := (*RPCClientAppendRequest)(e.Request)
         reply := new(RPCClientResponse)
-        err := self.Client.Call("RPCClientService.Append", args, reply)
+        err := self.client.Call("RPCClientService.Append", args, reply)
         if err != nil {
             return nil, err
         }
@@ -359,7 +387,7 @@ func (self *RPCConnection) CallRPC(
         hsm.AssertTrue(ok)
         args := (*RPCClientReadOnlyRequest)(e.Request)
         reply := new(RPCClientResponse)
-        err := self.Client.Call("RPCClientService.ReadOnly", args, reply)
+        err := self.client.Call("RPCClientService.ReadOnly", args, reply)
         if err != nil {
             return nil, err
         }
@@ -369,7 +397,7 @@ func (self *RPCConnection) CallRPC(
         hsm.AssertTrue(ok)
         args := (*RPCClientGetConfigRequest)(e.Request)
         reply := new(RPCClientResponse)
-        err := self.Client.Call("RPCClientService.GetConfig", args, reply)
+        err := self.client.Call("RPCClientService.GetConfig", args, reply)
         if err != nil {
             return nil, err
         }
@@ -379,7 +407,7 @@ func (self *RPCConnection) CallRPC(
         hsm.AssertTrue(ok)
         args := (*RPCClientChangeConfigRequest)(e.Request)
         reply := new(RPCClientResponse)
-        err := self.Client.Call("RPCClientService.ChangeConfig", args, reply)
+        err := self.client.Call("RPCClientService.ChangeConfig", args, reply)
         if err != nil {
             return nil, err
         }
@@ -391,19 +419,21 @@ func (self *RPCConnection) CallRPC(
 
 type RPCClient struct {
     timeout            time.Duration
+    auth               *RPCAuth
     connectionPool     map[string]*RPCConnection
     connectionPoolLock sync.RWMutex
 }
 
-func NewRPCClient(timeout time.Duration) *RPCClient {
+func NewRPCClient(timeout time.Duration, auth *RPCAuth) *RPCClient {
     return &RPCClient{
         timeout:        timeout,
+        auth:           auth,
         connectionPool: make(map[string]*RPCConnection),
     }
 }
 
 func (self *RPCClient) CallRPCTo(
-    target net.Addr, request ev.Event) (response ev.Event, err error) {
+    target ps.MultiAddr, request ev.Event) (response ev.Event, err error) {
 
     connection, err := self.getConnection(target)
     if err != nil {
@@ -418,13 +448,13 @@ func (self *RPCClient) CallRPCTo(
     return response, err
 }
 
-func (self *RPCClient) getConnection(target net.Addr) (*RPCConnection, error) {
+func (self *RPCClient) getConnection(target ps.MultiAddr) (*RPCConnection, error) {
     connection, err := self.getConnectionFromPool(target)
     if err == nil {
         return connection, nil
     }
 
-    connection = NewRPCConnection(target, self.timeout)
+    connection = NewRPCConnection(target, self.timeout, self.auth)
     if err := connection.Open(); err != nil {
         return nil, err
     }
@@ -432,11 +462,15 @@ func (self *RPCClient) getConnection(target net.Addr) (*RPCConnection, error) {
 }
 
 func (self *RPCClient) getConnectionFromPool(
-    target net.Addr) (*RPCConnection, error) {
+    target ps.MultiAddr) (*RPCConnection, error) {
 
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
-    key := target.String()
+    firstAddr, err := ps.FirstAddr(target)
+    if err != nil {
+        return nil, err
+    }
+    key := firstAddr.String()
     connection, ok := self.connectionPool[key]
     if ok {
         return connection, nil
@@ -447,7 +481,8 @@ func (self *RPCClient) getConnectionFromPool(
 func (self *RPCClient) returnConnectionToPool(connection *RPCConnection) {
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
-    key := connection.PeerAddr().String()
+    firstAddr := FirstAddr(connection.PeerAddr())
+    key := firstAddr.String()
     self.connectionPool[key] = connection
 }
 
@@ -482,6 +517,7 @@ func (ln TcpKeepAliveListener) Accept() (c net.Conn, err error) {
 }
 
 type RPCServer struct {
+    auth         *RPCAuth
     listener     net.Listener
     server       *http.Server
     group        sync.WaitGroup
@@ -490,14 +526,20 @@ type RPCServer struct {
 }
 
 func NewRPCServer(
-    bindAddr net.Addr,
+    bindAddr ps.MultiAddr,
     timeout time.Duration,
+    rpcAuth *RPCAuth,
     eventHandler RequestEventHandler,
     logger logging.Logger) (*RPCServer, error) {
 
-    // Re-register the same service would return error.
-    auth.LoadCredentialsFromJson([]byte(`{"username":["pwd1"]}`))
+    authJson := []byte(
+        fmt.Sprintf(`{"%s":["%s"]}`, rpcAuth.User, rpcAuth.Password))
+    auth.LoadCredentialsFromJson(authJson)
     rpcServer := rpcplus.NewServer()
+    // ugly hack to register ping service for rpcwrap internal usage
+    if err := rpcServer.Register(new(rpcwrap.Ping)); err != nil {
+        return nil, err
+    }
     if err := rpcServer.Register(NewRPCRaftService(eventHandler)); err != nil {
         return nil, err
     }
@@ -507,17 +549,22 @@ func NewRPCServer(
     serverMux := http.NewServeMux()
     rpcwrap.ServerServeRPC(
         serverMux, rpcServer, "msgpack", msgpackrpc.NewServerCodec)
-    listener, err := net.Listen(bindAddr.Network(), bindAddr.String())
+    firstAddr, err := ps.FirstAddr(bindAddr)
+    if err != nil {
+        return nil, err
+    }
+    listener, err := net.Listen(firstAddr.Network(), firstAddr.String())
     if err != nil {
         return nil, err
     }
     server := &http.Server{
-        Addr:         bindAddr.String(),
+        Addr:         firstAddr.String(),
         Handler:      serverMux,
         ReadTimeout:  timeout,
         WriteTimeout: timeout,
     }
     object := &RPCServer{
+        auth:         rpcAuth,
         listener:     listener,
         server:       server,
         eventHandler: eventHandler,

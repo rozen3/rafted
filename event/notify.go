@@ -156,11 +156,11 @@ func NewNotifyStateChangeEvent(
 // NotifyLeaderChangeEvent is an event to notify that leader has changed.
 type NotifyLeaderChangeEvent struct {
     *hsm.StdEvent
-    NewLeader ps.ServerAddr
+    NewLeader *ps.ServerAddress
 }
 
 func NewNotifyLeaderChangeEvent(
-    newLeader ps.ServerAddr) *NotifyLeaderChangeEvent {
+    newLeader *ps.ServerAddress) *NotifyLeaderChangeEvent {
 
     return &NotifyLeaderChangeEvent{
         StdEvent:  hsm.NewStdEvent(EventNotifyLeaderChange),
@@ -217,12 +217,12 @@ func NewNotifyApplyEvent(term, logIndex uint64) *NotifyApplyEvent {
 // has happened in cluster.
 type NotifyMemberChangeEvent struct {
     *hsm.StdEvent
-    OldServers []ps.ServerAddr
-    NewServers []ps.ServerAddr
+    OldServers *ps.ServerAddressSlice
+    NewServers *ps.ServerAddressSlice
 }
 
 func NewNotifyMemberChangeEvent(
-    oldServers, newServers []ps.ServerAddr) *NotifyMemberChangeEvent {
+    oldServers, newServers *ps.ServerAddressSlice) *NotifyMemberChangeEvent {
 
     return &NotifyMemberChangeEvent{
         StdEvent:   hsm.NewStdEvent(EventNotifyMemberChange),

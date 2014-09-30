@@ -10,7 +10,6 @@ import (
     ps "github.com/hhkbp2/rafted/persist"
     "github.com/ugorji/go/codec"
     "io"
-    "net"
     "sync"
     "time"
 )
@@ -26,13 +25,21 @@ var (
         "timeout on memory transport write")
 )
 
+func FirstAddr(multiAddr ps.MultiAddr) ps.Addr {
+    addr, err := ps.FirstAddr(multiAddr)
+    if err != nil {
+        panic("no Addr in MultiAddr")
+    }
+    return addr
+}
+
 type TransportChunk struct {
     Data     []byte
     SourceCh chan []byte
 }
 
 type MemoryServerTransport struct {
-    addr       net.Addr
+    addr       ps.MultiAddr
     timeout    time.Duration
     ConsumeCh  chan *TransportChunk
     ResponseCh chan []byte
@@ -40,7 +47,7 @@ type MemoryServerTransport struct {
 }
 
 func NewMemoryServerTransport(
-    addr net.Addr,
+    addr ps.MultiAddr,
     timeout time.Duration,
     register *MemoryTransportRegister) *MemoryServerTransport {
 
@@ -52,7 +59,7 @@ func NewMemoryServerTransport(
 }
 
 func (self *MemoryServerTransport) Open() error {
-    self.register.Register(self.addr.String(), self)
+    self.register.Register(FirstAddr(self.addr).String(), self)
     return nil
 }
 
@@ -109,10 +116,10 @@ func (self *MemoryServerTransport) Close() error {
     if self.ResponseCh != nil {
         close(self.ResponseCh)
     }
-    return self.register.Unregister(self.addr.String())
+    return self.register.Unregister(FirstAddr(self.addr).String())
 }
 
-func (self *MemoryServerTransport) Addr() net.Addr {
+func (self *MemoryServerTransport) Addr() ps.MultiAddr {
     return self.addr
 }
 
@@ -172,14 +179,18 @@ func (self *MemoryTransportRegister) String() string {
 }
 
 type MemoryTransport struct {
-    addr      net.Addr
+    addr      ps.MultiAddr
     timeout   time.Duration
     consumeCh chan []byte
     register  *MemoryTransportRegister
     peer      *MemoryServerTransport
 }
 
-func NewMemoryTransport(addr net.Addr, timeout time.Duration, register *MemoryTransportRegister) *MemoryTransport {
+func NewMemoryTransport(
+    addr ps.MultiAddr,
+    timeout time.Duration,
+    register *MemoryTransportRegister) *MemoryTransport {
+
     return &MemoryTransport{
         addr:      addr,
         timeout:   timeout,
@@ -188,17 +199,17 @@ func NewMemoryTransport(addr net.Addr, timeout time.Duration, register *MemoryTr
     }
 }
 
-func (self *MemoryTransport) PeerAddr() net.Addr {
+func (self *MemoryTransport) PeerAddr() ps.MultiAddr {
     return self.addr
 }
 
 func (self *MemoryTransport) Open() error {
-    if transport, ok := self.register.Get(self.addr.String()); ok {
+    if transport, ok := self.register.Get(FirstAddr(self.addr).String()); ok {
         self.peer = transport
         return nil
     }
-    return errors.New(
-        fmt.Sprintf("no server transport for id: %v", self.addr.String()))
+    return errors.New(fmt.Sprintf(
+        "no server transport for id: %v", FirstAddr(self.addr).String()))
 }
 
 func (self *MemoryTransport) Close() error {
@@ -236,7 +247,7 @@ type MemoryConnection struct {
 }
 
 func NewMemoryConnection(
-    addr net.Addr,
+    addr ps.MultiAddr,
     timeout time.Duration,
     register *MemoryTransportRegister) *MemoryConnection {
 
@@ -289,8 +300,7 @@ func NewMemoryClient(
 }
 
 func (self *MemoryClient) CallRPCTo(
-    target net.Addr,
-    request ev.Event) (response ev.Event, err error) {
+    target ps.MultiAddr, request ev.Event) (response ev.Event, err error) {
 
     connection, err := self.getConnection(target)
     if err != nil {
@@ -305,12 +315,12 @@ func (self *MemoryClient) CallRPCTo(
 }
 
 func (self *MemoryClient) getConnectionFromPool(
-    target net.Addr) (*MemoryConnection, error) {
+    target ps.MultiAddr) (*MemoryConnection, error) {
 
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
 
-    key := target.String()
+    key := FirstAddr(target).String()
     connections, ok := self.connectionPool[key]
 
     if !ok || len(connections) == 0 {
@@ -328,7 +338,7 @@ func (self *MemoryClient) returnConnectionToPool(
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
 
-    key := connection.PeerAddr().String()
+    key := FirstAddr(connection.PeerAddr()).String()
     connections, ok := self.connectionPool[key]
     if !ok {
         connections = make([]*MemoryConnection, 0)
@@ -343,7 +353,7 @@ func (self *MemoryClient) returnConnectionToPool(
 }
 
 func (self *MemoryClient) getConnection(
-    target net.Addr) (*MemoryConnection, error) {
+    target ps.MultiAddr) (*MemoryConnection, error) {
 
     connection, err := self.getConnectionFromPool(target)
     if connection != nil && err == nil {
@@ -382,7 +392,7 @@ type MemoryServer struct {
 }
 
 func NewMemoryServer(
-    bindAddr net.Addr,
+    bindAddr ps.MultiAddr,
     timeout time.Duration,
     eventHandler RequestEventHandler,
     register *MemoryTransportRegister,
@@ -415,13 +425,21 @@ func (self *MemoryServer) Serve() {
                 transport.WriteChunk(chunk)
                 continue
             } else {
-                addr := ps.ServerAddr{
-                    Protocol: self.transport.Addr().Network(),
-                    IP: fmt.Sprintf(
-                        "%s.%#v", self.transport.Addr().String(), chunk.SourceCh),
+                newIP := fmt.Sprintf(
+                    "%s.%#v",
+                    FirstAddr(self.transport.Addr()).String(),
+                    chunk.SourceCh)
+                address := &ps.Address{
+                    Protocol: FirstAddr(self.transport.Addr()).Network(),
+                    IP:       newIP,
+                }
+                serverAddress := &ps.ServerAddress{
+                    Addresses: []*ps.Address{
+                        address,
+                    },
                 }
                 transport := NewMemoryServerTransport(
-                    &addr, self.timeout, self.register)
+                    serverAddress, self.timeout, self.register)
                 transport.ResponseCh = chunk.SourceCh
                 self.acceptedConnections[chunk.SourceCh] = transport
                 transport.WriteChunk(chunk)

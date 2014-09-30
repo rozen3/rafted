@@ -1,12 +1,21 @@
 package persist
 
 import (
+    "errors"
     "fmt"
     "github.com/hhkbp2/rafted/str"
     "math/rand"
     "net"
     "time"
 )
+
+var (
+    ErrorMultiAddrNoAddr error = errors.New("no Addr in MultiAddr")
+)
+
+func init() {
+    rand.Seed(time.Now().UTC().UnixNano())
+}
 
 type Addr interface {
     net.Addr
@@ -50,6 +59,14 @@ func AddrNotEqual(addr1 Addr, addr2 Addr) bool {
 
 type MultiAddr interface {
     AllAddr() []Addr
+}
+
+func FirstAddr(multiAddr MultiAddr) (Addr, error) {
+    addrs := multiAddr.AllAddr()
+    if (addrs == nil) || (len(addrs) == 0) {
+        return nil, ErrorMultiAddrNoAddr
+    }
+    return addrs[0], nil
 }
 
 // ServerAddress represents the network address of any node in the cluster.
@@ -169,7 +186,6 @@ func SetupMemoryMultiAddrSlice(number int) *ServerAddressSlice {
 }
 
 func RandomMemoryMultiAddr() *ServerAddress {
-    rand.Seed(time.Now().UTC().UnixNano())
     addr := &ServerAddress{
         Addresses: []*Address{
             &Address{

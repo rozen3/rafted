@@ -1,10 +1,9 @@
 package comm
 
 import (
+    ev "github.com/hhkbp2/rafted/event"
+    ps "github.com/hhkbp2/rafted/persist"
     "io"
-    "net"
-
-    "github.com/hhkbp2/rafted/event"
 )
 
 type Encoder interface {
@@ -27,14 +26,13 @@ type Connection interface {
     Open() error
     io.Closer
 
-    PeerAddr() net.Addr
-    CallRPC(request event.Event) (response event.Event, err error)
+    PeerAddr() ps.MultiAddr
+    CallRPC(request ev.Event) (response ev.Event, err error)
 }
 
 type Client interface {
     CallRPCTo(
-        target net.Addr,
-        request event.Event) (response event.Event, err error)
+        target ps.MultiAddr, request ev.Event) (response ev.Event, err error)
     io.Closer
 }
 
@@ -43,5 +41,5 @@ type Server interface {
     io.Closer
 }
 
-type RequestEventHandler func(event.RequestEvent)
-type EventHandler func(event.Event)
+type RequestEventHandler func(ev.RequestEvent)
+type EventHandler func(ev.Event)

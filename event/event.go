@@ -241,7 +241,7 @@ func (self *AppendEntriesRequestEvent) Message() interface{} {
 // Event for AppendEntriesResponse message.
 type AppendEntriesResponseEvent struct {
     *hsm.StdEvent
-    FromAddr ps.ServerAddr
+    FromAddr *ps.ServerAddress
     Response *AppendEntriesResponse
 }
 
@@ -279,7 +279,7 @@ func (self *RequestVoteRequestEvent) Message() interface{} {
 // Event for RequestVoteResponse message.
 type RequestVoteResponseEvent struct {
     *hsm.StdEvent
-    FromAddr ps.ServerAddr
+    FromAddr *ps.ServerAddress
     Response *RequestVoteResponse
 }
 

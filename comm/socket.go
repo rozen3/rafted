@@ -6,6 +6,7 @@ import (
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
+    ps "github.com/hhkbp2/rafted/persist"
     "github.com/ugorji/go/codec"
     "io"
     "net"
@@ -148,8 +149,12 @@ func NewSocketClient(poolSize int, timeout time.Duration) *SocketClient {
 }
 
 func (self *SocketClient) CallRPCTo(
-    target net.Addr, request ev.Event) (response ev.Event, err error) {
+    target1 ps.MultiAddr, request ev.Event) (response ev.Event, err error) {
 
+    target, err := ps.FirstAddr(target1)
+    if err != nil {
+        return nil, err
+    }
     connection, err := self.getConnection(target)
     if err != nil {
         return nil, err
