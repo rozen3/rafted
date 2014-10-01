@@ -266,8 +266,8 @@ func (self *LeaderNotInMemberChangeState) Handle(
             resultChan <- ev.NewPersistErrorResponseEvent(err)
             return nil
         }
-        if !(ps.IsNormalConfig(conf) &&
-            ps.AddrsEqual(conf.Servers, e.Request.Conf.Servers)) {
+        if !(conf.IsNormalConfig() &&
+            ps.MultiAddrSliceEqual(conf.Servers, e.Request.Conf.Servers)) {
 
             err = DispatchInconsistantError(localHSM)
             resultChan <- ev.NewPersistErrorResponseEvent(err)
@@ -446,7 +446,7 @@ func (self *LeaderMemberChangePhase1State) Handle(
             resultChan <- ev.NewPersistErrorResponseEvent(err)
             return nil
         }
-        if !(ps.IsOldNewConfig(conf)) && ps.ConfigEqual(e.Message.Conf, conf) {
+        if !(conf.IsOldNewConfig()) && ps.ConfigEqual(e.Message.Conf, conf) {
             err = DispatchInconsistantError(localHSM)
             resultChan <- ev.NewPersistErrorResponseEvent(err)
             return nil
@@ -457,7 +457,7 @@ func (self *LeaderMemberChangePhase1State) Handle(
 
         newConf := &ps.Config{
             Servers:    nil,
-            NewServers: e.Message.Conf.NewServers[:],
+            NewServers: e.Message.Conf.NewServers,
         }
         lastLogIndex, err := localHSM.Log().LastIndex()
         if err != nil {
@@ -553,14 +553,14 @@ func (self *LeaderMemberChangePhase2State) Handle(
             resultChan <- ev.NewPersistErrorResponseEvent(err)
             return nil
         }
-        if !(ps.IsNewConfig(conf) && ps.ConfigEqual(e.Message.Conf, conf)) {
+        if !(conf.IsNewConfig() && ps.ConfigEqual(e.Message.Conf, conf)) {
             err = DispatchInconsistantError(localHSM)
             resultChan <- ev.NewPersistErrorResponseEvent(err)
             return nil
         }
 
         newConf := &ps.Config{
-            Servers:    e.Message.Conf.NewServers[:],
+            Servers:    e.Message.Conf.NewServers,
             NewServers: nil,
         }
 

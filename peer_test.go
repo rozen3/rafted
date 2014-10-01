@@ -62,34 +62,34 @@ func (self *MockLocal) GetCurrentTerm() uint64 {
     return args.Uint64(0)
 }
 
-func (self *MockLocal) GetLocalAddr() ps.ServerAddr {
+func (self *MockLocal) GetLocalAddr() *ps.ServerAddress {
     args := self.Mock.Called()
-    var s ps.ServerAddr
+    var s *ps.ServerAddress
     var ok bool
-    if s, ok = args.Get(0).(ps.ServerAddr); !ok {
-        panic(fmt.Sprintf("argument: %s not correct type ServerAddr",
+    if s, ok = args.Get(0).(*ps.ServerAddress); !ok {
+        panic(fmt.Sprintf("argument: %s not correct type MultiAddr",
             args.Get(0)))
     }
     return s
 }
 
-func (self *MockLocal) GetVotedFor() ps.ServerAddr {
+func (self *MockLocal) GetVotedFor() *ps.ServerAddress {
     args := self.Mock.Called()
-    var s ps.ServerAddr
+    var s *ps.ServerAddress
     var ok bool
-    if s, ok = args.Get(0).(ps.ServerAddr); !ok {
-        panic(fmt.Sprintf("argument: %s not correct type ServerAddr",
+    if s, ok = args.Get(0).(*ps.ServerAddress); !ok {
+        panic(fmt.Sprintf("argument: %s not correct type MultiAddr",
             args.Get(0)))
     }
     return s
 }
 
-func (self *MockLocal) GetLeader() ps.ServerAddr {
+func (self *MockLocal) GetLeader() *ps.ServerAddress {
     args := self.Mock.Called()
-    var s ps.ServerAddr
+    var s *ps.ServerAddress
     var ok bool
-    if s, ok = args.Get(0).(ps.ServerAddr); !ok {
-        panic(fmt.Sprintf("argument: %s not correct type ServerAddr",
+    if s, ok = args.Get(0).(*ps.ServerAddress); !ok {
+        panic(fmt.Sprintf("argument: %s not correct type MultiAddr",
             args.Get(0)))
     }
     return s
@@ -116,13 +116,12 @@ func (self *MockLocal) SetPeers(peers Peers) {
 }
 
 func getTestMemoryServer(
-    addr ps.ServerAddr,
+    addr *ps.ServerAddress,
     eventHandler cm.RequestEventHandler) *cm.MemoryServer {
 
-    bindAddr := testServers[1]
-    logger := logging.GetLogger("test server #" + bindAddr.String())
+    logger := logging.GetLogger("test server #" + addr.String())
     server := cm.NewMemoryServer(
-        &bindAddr,
+        addr,
         testConfig.CommServerTimeout,
         eventHandler,
         testRegister,
@@ -160,7 +159,7 @@ func getTestPeerAndLocal() (Peer, *MockLocal, error) {
 
     peer := NewPeerMan(
         testConfig,
-        servers[1],
+        servers.Addresses[1],
         client,
         local,
         logger)

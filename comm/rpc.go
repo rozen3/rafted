@@ -466,11 +466,7 @@ func (self *RPCClient) getConnectionFromPool(
 
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
-    firstAddr, err := ps.FirstAddr(target)
-    if err != nil {
-        return nil, err
-    }
-    key := firstAddr.String()
+    key := target.String()
     connection, ok := self.connectionPool[key]
     if ok {
         return connection, nil
@@ -481,8 +477,7 @@ func (self *RPCClient) getConnectionFromPool(
 func (self *RPCClient) returnConnectionToPool(connection *RPCConnection) {
     self.connectionPoolLock.Lock()
     defer self.connectionPoolLock.Unlock()
-    firstAddr := FirstAddr(connection.PeerAddr())
-    key := firstAddr.String()
+    key := connection.PeerAddr().String()
     self.connectionPool[key] = connection
 }
 

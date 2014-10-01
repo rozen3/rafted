@@ -11,15 +11,19 @@ import (
 
 func testNodeSimple(
     t *testing.T,
-    backendAddrs []ps.ServerAddr,
-    clientAddrs []ps.ServerAddr,
     genBackendFunc GenHSMBackendFunc,
     genRedirectFunc GenRedirectClientFunc) {
 
-    clusterSize := len(backendAddrs)
+    clusterSize := 3
+    slice := ps.SetupSocketMultiAddrSlice(clusterSize * 2)
+    backendAddrSlice := &ps.ServerAddressSlice{
+        Addresses: slice.Addresses[:clusterSize],
+    }
+    clientAddrs := slice.Addresses[clusterSize:]
     nodes := make([]*RaftNode, 0, clusterSize)
     for i := 0; i < clusterSize; i++ {
-        backend, err := genBackendFunc(backendAddrs[i], backendAddrs)
+        backend, err := genBackendFunc(
+            backendAddrSlice.Addresses[i], backendAddrSlice)
         require.Nil(t, err, "fail to create test backend")
         client, err := genRedirectFunc(clientAddrs[i], backend)
         require.Nil(t, err, "fail to create test client")
@@ -60,25 +64,13 @@ Outermost:
 }
 
 func TestMemoryNodeSimple(t *testing.T) {
-    clusterSize := 3
-    addrs := ps.SetupSocketServerAddrs(clusterSize * 2)
-    testNodeSimple(
-        t, addrs[:clusterSize], addrs[clusterSize:],
-        NewTestMemoryHSMBackend, setupTestMemoryRedirectClient)
+    testNodeSimple(t, NewTestMemoryHSMBackend, setupTestMemoryRedirectClient)
 }
 
 func TestSocketNodeSimple(t *testing.T) {
-    clusterSize := 3
-    addrs := ps.SetupSocketServerAddrs(clusterSize * 2)
-    testNodeSimple(
-        t, addrs[:clusterSize], addrs[clusterSize:],
-        NewTestSocketHSMBackend, setupTestSocketRedirectClient)
+    testNodeSimple(t, NewTestSocketHSMBackend, setupTestSocketRedirectClient)
 }
 
 func TestRPCNodeSimple(t *testing.T) {
-    clusterSize := 3
-    addrs := ps.SetupSocketServerAddrs(clusterSize * 2)
-    testNodeSimple(
-        t, addrs[:clusterSize], addrs[clusterSize:],
-        NewTestRPCHSMBackend, setupTestRPCRediectClient)
+    testNodeSimple(t, NewTestRPCHSMBackend, setupTestRPCRediectClient)
 }

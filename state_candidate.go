@@ -5,7 +5,6 @@ import (
     hsm "github.com/hhkbp2/go-hsm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
-    ps "github.com/hhkbp2/rafted/persist"
     "sync"
     "time"
 )
@@ -51,7 +50,7 @@ func (self *CandidateState) Entry(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
-    localHSM.SetLeader(ps.NilServerAddr)
+    localHSM.SetLeader(nil)
     memberChangeStatus := localHSM.GetMemberChangeStatus()
     switch memberChangeStatus {
     case OldNewConfigSeen:

@@ -91,8 +91,9 @@ func (self *FollowerOldNewConfigSeenState) Handle(
         hsm.AssertTrue(ok)
         localHSM, ok := sm.(*LocalHSM)
         hsm.AssertTrue(ok)
-        if !(ps.IsOldNewConfig(e.Message.Conf) &&
+        if !(e.Message.Conf.IsOldNewConfig() &&
             localHSM.GetMemberChangeStatus() == OldNewConfigSeen) {
+
             DispatchInconsistantError(localHSM)
             return nil
         }
@@ -149,8 +150,9 @@ func (self *FollowerOldNewConfigCommittedState) Handle(
         localHSM, ok := sm.(*LocalHSM)
         hsm.AssertTrue(ok)
         conf := e.Message.Conf
-        if !(ps.IsNewConfig(conf) &&
+        if !(conf.IsNewConfig() &&
             localHSM.GetMemberChangeStatus() == OldNewConfigCommitted) {
+
             DispatchInconsistantError(localHSM)
             return nil
         }
@@ -218,14 +220,15 @@ func (self *FollowerNewConfigSeenState) Handle(
         hsm.AssertTrue(ok)
         localHSM, ok := sm.(*LocalHSM)
         hsm.AssertTrue(ok)
-        if !(ps.IsNewConfig(e.Message.Conf) &&
+        if !(e.Message.Conf.IsNewConfig() &&
             localHSM.GetMemberChangeStatus() == OldNewConfigCommitted) {
+
             DispatchInconsistantError(localHSM)
             return nil
         }
 
         newConf := &ps.Config{
-            Servers:    e.Message.Conf.NewServers[:],
+            Servers:    e.Message.Conf.NewServers,
             NewServers: nil,
         }
 

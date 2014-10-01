@@ -70,7 +70,7 @@ func TestReliableInflightEntryChannel(t *testing.T) {
     request := &InflightRequest{
         LogEntry: &ps.LogEntry{
             Conf: &ps.Config{
-                Servers: ps.SetupMemoryServerAddrs(3),
+                Servers: ps.SetupMemoryMultiAddrSlice(3),
             },
         },
         ResultChan: make(chan ev.Event),
@@ -375,7 +375,7 @@ func TestApplierConstruction(t *testing.T) {
             Type:  ps.LogCommand,
             Data:  data,
             Conf: &ps.Config{
-                Servers:    ps.RandomMemoryServerAddrs(5),
+                Servers:    ps.RandomMemoryMultiAddrSlice(5),
                 NewServers: nil,
             },
         }
@@ -470,8 +470,8 @@ func TestApplierFollowerCommit(t *testing.T) {
             Type:  ps.LogMemberChange,
             Data:  data,
             Conf: &ps.Config{
-                Servers:    ps.RandomMemoryServerAddrs(5),
-                NewServers: ps.RandomMemoryServerAddrs(5),
+                Servers:    ps.RandomMemoryMultiAddrSlice(5),
+                NewServers: ps.RandomMemoryMultiAddrSlice(5),
             },
         }
         log.On("GetLog", i).Return(entry, nil).Once()
@@ -538,7 +538,7 @@ func TestApplierLeaderCommit(t *testing.T) {
         Type:  ps.LogCommand,
         Data:  testData,
         Conf: &ps.Config{
-            Servers:    ps.RandomMemoryServerAddrs(5),
+            Servers:    ps.RandomMemoryMultiAddrSlice(5),
             NewServers: nil,
         },
     }
@@ -583,23 +583,27 @@ func TestMax(t *testing.T) {
 
 func TestGetPeers(t *testing.T) {
     size := 10
-    servers := ps.SetupMemoryServerAddrs(size)
-    localAddr := servers[0]
+    slice := ps.SetupMemoryMultiAddrSlice(size)
+    localAddr := slice.Addresses[0]
     conf := &ps.Config{
-        Servers:    servers[:5],
-        NewServers: servers[5:],
+        Servers: &ps.ServerAddressSlice{
+            slice.Addresses[:5],
+        },
+        NewServers: &ps.ServerAddressSlice{
+            slice.Addresses[5:],
+        },
     }
-    peers := GetPeers(localAddr, conf)
-    assert.Equal(t, len(servers)-1, len(peers))
-    for _, peerAddr := range peers {
-        assert.True(t, ps.AddrNotEqual(&localAddr, &peerAddr))
+    peerSlice := GetPeers(localAddr, conf)
+    assert.Equal(t, slice.Len()-1, peerSlice.Len())
+    for _, peerAddr := range peerSlice.AllMultiAddr() {
+        assert.True(t, ps.MultiAddrNotEqual(localAddr, peerAddr))
     }
 }
 
 func TestAddrsToMap(t *testing.T) {
     size := 10
-    addrs := ps.RandomMemoryServerAddrs(size)
-    m := AddrsToMap(addrs)
+    slice := ps.RandomMemoryMultiAddrSlice(size)
+    m := AddrSliceToMap(slice)
     assert.Equal(t, size, len(m))
     for _, v := range m {
         assert.Nil(t, v)
@@ -608,8 +612,8 @@ func TestAddrsToMap(t *testing.T) {
 
 func TestMapSetMinus(t *testing.T) {
     size := 10
-    m1 := AddrsToMap(ps.RandomMemoryServerAddrs(size))
-    m2 := AddrsToMap(ps.RandomMemoryServerAddrs(size))
+    m1 := AddrSliceToMap(ps.RandomMemoryMultiAddrSlice(size))
+    m2 := AddrSliceToMap(ps.RandomMemoryMultiAddrSlice(size))
     addrs := MapSetMinus(m1, m2)
     assert.Equal(t, size, len(addrs))
     for _, addr := range addrs {

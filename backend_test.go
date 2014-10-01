@@ -11,25 +11,15 @@ import (
     "time"
 )
 
-func RemoveAddr(addrs []ps.ServerAddr, addr ps.ServerAddr) []ps.ServerAddr {
-    result := make([]ps.ServerAddr, 0, len(addrs))
-    for _, a := range addrs {
-        if ps.AddrNotEqual(&a, &addr) {
-            result = append(result, addr)
-        }
-    }
-    return result
-}
-
 type GenHSMBackendFunc func(
-    localAddr ps.ServerAddr, addrs []ps.ServerAddr) (*HSMBackend, error)
+    addr *ps.ServerAddress, slice *ps.ServerAddressSlice) (*HSMBackend, error)
 
 type GenServerFunc func(
     handler cm.RequestEventHandler, logger logging.Logger) (cm.Server, error)
 
 func NewTestBackendWith(
-    localAddr ps.ServerAddr,
-    addrs []ps.ServerAddr,
+    localAddr *ps.ServerAddress,
+    addrSlice *ps.ServerAddressSlice,
     client cm.Client,
     genServer GenServerFunc) (*HSMBackend, error) {
 
@@ -39,7 +29,7 @@ func NewTestBackendWith(
         return nil, err
     }
     config := &ps.Config{
-        Servers:    addrs,
+        Servers:    addrSlice,
         NewServers: nil,
     }
     configManager := ps.NewMemoryConfigManager(firstLogIndex, config)
@@ -56,7 +46,7 @@ func NewTestBackendWith(
     if err != nil {
         return nil, err
     }
-    getLoggerForPeer := func(peerAddr ps.ServerAddr) logging.Logger {
+    getLoggerForPeer := func(peerAddr ps.MultiAddr) logging.Logger {
         return logging.GetLogger(
             "peer" + "#" + localAddr.String() + ">>" + peerAddr.String())
     }
@@ -64,7 +54,6 @@ func NewTestBackendWith(
         "peer manager" + "#" + localAddr.String())
     peerManager := NewPeerManager(
         testConfig,
-        RemoveAddr(addrs, localAddr),
         client,
         local,
         getLoggerForPeer,
@@ -88,7 +77,8 @@ func NewTestBackendWith(
 }
 
 func NewTestMemoryHSMBackend(
-    localAddr ps.ServerAddr, addrs []ps.ServerAddr) (*HSMBackend, error) {
+    localAddr *ps.ServerAddress,
+    addrSlice *ps.ServerAddressSlice) (*HSMBackend, error) {
 
     client := cm.NewMemoryClient(
         testConfig.CommPoolSize, testConfig.CommClientTimeout, testRegister)
@@ -97,18 +87,19 @@ func NewTestMemoryHSMBackend(
         logger logging.Logger) (cm.Server, error) {
 
         server := cm.NewMemoryServer(
-            &localAddr,
+            localAddr,
             testConfig.CommServerTimeout,
             handler,
             testRegister,
             logger)
         return server, nil
     }
-    return NewTestBackendWith(localAddr, addrs, client, genServer)
+    return NewTestBackendWith(localAddr, addrSlice, client, genServer)
 }
 
 func NewTestSocketHSMBackend(
-    localAddr ps.ServerAddr, addrs []ps.ServerAddr) (*HSMBackend, error) {
+    localAddr *ps.ServerAddress,
+    addrSlice *ps.ServerAddressSlice) (*HSMBackend, error) {
 
     client := cm.NewSocketClient(
         testConfig.CommPoolSize, testConfig.CommClientTimeout)
@@ -117,36 +108,39 @@ func NewTestSocketHSMBackend(
         logger logging.Logger) (cm.Server, error) {
 
         server, err := cm.NewSocketServer(
-            &localAddr,
+            cm.FirstAddr(localAddr),
             testConfig.CommServerTimeout,
             handler,
             logger)
         return server, err
     }
-    return NewTestBackendWith(localAddr, addrs, client, genServer)
+    return NewTestBackendWith(localAddr, addrSlice, client, genServer)
 }
 
 func NewTestRPCHSMBackend(
-    localAddr ps.ServerAddr, addrs []ps.ServerAddr) (*HSMBackend, error) {
+    localAddr *ps.ServerAddress,
+    addrSlice *ps.ServerAddressSlice) (*HSMBackend, error) {
 
-    client := cm.NewRPCClient(testConfig.CommClientTimeout)
+    client := cm.NewRPCClient(
+        testConfig.CommClientTimeout, testConfig.RPCClientAuth)
     genServer := func(
         handler cm.RequestEventHandler,
         logger logging.Logger) (cm.Server, error) {
 
         return cm.NewRPCServer(
-            &localAddr,
+            localAddr,
             testConfig.CommServerTimeout,
+            testConfig.RPCServerAuth,
             handler,
             logger)
     }
-    return NewTestBackendWith(localAddr, addrs, client, genServer)
+    return NewTestBackendWith(localAddr, addrSlice, client, genServer)
 }
 
 func TestMemoryBackendOneNodeCluster(t *testing.T) {
-    servers := testServers[0:1]
-    serverAddr := servers[0]
-    backend, err := NewTestMemoryHSMBackend(serverAddr, servers)
+    addrSlice := testServers
+    serverAddr := addrSlice.Addresses[0]
+    backend, err := NewTestMemoryHSMBackend(serverAddr, addrSlice)
     assert.Nil(t, err)
     assert.NotNil(t, backend)
     time.Sleep(testConfig.ElectionTimeout)
@@ -159,12 +153,14 @@ func TestMemoryBackendOneNodeCluster(t *testing.T) {
 }
 
 func testBackendConstruction(
-    t *testing.T, servers []ps.ServerAddr, genBackend GenHSMBackendFunc) {
+    t *testing.T,
+    addrSlice *ps.ServerAddressSlice,
+    genBackend GenHSMBackendFunc) {
 
-    clusterSize := len(servers)
+    clusterSize := addrSlice.Len()
     backends := make([]Backend, 0, clusterSize)
     for i := 0; i < clusterSize; i++ {
-        backend, err := genBackend(servers[i], servers)
+        backend, err := genBackend(addrSlice.Addresses[i], addrSlice)
         assert.Nil(t, err)
         backends = append(backends, backend)
     }
@@ -200,19 +196,19 @@ Outermost:
 
 func TestMemoryBackendContruction(t *testing.T) {
     clusterSize := 3
-    servers := ps.RandomMemoryServerAddrs(clusterSize)
+    servers := ps.RandomMemoryMultiAddrSlice(clusterSize)
     testBackendConstruction(t, servers, NewTestMemoryHSMBackend)
 }
 
 func TestSocketBackendConstruction(t *testing.T) {
     clusterSize := 3
-    servers := ps.SetupSocketServerAddrs(clusterSize)
+    servers := ps.SetupSocketMultiAddrSlice(clusterSize)
     testBackendConstruction(t, servers, NewTestSocketHSMBackend)
 }
 
 func TestRPCBackendContruction(t *testing.T) {
     clusterSize := 3
-    servers := ps.SetupSocketServerAddrs(clusterSize)
+    servers := ps.SetupSocketMultiAddrSlice(clusterSize)
     testBackendConstruction(t, servers, NewTestRPCHSMBackend)
 }
 

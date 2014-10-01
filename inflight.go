@@ -9,31 +9,31 @@ import (
 )
 
 type CommitCondition interface {
-    AddVote(ps.ServerAddr) error
+    AddVote(ps.MultiAddr) error
     IsCommitted() bool
 }
 
 type MajorityCommitCondition struct {
-    VoteStatus   map[ps.ServerAddr]bool
+    VoteStatus   map[ps.MultiAddr]bool
     VoteCount    uint32
     MajoritySize uint32
 }
 
 func NewMajorityCommitCondition(
-    addrs []ps.ServerAddr) *MajorityCommitCondition {
+    addrSlice *ps.ServerAddressSlice) *MajorityCommitCondition {
 
-    voteStatus := make(map[ps.ServerAddr]bool)
-    for _, addr := range addrs {
+    voteStatus := make(map[ps.MultiAddr]bool)
+    for _, addr := range addrSlice.AllMultiAddr() {
         voteStatus[addr] = false
     }
     return &MajorityCommitCondition{
         VoteStatus:   voteStatus,
         VoteCount:    0,
-        MajoritySize: uint32((len(addrs) / 2) + 1),
+        MajoritySize: uint32((addrSlice.Len() / 2) + 1),
     }
 }
 
-func (self *MajorityCommitCondition) AddVote(addr ps.ServerAddr) error {
+func (self *MajorityCommitCondition) AddVote(addr ps.MultiAddr) error {
     voteStatus, ok := self.VoteStatus[addr]
     if !ok {
         return errors.New(fmt.Sprintf("%s not in cluster", addr.String()))
@@ -46,7 +46,7 @@ func (self *MajorityCommitCondition) AddVote(addr ps.ServerAddr) error {
     return nil
 }
 
-func (self *MajorityCommitCondition) IsInCluster(addr ps.ServerAddr) bool {
+func (self *MajorityCommitCondition) IsInCluster(addr ps.MultiAddr) bool {
     if _, ok := self.VoteStatus[addr]; ok {
         return true
     }
@@ -71,7 +71,7 @@ func NewMemberChangeCommitCondition(
     }
 }
 
-func (self *MemberChangeCommitCondition) AddVote(addr ps.ServerAddr) error {
+func (self *MemberChangeCommitCondition) AddVote(addr ps.MultiAddr) error {
     voted := false
     if self.OldServersCommitCondition.IsInCluster(addr) {
         if err := self.OldServersCommitCondition.AddVote(addr); err != nil {
@@ -109,7 +109,7 @@ type InflightEntry struct {
 }
 
 func NewInflightEntry(request *InflightRequest) *InflightEntry {
-    if ps.IsNormalConfig(request.LogEntry.Conf) {
+    if request.LogEntry.Conf.IsNormalConfig() {
         return &InflightEntry{
             Request: request,
             Condition: NewMajorityCommitCondition(
@@ -126,17 +126,19 @@ type Inflight struct {
     MaxIndex           uint64
     ToCommitEntries    []*InflightEntry
     CommittedEntries   []*InflightEntry
-    ServerMatchIndexes map[ps.ServerAddr]uint64
+    ServerMatchIndexes map[ps.MultiAddr]uint64
 
     sync.Mutex
 }
 
 func setupServerMatchIndexes(
-    conf *ps.Config, prev map[ps.ServerAddr]uint64) map[ps.ServerAddr]uint64 {
+    conf *ps.Config, prev map[ps.MultiAddr]uint64) map[ps.MultiAddr]uint64 {
 
-    serverMatchIndexes := make(map[ps.ServerAddr]uint64)
-    initIndex := func(m map[ps.ServerAddr]uint64, addrs []ps.ServerAddr) {
-        for _, addr := range addrs {
+    serverMatchIndexes := make(map[ps.MultiAddr]uint64)
+    initIndex := func(m map[ps.MultiAddr]uint64,
+        addrSlice *ps.ServerAddressSlice) {
+
+        for _, addr := range addrSlice.AllMultiAddr() {
             serverMatchIndexes[addr] = 0
         }
     }
@@ -156,7 +158,7 @@ func setupServerMatchIndexes(
 }
 
 func NewInflight(conf *ps.Config) *Inflight {
-    defaultValue := make(map[ps.ServerAddr]uint64)
+    defaultValue := make(map[ps.MultiAddr]uint64)
     matchIndexes := setupServerMatchIndexes(conf, defaultValue)
     return &Inflight{
         MaxIndex:           0,
@@ -224,7 +226,7 @@ func (self *Inflight) AddAll(toCommits []*InflightEntry) error {
 }
 
 func (self *Inflight) Replicate(
-    addr ps.ServerAddr, newMatchIndex uint64) (bool, error) {
+    addr ps.MultiAddr, newMatchIndex uint64) (bool, error) {
 
     self.Lock()
     defer self.Unlock()

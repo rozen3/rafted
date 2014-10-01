@@ -56,7 +56,7 @@ func (self *FollowerState) Entry(
     localHSM, ok := sm.(*LocalHSM)
     hsm.AssertTrue(ok)
     // init global status
-    localHSM.SetVotedFor(ps.NilServerAddr)
+    localHSM.SetVotedFor(nil)
     // init status for this status
     self.UpdateLastContactTime()
     // start heartbeat timeout ticker
@@ -80,7 +80,7 @@ func (self *FollowerState) Exit(
     // stop heartbeat timeout ticker
     self.ticker.Stop()
     // cleanup global status
-    localHSM.SetVotedFor(ps.NilServerAddr)
+    localHSM.SetVotedFor(nil)
     return nil
 }
 
@@ -103,7 +103,7 @@ func (self *FollowerState) Handle(
         if e.Request.Term > localHSM.GetCurrentTerm() {
             localHSM.SetCurrentTermWithNotify(e.Request.Term)
             // the old leader is now invalidated
-            localHSM.SetLeader(ps.NilServerAddr)
+            localHSM.SetLeader(nil)
             localHSM.SelfDispatch(event)
             localHSM.QTran(StateFollowerID)
             return nil
@@ -174,7 +174,7 @@ func (self *FollowerState) Handle(
         hsm.AssertTrue(ok)
         // redirect client to current leader
         leader := localHSM.GetLeader()
-        if ps.AddrEqual(&leader, &ps.NilServerAddr) {
+        if ps.MultiAddrEqual(leader, nil) {
             e.SendResponse(ev.NewLeaderUnknownResponseEvent())
         } else {
             response := &ev.LeaderRedirectResponse{leader}
@@ -194,7 +194,7 @@ func (self *FollowerState) Handle(
         e, ok := event.(*ev.MemberChangeNextStepEvent)
         hsm.AssertTrue(ok)
         conf := e.Message.Conf
-        if !(ps.IsOldNewConfig(conf) &&
+        if !(conf.IsOldNewConfig() &&
             localHSM.GetMemberChangeStatus() == NotInMemeberChange) {
             DispatchInconsistantError(localHSM)
             return nil
@@ -238,9 +238,9 @@ func (self *FollowerState) HandleRequestVoteRequest(
     }
 
     votedFor := localHSM.GetVotedFor()
-    if ps.AddrNotEqual(&votedFor, &ps.NilServerAddr) {
+    if ps.MultiAddrNotEqual(votedFor, nil) {
         // already voted once before
-        if ps.AddrNotEqual(&votedFor, &request.Candidate) {
+        if ps.MultiAddrNotEqual(votedFor, request.Candidate) {
             self.Info("reject vote for term: %d, candidate: %s",
                 request.Term, request.Candidate.String())
             return response
@@ -292,10 +292,10 @@ func (self *FollowerState) HandleAppendEntriesRequest(
     }
 
     leader := localHSM.GetLeader()
-    if ps.AddrEqual(&leader, &ps.NilServerAddr) {
+    if ps.MultiAddrEqual(leader, nil) {
         localHSM.SetLeaderWithNotify(request.Leader)
         self.UpdateLastContact(localHSM)
-    } else if ps.AddrEqual(&leader, &request.Leader) {
+    } else if ps.MultiAddrEqual(leader, request.Leader) {
         self.UpdateLastContact(localHSM)
     } else {
         // two leader in the same term sending AppendEntriesRequest' to us

@@ -10,7 +10,7 @@ import (
 )
 
 type SnapshotInfo struct {
-    Leader            ps.ServerAddr
+    Leader            *ps.ServerAddress
     Conf              *ps.Config
     LastIncludedTerm  uint64
     LastIncludedIndex uint64
@@ -131,7 +131,7 @@ func (self *SnapshotRecoveryState) Handle(
             return nil
         }
 
-        if ps.AddrNotEqual(&e.Request.Leader, &self.info.Leader) {
+        if ps.MultiAddrNotEqual(e.Request.Leader, self.info.Leader) {
             // Receive another leader install snapshot request. Just ignore.
             e.SendResponse(ev.NewInstallSnapshotResponseEvent(response))
             return nil

@@ -66,8 +66,12 @@ func TestSimpleClient(t *testing.T) {
     assert.Equal(t, err, nil)
     assert.Equal(t, result, testData)
 
-    oldServers := make([]ps.ServerAddr, 0)
-    newServers := make([]ps.ServerAddr, 0)
+    oldServers := &ps.ServerAddressSlice{
+        Addresses: make([]*ps.ServerAddress, 0),
+    }
+    newServers := &ps.ServerAddressSlice{
+        Addresses: make([]*ps.ServerAddress, 0),
+    }
     conf := &ps.Config{
         Servers:    oldServers,
         NewServers: newServers,
@@ -104,10 +108,10 @@ func (self *MockBackend2) GetNotifyChan() <-chan ev.NotifyEvent {
 }
 
 type GenRedirectClientFunc func(
-    addr ps.ServerAddr, backend Backend) (*RedirectClient, error)
+    addr *ps.ServerAddress, backend Backend) (*RedirectClient, error)
 
 func setupTestRedirectClientWith(
-    addr ps.ServerAddr,
+    addr *ps.ServerAddress,
     backend Backend,
     client cm.Client,
     genServer GenServerFunc) (*RedirectClient, error) {
@@ -138,7 +142,7 @@ func setupTestRedirectClientWith(
 }
 
 func setupTestMemoryRedirectClient(
-    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
+    addr *ps.ServerAddress, backend Backend) (*RedirectClient, error) {
 
     client := cm.NewMemoryClient(
         testConfig.CommPoolSize, testConfig.CommClientTimeout, testRegister)
@@ -147,38 +151,40 @@ func setupTestMemoryRedirectClient(
         logger logging.Logger) (cm.Server, error) {
 
         server := cm.NewMemoryServer(
-            &addr, testConfig.CommServerTimeout, handler, testRegister, logger)
+            addr, testConfig.CommServerTimeout, handler, testRegister, logger)
         return server, nil
     }
     return setupTestRedirectClientWith(addr, backend, client, genServer)
 }
 
 func setupTestSocketRedirectClient(
-    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
+    addr *ps.ServerAddress, backend Backend) (*RedirectClient, error) {
 
     client := cm.NewSocketClient(
         testConfig.CommPoolSize, testConfig.CommClientTimeout)
+    firstAddr := cm.FirstAddr(addr)
     genServer := func(
         handler cm.RequestEventHandler,
         logger logging.Logger) (cm.Server, error) {
 
         return cm.NewSocketServer(
-            &addr, testConfig.CommServerTimeout, handler, logger)
+            firstAddr, testConfig.CommServerTimeout, handler, logger)
     }
     return setupTestRedirectClientWith(addr, backend, client, genServer)
 }
 
 func setupTestRPCRediectClient(
-    addr ps.ServerAddr, backend Backend) (*RedirectClient, error) {
+    addr *ps.ServerAddress, backend Backend) (*RedirectClient, error) {
 
-    client := cm.NewRPCClient(testConfig.CommClientTimeout)
+    client := cm.NewRPCClient(testConfig.CommClientTimeout, testConfig.RPCClientAuth)
     genServer := func(
         handler cm.RequestEventHandler,
         logger logging.Logger) (cm.Server, error) {
 
         return cm.NewRPCServer(
-            &addr,
+            addr,
             testConfig.CommServerTimeout,
+            testConfig.RPCServerAuth,
             handler,
             logger)
     }
@@ -187,7 +193,7 @@ func setupTestRPCRediectClient(
 
 func TestRedirectClientContruction(t *testing.T) {
     testRegister.Reset()
-    addrs := ps.SetupMemoryServerAddrs(1)
+    addrs := ps.SetupMemoryMultiAddrSlice(1)
     data := testData
     invokedCount := 0
     backend := NewMockBackend2(
@@ -199,7 +205,7 @@ func TestRedirectClientContruction(t *testing.T) {
             }
             return ev.NewClientResponseEvent(response)
         })
-    redirectClient, err := setupTestMemoryRedirectClient(addrs[0], backend)
+    redirectClient, err := setupTestMemoryRedirectClient(addrs.Addresses[0], backend)
     assert.Nil(t, err)
     defer redirectClient.Close()
     result, err := redirectClient.ReadOnly(data)
@@ -218,18 +224,19 @@ func TestRedirectClientContruction(t *testing.T) {
 
 func TestRedirectClientRedirection(t *testing.T) {
     testRegister.Reset()
-    addrs := ps.SetupMemoryServerAddrs(2)
+    addrSlice := ps.SetupMemoryMultiAddrSlice(2)
     data := testData
     invokedCount1 := 0
     backend1 := NewMockBackend2(
         func(event ev.RequestEvent) ev.Event {
             invokedCount1++
             response := &ev.LeaderRedirectResponse{
-                Leader: addrs[1],
+                Leader: addrSlice.Addresses[1],
             }
             return ev.NewLeaderRedirectResponseEvent(response)
         })
-    redirectClient1, err := setupTestMemoryRedirectClient(addrs[0], backend1)
+    redirectClient1, err := setupTestMemoryRedirectClient(
+        addrSlice.Addresses[0], backend1)
     assert.Nil(t, err)
     defer redirectClient1.Close()
 
@@ -243,7 +250,8 @@ func TestRedirectClientRedirection(t *testing.T) {
             }
             return ev.NewClientResponseEvent(response)
         })
-    redirectClient2, err := setupTestMemoryRedirectClient(addrs[1], backend2)
+    redirectClient2, err := setupTestMemoryRedirectClient(
+        addrSlice.Addresses[1], backend2)
     assert.Nil(t, err)
     defer redirectClient2.Close()
 

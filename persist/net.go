@@ -6,11 +6,16 @@ import (
     "github.com/hhkbp2/rafted/str"
     "math/rand"
     "net"
+    "strings"
     "time"
 )
 
 var (
     ErrorMultiAddrNoAddr error = errors.New("no Addr in MultiAddr")
+)
+
+var (
+    MultiAddrStringSeperator string = ","
 )
 
 func init() {
@@ -22,7 +27,7 @@ type Addr interface {
     ISP() string
 }
 
-// ServerAddr represents single ip address.
+// Address represents single ip address.
 type Address struct {
     Isp      string
     Protocol string
@@ -59,6 +64,8 @@ func AddrNotEqual(addr1 Addr, addr2 Addr) bool {
 
 type MultiAddr interface {
     AllAddr() []Addr
+    Len() int
+    String() string
 }
 
 func FirstAddr(multiAddr MultiAddr) (Addr, error) {
@@ -81,6 +88,19 @@ func (self *ServerAddress) AllAddr() []Addr {
         result = append(result, self.Addresses[i])
     }
     return result
+}
+
+func (self *ServerAddress) Len() int {
+    return len(self.Addresses)
+}
+
+func (self *ServerAddress) String() string {
+    length := len(self.Addresses)
+    addrsInString := make([]string, 0, length)
+    for _, addr := range self.Addresses {
+        addrsInString = append(addrsInString, addr.String())
+    }
+    return strings.Join(addrsInString, MultiAddrStringSeperator)
 }
 
 func MultiAddrEqual(addr1 MultiAddr, addr2 MultiAddr) bool {
@@ -108,6 +128,14 @@ func MultiAddrNotEqual(addr1 MultiAddr, addr2 MultiAddr) bool {
 
 type MultiAddrSlice interface {
     AllMultiAddr() []MultiAddr
+    Len() int
+}
+
+func Len(slice MultiAddrSlice) int {
+    if slice == nil {
+        return 0
+    }
+    return slice.Len()
 }
 
 type ServerAddressSlice struct {
@@ -121,6 +149,10 @@ func (self *ServerAddressSlice) AllMultiAddr() []MultiAddr {
         result = append(result, self.Addresses[i])
     }
     return result
+}
+
+func (self *ServerAddressSlice) Len() int {
+    return len(self.Addresses)
 }
 
 func MultiAddrSliceEqual(slice1 MultiAddrSlice, slice2 MultiAddrSlice) bool {

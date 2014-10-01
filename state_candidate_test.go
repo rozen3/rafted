@@ -63,7 +63,7 @@ func TestCandidateHandleAppendEntriesRequest(t *testing.T) {
     assert.Equal(t, StateCandidateID, local.QueryState())
     assert.Equal(t, nextTerm, local.GetCurrentTerm())
     // handle stale term request
-    leader := testServers[1]
+    leader := testServers.Addresses[1]
     term := testTerm
     nextIndex := testIndex + 1
     entries := []*ps.LogEntry{
@@ -104,7 +104,7 @@ func TestCandidateHandleAppendEntriesRequest(t *testing.T) {
     assertGetTermChangeNotify(t, nchan, 0, nextTerm-1, nextTerm)
     assertGetLeaderChangeNotify(t, nchan, 0, leader)
     // check internal status
-    assert.Equal(t, ps.NilServerAddr, local.GetVotedFor())
+    assert.Equal(t, nil, local.GetVotedFor())
     assert.Equal(t, leader, local.GetLeader())
     assert.Equal(t, StateFollowerID, local.QueryState())
     local.Close()
@@ -150,8 +150,8 @@ func TestCandidateHandleRequestVoteResponse(t *testing.T) {
         Granted: true,
     }
     respEvent := ev.NewRequestVoteResponseEvent(response)
-    leader := testServers[0]
-    voter := testServers[1]
+    leader := testServers.Addresses[0]
+    voter := testServers.Addresses[1]
     respEvent.FromAddr = voter
     local.Send(respEvent)
     assertGetStateChangeNotify(t, nchan, testConfig.ElectionTimeout,

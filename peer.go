@@ -14,32 +14,31 @@ import (
 
 type Peers interface {
     Broadcast(event hsm.Event)
-    AddPeers(peerAddrs []ps.ServerAddr)
-    RemovePeers(peerAddrs []ps.ServerAddr)
+    AddPeers(peerAddrSlice *ps.ServerAddressSlice)
+    RemovePeers(peerAddrSlice *ps.ServerAddressSlice)
     io.Closer
 }
 
 type PeerManager struct {
-    peerMap  map[ps.ServerAddr]Peer
+    peerMap  map[*ps.ServerAddress]Peer
     peerLock sync.RWMutex
 
     config           *Configuration
     client           cm.Client
     local            Local
-    getLoggerForPeer func(ps.ServerAddr) logging.Logger
+    getLoggerForPeer func(ps.MultiAddr) logging.Logger
     logger           logging.Logger
 }
 
 func NewPeerManager(
     config *Configuration,
-    peerAddrs []ps.ServerAddr,
     client cm.Client,
     local Local,
-    getLoggerForPeer func(ps.ServerAddr) logging.Logger,
+    getLoggerForPeer func(ps.MultiAddr) logging.Logger,
     logger logging.Logger) *PeerManager {
 
     object := &PeerManager{
-        peerMap:          make(map[ps.ServerAddr]Peer),
+        peerMap:          make(map[*ps.ServerAddress]Peer),
         config:           config,
         client:           client,
         local:            local,
@@ -59,11 +58,11 @@ func (self *PeerManager) Broadcast(event hsm.Event) {
     }
 }
 
-func (self *PeerManager) AddPeers(peerAddrs []ps.ServerAddr) {
+func (self *PeerManager) AddPeers(peerAddrSlice *ps.ServerAddressSlice) {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
-    self.logger.Debug("AddPeers(): %#v", peerAddrs)
-    newPeerMap := AddrsToMap(peerAddrs)
+    self.logger.Debug("AddPeers(): %#v", peerAddrSlice)
+    newPeerMap := AddrSliceToMap(peerAddrSlice)
     peersToAdd := MapSetMinus(newPeerMap, self.peerMap)
     self.logger.Debug(
         "peers to add: %#v", strings.Join(AddrsString(peersToAdd), " "))
@@ -78,11 +77,11 @@ func (self *PeerManager) AddPeers(peerAddrs []ps.ServerAddr) {
     }
 }
 
-func (self *PeerManager) RemovePeers(peerAddrs []ps.ServerAddr) {
+func (self *PeerManager) RemovePeers(peerAddrSlice *ps.ServerAddressSlice) {
     self.peerLock.Lock()
     defer self.peerLock.Unlock()
-    self.logger.Debug("RemovePeers(): %#v", peerAddrs)
-    newPeerMap := AddrsToMap(peerAddrs)
+    self.logger.Debug("RemovePeers(): %#v", peerAddrSlice)
+    newPeerMap := AddrSliceToMap(peerAddrSlice)
     peersToRemove := MapSetMinus(self.peerMap, newPeerMap)
     self.logger.Debug(
         "peers to remove: %#v", strings.Join(AddrsString(peersToRemove), " "))
@@ -119,7 +118,7 @@ type PeerMan struct {
 
 func NewPeerMan(
     config *Configuration,
-    addr ps.ServerAddr,
+    addr *ps.ServerAddress,
     client cm.Client,
     local Local,
     logger logging.Logger) Peer {
@@ -174,7 +173,7 @@ type PeerHSM struct {
     stopChan         chan interface{}
     group            sync.WaitGroup
 
-    addr         ps.ServerAddr
+    addr         *ps.ServerAddress
     client       cm.Client
     eventHandler cm.EventHandler
     local        Local
@@ -183,7 +182,7 @@ type PeerHSM struct {
 func NewPeerHSM(
     top hsm.State,
     initial hsm.State,
-    addr ps.ServerAddr,
+    addr *ps.ServerAddress,
     client cm.Client,
     local Local) *PeerHSM {
 
@@ -256,7 +255,7 @@ func (self *PeerHSM) Terminate() {
     self.selfDispatchChan.Close()
 }
 
-func (self *PeerHSM) Addr() ps.ServerAddr {
+func (self *PeerHSM) Addr() *ps.ServerAddress {
     return self.addr
 }
 

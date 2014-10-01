@@ -113,7 +113,7 @@ func (self *LeaderState) Exit(
     // deactivate member change hsm
     self.MemberChangeHSM.Dispatch(ev.NewLeaderMemberChangeDeactivateEvent())
     // cleanup global status
-    localHSM.SetLeader(ps.NilServerAddr)
+    localHSM.SetLeader(nil)
     return nil
 }
 
@@ -293,7 +293,7 @@ func (self *LeaderState) StartFlight(
         return errors.New(message)
     }
 
-    if ps.IsInMemeberChange(conf) {
+    if conf.IsInMemeberChange() {
         localHSM.Peers().AddPeers(GetPeers(localHSM.GetLocalAddr(), conf))
         self.Inflight.ChangeMember(conf)
     }

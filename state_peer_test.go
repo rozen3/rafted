@@ -31,8 +31,8 @@ func TestPeerCandidateEnterLeaderOnEnterLeaderEvent(t *testing.T) {
     requestHandler := func(event ev.RequestEvent) {
         requestChan.Send(event)
     }
-    leaderAddr := testServers[0]
-    peerAddr := testServers[1]
+    leaderAddr := testServers.Addresses[0]
+    peerAddr := testServers.Addresses[1]
     server := getTestMemoryServer(peerAddr, requestHandler)
 
     peer.Send(ev.NewPeerActivateEvent())
@@ -61,8 +61,8 @@ func TestPeerCandidateEnterLeaderOnAppendEntriesRequest(t *testing.T) {
         requestChan.Send(event)
         event.SendResponse(respEvent)
     }
-    leaderAddr := testServers[0]
-    peerAddr := testServers[1]
+    leaderAddr := testServers.Addresses[0]
+    peerAddr := testServers.Addresses[1]
     server := getTestMemoryServer(peerAddr, requestHandler)
 
     peer, mockLocal := getTestPeerAndLocalSafe(t)
@@ -114,8 +114,8 @@ func TestPeerLeaderHeartbeatTimeout(t *testing.T) {
         requestChan.Send(event)
         event.SendResponse(respEvent)
     }
-    leaderAddr := testServers[0]
-    peerAddr := testServers[1]
+    leaderAddr := testServers.Addresses[0]
+    peerAddr := testServers.Addresses[1]
     server := getTestMemoryServer(peerAddr, requestHandler)
 
     peer, mockLocal := getTestPeerAndLocalSafe(t)
@@ -181,8 +181,8 @@ func TestPeerStandardModeCatchingUp(t *testing.T) {
         logger.Debug("** peer response with, term: %d, LastLogIndex: %d, Success: %t", response.Term, response.LastLogIndex, response.Success)
         event.SendResponse(ev.NewAppendEntriesResponseEvent(response))
     }
-    leaderAddr := testServers[0]
-    peerAddr := testServers[1]
+    leaderAddr := testServers.Addresses[0]
+    peerAddr := testServers.Addresses[1]
     server := getTestMemoryServer(peerAddr, requestHandler)
     // get peer
     peer, mockLocal := getTestPeerAndLocalSafe(t)

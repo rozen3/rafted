@@ -56,14 +56,14 @@ type LocalHSM struct {
     currentTerm uint64
 
     // the local addr
-    localAddr     ps.ServerAddr
+    localAddr     *ps.ServerAddress
     localAddrLock sync.RWMutex
 
     // CandidateId that received vote in current term(or nil if none)
-    votedFor     ps.ServerAddr
+    votedFor     *ps.ServerAddress
     votedForLock sync.RWMutex
     // leader infos
-    leader     ps.ServerAddr
+    leader     *ps.ServerAddress
     leaderLock sync.RWMutex
 
     // member change infos
@@ -83,7 +83,7 @@ type LocalHSM struct {
 func NewLocalHSM(
     top hsm.State,
     initial hsm.State,
-    localAddr ps.ServerAddr,
+    localAddr *ps.ServerAddress,
     configManager ps.ConfigManager,
     stateMachine ps.StateMachine,
     log ps.Log,
@@ -210,43 +210,43 @@ func (self *LocalHSM) SetCurrentTermWithNotify(term uint64) {
     self.Notifier().Notify(ev.NewNotifyTermChangeEvent(oldTerm, term))
 }
 
-func (self *LocalHSM) GetLocalAddr() ps.ServerAddr {
+func (self *LocalHSM) GetLocalAddr() *ps.ServerAddress {
     self.localAddrLock.RLock()
     defer self.localAddrLock.RUnlock()
     return self.localAddr
 }
 
-func (self *LocalHSM) SetLocalAddr(addr ps.ServerAddr) {
+func (self *LocalHSM) SetLocalAddr(addr *ps.ServerAddress) {
     self.localAddrLock.Lock()
     defer self.localAddrLock.Unlock()
     self.localAddr = addr
 }
 
-func (self *LocalHSM) GetVotedFor() ps.ServerAddr {
+func (self *LocalHSM) GetVotedFor() *ps.ServerAddress {
     self.votedForLock.RLock()
     defer self.votedForLock.RUnlock()
     return self.votedFor
 }
 
-func (self *LocalHSM) SetVotedFor(votedFor ps.ServerAddr) {
+func (self *LocalHSM) SetVotedFor(votedFor *ps.ServerAddress) {
     self.votedForLock.Lock()
     defer self.votedForLock.Unlock()
     self.votedFor = votedFor
 }
 
-func (self *LocalHSM) GetLeader() ps.ServerAddr {
+func (self *LocalHSM) GetLeader() *ps.ServerAddress {
     self.leaderLock.RLock()
     defer self.leaderLock.RUnlock()
     return self.leader
 }
 
-func (self *LocalHSM) SetLeader(leader ps.ServerAddr) {
+func (self *LocalHSM) SetLeader(leader *ps.ServerAddress) {
     self.leaderLock.Lock()
     defer self.leaderLock.Unlock()
     self.leader = leader
 }
 
-func (self *LocalHSM) SetLeaderWithNotify(leader ps.ServerAddr) {
+func (self *LocalHSM) SetLeaderWithNotify(leader *ps.ServerAddress) {
     self.SetLeader(leader)
     self.Notifier().Notify(ev.NewNotifyLeaderChangeEvent(leader))
 }
@@ -268,7 +268,7 @@ func (self *LocalHSM) SendMemberChangeNotify() error {
     if err != nil {
         return err
     }
-    if !ps.IsOldNewConfig(conf) {
+    if !conf.IsOldNewConfig() {
         return errors.New("config data corrupted")
     }
     self.Notifier().Notify(ev.NewNotifyMemberChangeEvent(
@@ -370,19 +370,19 @@ func InitMemberChangeStatus(
     }
     if length == 1 {
         conf := metas[0].Conf
-        if ps.IsNormalConfig(conf) {
+        if conf.IsNormalConfig() {
             return NotInMemeberChange, nil
-        } else if ps.IsOldNewConfig(conf) {
+        } else if conf.IsOldNewConfig() {
             return OldNewConfigCommitted, nil
         }
     } else { // length == 2
         prevConf := metas[0].Conf
         nextConf := metas[1].Conf
-        if ps.IsNormalConfig(prevConf) && ps.IsOldNewConfig(nextConf) {
+        if prevConf.IsNormalConfig() && nextConf.IsOldNewConfig() {
             return OldNewConfigSeen, nil
-        } else if ps.IsOldNewConfig(prevConf) && ps.IsNewConfig(nextConf) {
+        } else if prevConf.IsOldNewConfig() && nextConf.IsNewConfig() {
             return NewConfigSeen, nil
-        } else if ps.IsNewConfig(prevConf) && ps.IsNormalConfig(nextConf) {
+        } else if prevConf.IsNewConfig() && nextConf.IsNormalConfig() {
             return NotInMemeberChange, nil
         }
     }
@@ -397,9 +397,9 @@ type Local interface {
 
     QueryState() string
     GetCurrentTerm() uint64
-    GetLocalAddr() ps.ServerAddr
-    GetVotedFor() ps.ServerAddr
-    GetLeader() ps.ServerAddr
+    GetLocalAddr() *ps.ServerAddress
+    GetVotedFor() *ps.ServerAddress
+    GetLeader() *ps.ServerAddress
 
     Log() ps.Log
     StateMachine() ps.StateMachine
@@ -415,7 +415,7 @@ type LocalManager struct {
 
 func NewLocalManager(
     config *Configuration,
-    localAddr ps.ServerAddr,
+    localAddr *ps.ServerAddress,
     log ps.Log,
     stateMachine ps.StateMachine,
     configManager ps.ConfigManager,
@@ -486,15 +486,15 @@ func (self *LocalManager) GetCurrentTerm() uint64 {
     return self.localHSM.GetCurrentTerm()
 }
 
-func (self *LocalManager) GetLocalAddr() ps.ServerAddr {
+func (self *LocalManager) GetLocalAddr() *ps.ServerAddress {
     return self.localHSM.GetLocalAddr()
 }
 
-func (self *LocalManager) GetVotedFor() ps.ServerAddr {
+func (self *LocalManager) GetVotedFor() *ps.ServerAddress {
     return self.localHSM.GetVotedFor()
 }
 
-func (self *LocalManager) GetLeader() ps.ServerAddr {
+func (self *LocalManager) GetLeader() *ps.ServerAddress {
     return self.localHSM.GetLeader()
 }
 

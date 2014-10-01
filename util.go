@@ -559,39 +559,47 @@ func Max(a, b uint64) uint64 {
     return b
 }
 
-func GetPeers(localAddr ps.ServerAddr, conf *ps.Config) []ps.ServerAddr {
-    peers := make([]ps.ServerAddr, 0, (len(conf.Servers) + len(conf.NewServers)))
+func GetPeers(
+    localAddr *ps.ServerAddress, conf *ps.Config) *ps.ServerAddressSlice {
+
+    addrs := make(
+        []*ps.ServerAddress, 0, ps.Len(conf.Servers)+ps.Len(conf.NewServers))
     if conf.Servers != nil {
-        for _, addr := range conf.Servers {
-            if ps.AddrNotEqual(&addr, &localAddr) {
-                peers = append(peers, addr)
+        for _, addr := range conf.Servers.Addresses {
+            if ps.MultiAddrNotEqual(addr, localAddr) {
+                addrs = append(addrs, addr)
             }
         }
     }
     if conf.NewServers != nil {
-        for _, addr := range conf.NewServers {
-            if ps.AddrNotEqual(&addr, &localAddr) {
-                peers = append(peers, addr)
+        for _, addr := range conf.NewServers.Addresses {
+            if ps.MultiAddrNotEqual(addr, localAddr) {
+                addrs = append(addrs, addr)
             }
         }
     }
-    return peers
+    return &ps.ServerAddressSlice{
+        Addresses: addrs,
+    }
 }
 
-func AddrsToMap(addrs []ps.ServerAddr) map[ps.ServerAddr]Peer {
-    Map := make(map[ps.ServerAddr]Peer, len(addrs))
-    for _, addr := range addrs {
-        Map[addr] = nil
+func AddrSliceToMap(
+    addrSlice *ps.ServerAddressSlice) map[*ps.ServerAddress]Peer {
+
+    result := make(map[*ps.ServerAddress]Peer, addrSlice.Len())
+    for _, addr := range addrSlice.Addresses {
+        result[addr] = nil
     }
-    return Map
+    return result
 }
 
 // MapSetMinus calculates the difference of two map, and returns
 // the result of s1 - s2.
 func MapSetMinus(
-    s1 map[ps.ServerAddr]Peer, s2 map[ps.ServerAddr]Peer) []ps.ServerAddr {
+    s1 map[*ps.ServerAddress]Peer,
+    s2 map[*ps.ServerAddress]Peer) []*ps.ServerAddress {
 
-    diff := make([]ps.ServerAddr, 0)
+    diff := make([]*ps.ServerAddress, 0)
     for addr, _ := range s1 {
         if _, ok := s2[addr]; !ok {
             diff = append(diff, addr)
@@ -600,7 +608,7 @@ func MapSetMinus(
     return diff
 }
 
-func AddrsString(addrs []ps.ServerAddr) []string {
+func AddrsString(addrs []*ps.ServerAddress) []string {
     result := make([]string, 0, len(addrs))
     for _, addr := range addrs {
         result = append(result, addr.String())

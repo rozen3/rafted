@@ -58,7 +58,7 @@ func getLocalAndPeersForLeader(t *testing.T) (Local, *MockPeers) {
         Granted: true,
     }
     respEvent := ev.NewRequestVoteResponseEvent(response)
-    voter := testServers[2]
+    voter := testServers.Addresses[2]
     respEvent.FromAddr = voter
     local.Send(respEvent)
     SwallowNotify(t, nchan, testConfig.ElectionTimeout, 2)
@@ -73,7 +73,7 @@ func getLocalAndPeersForSync(t *testing.T) (Local, *MockPeers) {
     reqEvent, ok := event.(*ev.AppendEntriesRequestEvent)
     assert.True(t, ok)
     request := reqEvent.Request
-    follower := testServers[1]
+    follower := testServers.Addresses[1]
     peerUpdate := &ev.PeerReplicateLog{
         Peer:       follower,
         MatchIndex: request.PrevLogIndex + 1,
@@ -99,7 +99,7 @@ func TestLeaderUnsyncHandlePeerUpdate(t *testing.T) {
     assertLogLastTerm(t, local.Log(), request.Term)
     assertLogCommittedIndex(t, local.Log(), request.LeaderCommitIndex)
     // dispatch peer update event
-    follower := testServers[1]
+    follower := testServers.Addresses[1]
     peerUpdate := &ev.PeerReplicateLog{
         Peer:       follower,
         MatchIndex: request.PrevLogIndex + 1,
@@ -121,7 +121,7 @@ func TestLeaderUnsyncHandlePeerUpdate(t *testing.T) {
 func TestLeaderHandleAppendEntriesRequest(t *testing.T) {
     local, _ := getLocalAndPeersForLeader(t)
     // test handling older term request
-    leader := testServers[0]
+    leader := testServers.Addresses[0]
     entries := []*ps.LogEntry{
         &ps.LogEntry{
             Term:  testTerm + 1,
@@ -185,7 +185,7 @@ func TestLeaderHandleAppendEntriesRequest(t *testing.T) {
 func TestLeaderHandleRequestVoteRequest(t *testing.T) {
     local, _ := getLocalAndPeersForSync(t)
     // test handling older term request
-    candidate := testServers[1]
+    candidate := testServers.Addresses[1]
     request := &ev.RequestVoteRequest{
         Term:         testTerm + 1,
         Candidate:    candidate,
@@ -239,7 +239,7 @@ func TestLeaderSyncHandleClientReadOnlyRequest(t *testing.T) {
     reqEvent := ev.NewClientReadOnlyRequestEvent(request)
     local.Send(reqEvent)
     // dispatch the peer update
-    follower := testServers[2]
+    follower := testServers.Addresses[2]
     peerUpdate := &ev.PeerReplicateLog{
         Peer:       follower,
         MatchIndex: testIndex + 2,
@@ -265,7 +265,7 @@ func TestLeaderSyncHandleClientAppendRequest(t *testing.T) {
     reqEvent := ev.NewClientAppendRequestEvent(request)
     local.Send(reqEvent)
     // dispatch the peer update
-    follower := testServers[1]
+    follower := testServers.Addresses[1]
     peerUpdate := &ev.PeerReplicateLog{
         Peer:       follower,
         MatchIndex: testIndex + 2,

@@ -1,7 +1,7 @@
 package rafted
 
 import (
-    "github.com/hhkbp2/rafted/comm"
+    cm "github.com/hhkbp2/rafted/comm"
     ev "github.com/hhkbp2/rafted/event"
     logging "github.com/hhkbp2/rafted/logging"
     ps "github.com/hhkbp2/rafted/persist"
@@ -21,7 +21,7 @@ type Backend interface {
 type HSMBackend struct {
     local  Local
     peers  Peers
-    server comm.Server
+    server cm.Server
 }
 
 func (self *HSMBackend) Send(event ev.RequestEvent) {
@@ -41,9 +41,8 @@ func (self *HSMBackend) Close() error {
 
 func NewHSMBackend(
     config *Configuration,
-    localAddr ps.ServerAddr,
-    bindAddr ps.ServerAddr,
-    otherPeerAddrs []ps.ServerAddr,
+    localAddr *ps.ServerAddress,
+    bindAddr *ps.ServerAddress,
     configManager ps.ConfigManager,
     stateMachine ps.StateMachine,
     log ps.Log,
@@ -59,13 +58,12 @@ func NewHSMBackend(
     if err != nil {
         return nil, err
     }
-    client := comm.NewSocketClient(config.CommPoolSize, config.CommClientTimeout)
-    getLoggerForPeer := func(ps.ServerAddr) logging.Logger {
+    client := cm.NewSocketClient(config.CommPoolSize, config.CommClientTimeout)
+    getLoggerForPeer := func(_ ps.MultiAddr) logging.Logger {
         return logger
     }
     peerManager := NewPeerManager(
         config,
-        otherPeerAddrs,
         client,
         local,
         getLoggerForPeer,
@@ -73,8 +71,8 @@ func NewHSMBackend(
     eventHandler := func(event ev.RequestEvent) {
         local.Send(event)
     }
-    server, err := comm.NewSocketServer(
-        &bindAddr, config.CommServerTimeout, eventHandler, logger)
+    server, err := cm.NewSocketServer(
+        cm.FirstAddr(bindAddr), config.CommServerTimeout, eventHandler, logger)
     if err != nil {
         // TODO add cleanup
         return nil, err

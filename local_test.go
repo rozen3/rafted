@@ -28,7 +28,7 @@ var (
     testData           = []byte(str.RandomString(100))
     testIndex   uint64 = 100
     testTerm    uint64 = 10
-    testServers        = ps.SetupMemoryServerAddrs(3)
+    testServers        = ps.SetupMemoryMultiAddrSlice(3)
 )
 
 func getTestLog(
@@ -50,7 +50,7 @@ func getTestLog(
 
 func getTestLocal() (Local, error) {
     servers := testServers
-    localAddr := servers[0]
+    localAddr := servers.Addresses[0]
     index := testIndex
     term := testTerm
     conf := &ps.Config{
@@ -104,12 +104,12 @@ func (self *MockPeers) Broadcast(event hsm.Event) {
     self.Mock.Called(event)
 }
 
-func (self *MockPeers) AddPeers(peerAddrs []ps.ServerAddr) {
-    self.Mock.Called(peerAddrs)
+func (self *MockPeers) AddPeers(peerAddrSlice *ps.ServerAddressSlice) {
+    self.Mock.Called(peerAddrSlice)
 }
 
-func (self *MockPeers) RemovePeers(peerAddrs []ps.ServerAddr) {
-    self.Mock.Called(peerAddrs)
+func (self *MockPeers) RemovePeers(peerAddrSlice *ps.ServerAddressSlice) {
+    self.Mock.Called(peerAddrSlice)
 }
 
 func (self *MockPeers) Close() error {
@@ -295,7 +295,7 @@ func assertGetStateChangeNotify(
 
 func assertGetLeaderChangeNotify(
     t *testing.T, notifyChan <-chan ev.NotifyEvent, afterTime time.Duration,
-    leader ps.ServerAddr) {
+    leader *ps.ServerAddress) {
 
     select {
     case event := <-notifyChan:
@@ -305,7 +305,7 @@ func assertGetLeaderChangeNotify(
             ev.NotifyTypeString(event.Type()))
         e, ok := event.(*ev.NotifyLeaderChangeEvent)
         assert.True(t, ok)
-        assert.Equal(t, leader, e.NewLeader)
+        assert.True(t, ps.MultiAddrEqual(leader, e.NewLeader))
     case <-time.After(afterTime):
         assert.True(t, false)
     }

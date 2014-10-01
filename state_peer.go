@@ -175,7 +175,7 @@ func (self *ActivatedPeerState) Handle(
         peerAddr := peerHSM.Addr()
         self.Debug("peer to send RequestVoteRequest %#v to %s",
             e.Request, peerAddr.String())
-        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
+        respEvent, err := peerHSM.Client().CallRPCTo(peerAddr, e)
         if err != nil {
             self.Error(
                 "fail to call rpc RequestVoteRequest to peer: %s, error: %s",
@@ -371,7 +371,7 @@ func (self *LeaderPeerState) Handle(
             len(e.Request.Entries), e.Request.LeaderCommitIndex,
             "["+strings.Join(EntriesInfo(e.Request.Entries), ",")+"]")
         peerAddr := peerHSM.Addr()
-        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
+        respEvent, err := peerHSM.Client().CallRPCTo(peerAddr, e)
         if err != nil {
             self.Error(
                 "fail to call rpc AppendEntriesRequest to peer: %s, error: %s",
@@ -439,7 +439,7 @@ func (self *LeaderPeerState) Handle(
             "["+strings.Join(EntriesInfo(request.Entries), ",")+"]")
         requestEvent := ev.NewAppendEntriesRequestEvent(request)
         peerAddr := peerHSM.Addr()
-        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, requestEvent)
+        respEvent, err := peerHSM.Client().CallRPCTo(peerAddr, requestEvent)
         if err != nil {
             self.Error(
                 "fail to call rpc AppendEntriesRequest to peer: %s, error: %s",
@@ -873,7 +873,7 @@ func (self *SnapshotModePeerState) Handle(
         e, ok := event.(ev.Event)
         hsm.AssertTrue(ok)
         peerAddr := peerHSM.Addr()
-        respEvent, err := peerHSM.Client().CallRPCTo(&peerAddr, e)
+        respEvent, err := peerHSM.Client().CallRPCTo(peerAddr, e)
         if err != nil {
             self.Error(
                 "fail to call rpc InstallSnapshotRequest to peer: %s, error: %s",
@@ -935,7 +935,7 @@ func (self *SnapshotModePeerState) Handle(
 }
 
 func (self *SnapshotModePeerState) SetupRequest(
-    term uint64, leader ps.ServerAddr) hsm.Event {
+    term uint64, leader *ps.ServerAddress) hsm.Event {
 
     request := &ev.InstallSnapshotRequest{
         Term:              term,
@@ -952,7 +952,7 @@ func (self *SnapshotModePeerState) SetupRequest(
 }
 
 func (self *SnapshotModePeerState) SendNextChunk(
-    peerHSM *PeerHSM, term uint64, leader ps.ServerAddr) error {
+    peerHSM *PeerHSM, term uint64, leader *ps.ServerAddress) error {
 
     data := make([]byte, self.maxSnapshotChunkSize)
     n, err := self.snapshotReadCloser.Read(data)

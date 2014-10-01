@@ -8,58 +8,62 @@ import (
 )
 
 func TestMajorityCommitCondition(t *testing.T) {
-    servers := ps.RandomMemoryServerAddrs(3)
-    cond := NewMajorityCommitCondition(servers)
+    slice := ps.RandomMemoryMultiAddrSlice(3)
+    cond := NewMajorityCommitCondition(slice)
     // test IsInCluster()
-    for _, server := range servers {
+    for _, server := range slice.AllMultiAddr() {
         assert.True(t, cond.IsInCluster(server))
     }
-    addr := ps.RandomMemoryServerAddr()
+    addr := ps.RandomMemoryMultiAddr()
     assert.False(t, cond.IsInCluster(addr))
 
     // test AddVote()
     assert.Equal(t, cond.MajoritySize, 2)
     assert.Equal(t, cond.VoteCount, 0)
     assert.NotNil(t, cond.AddVote(addr))
-    assert.Nil(t, cond.AddVote(servers[0]))
+    assert.Nil(t, cond.AddVote(slice.Addresses[0]))
     assert.Equal(t, cond.VoteCount, 1)
     assert.False(t, cond.IsCommitted())
-    assert.Nil(t, cond.AddVote(servers[1]))
+    assert.Nil(t, cond.AddVote(slice.Addresses[1]))
     assert.Equal(t, cond.VoteCount, 2)
     assert.True(t, cond.IsCommitted())
-    assert.NotNil(t, cond.AddVote(servers[1]))
+    assert.NotNil(t, cond.AddVote(slice.Addresses[1]))
     assert.Equal(t, cond.VoteCount, 2)
-    assert.Nil(t, cond.AddVote(servers[2]))
+    assert.Nil(t, cond.AddVote(slice.Addresses[2]))
     assert.Equal(t, cond.VoteCount, 3)
 }
 
 func TestMemberChangeCommitCondition(t *testing.T) {
     total := 8
     clusterSize := 5
-    servers := ps.RandomMemoryServerAddrs(total)
-    oldServers := servers[0:clusterSize]
-    newServers := servers[total-clusterSize:]
+    slice := ps.RandomMemoryMultiAddrSlice(total)
+    oldServers := &ps.ServerAddressSlice{
+        Addresses: slice.Addresses[0:clusterSize],
+    }
+    newServers := &ps.ServerAddressSlice{
+        Addresses: slice.Addresses[total-clusterSize:],
+    }
     conf := &ps.Config{
         Servers:    oldServers,
         NewServers: newServers,
     }
     cond := NewMemberChangeCommitCondition(conf)
     // test AddVote()
-    addr := ps.RandomMemoryServerAddr()
+    addr := ps.RandomMemoryMultiAddr()
     assert.NotNil(t, cond.AddVote(addr))
     assert.Equal(t, cond.OldServersCommitCondition.VoteCount, 0)
     assert.Equal(t, cond.NewServersCommitCondition.VoteCount, 0)
-    assert.Nil(t, cond.AddVote(oldServers[0]))
+    assert.Nil(t, cond.AddVote(oldServers.AllMultiAddr()[0]))
     assert.Equal(t, cond.OldServersCommitCondition.VoteCount, 1)
     assert.Equal(t, cond.NewServersCommitCondition.VoteCount, 0)
-    assert.Nil(t, cond.AddVote(newServers[clusterSize-1]))
+    assert.Nil(t, cond.AddVote(newServers.AllMultiAddr()[clusterSize-1]))
     assert.Equal(t, cond.OldServersCommitCondition.VoteCount, 1)
     assert.Equal(t, cond.NewServersCommitCondition.VoteCount, 1)
-    assert.Nil(t, cond.AddVote(oldServers[total-clusterSize]))
+    assert.Nil(t, cond.AddVote(oldServers.AllMultiAddr()[total-clusterSize]))
     assert.Equal(t, cond.OldServersCommitCondition.VoteCount, 2)
     assert.Equal(t, cond.NewServersCommitCondition.VoteCount, 2)
     assert.False(t, cond.IsCommitted())
-    assert.Nil(t, cond.AddVote(oldServers[total-clusterSize+1]))
+    assert.Nil(t, cond.AddVote(oldServers.AllMultiAddr()[total-clusterSize+1]))
     assert.Equal(t, cond.OldServersCommitCondition.VoteCount, 3)
     assert.Equal(t, cond.NewServersCommitCondition.VoteCount, 3)
     assert.True(t, cond.IsCommitted())
@@ -67,9 +71,9 @@ func TestMemberChangeCommitCondition(t *testing.T) {
 
 func TestInflightAdd(t *testing.T) {
     clusterSize := 5
-    servers := ps.RandomMemoryServerAddrs(clusterSize)
+    slice := ps.RandomMemoryMultiAddrSlice(clusterSize)
     conf := &ps.Config{
-        Servers:    servers,
+        Servers:    slice,
         NewServers: nil,
     }
     inflight := NewInflight(conf)
@@ -89,16 +93,16 @@ func TestInflightAdd(t *testing.T) {
     assert.Nil(t, inflight.Add(request))
     committedEntries := inflight.GetCommitted()
     assert.Empty(t, committedEntries)
-    addr := servers[0]
+    addr := slice.Addresses[0]
     good, err := inflight.Replicate(addr, 0)
     assert.NotNil(t, err)
     good, err = inflight.Replicate(addr, testIndex)
     assert.Nil(t, err)
     assert.False(t, good)
-    good, err = inflight.Replicate(servers[1], testIndex)
+    good, err = inflight.Replicate(slice.AllMultiAddr()[1], testIndex)
     assert.Nil(t, err)
     assert.False(t, good)
-    good, err = inflight.Replicate(servers[2], testIndex)
+    good, err = inflight.Replicate(slice.AllMultiAddr()[2], testIndex)
     assert.Nil(t, err)
     assert.True(t, good)
     committedEntries = inflight.GetCommitted()
@@ -108,9 +112,9 @@ func TestInflightAdd(t *testing.T) {
 
 func TestInflightAddAll(t *testing.T) {
     clusterSize := 3
-    servers := ps.RandomMemoryServerAddrs(clusterSize)
+    slice := ps.RandomMemoryMultiAddrSlice(clusterSize)
     conf := &ps.Config{
-        Servers:    servers,
+        Servers:    slice,
         NewServers: nil,
     }
     inflight := NewInflight(conf)
@@ -144,8 +148,8 @@ func TestInflightAddAll(t *testing.T) {
     assert.Nil(t, inflight.AddAll(inflightEntries))
     committedEntries := inflight.GetCommitted()
     assert.Empty(t, committedEntries)
-    addr1 := servers[0]
-    addr2 := servers[1]
+    addr1 := slice.AllMultiAddr()[0]
+    addr2 := slice.AllMultiAddr()[1]
     good, err := inflight.Replicate(addr1, testIndex)
     assert.Nil(t, err)
     assert.False(t, good)
