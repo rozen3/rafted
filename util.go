@@ -562,8 +562,10 @@ func Max(a, b uint64) uint64 {
 func GetPeers(
     localAddr *ps.ServerAddress, conf *ps.Config) *ps.ServerAddressSlice {
 
+    serversLen := ps.Len(conf.Servers)
+    newServersLen := ps.Len(conf.NewServers)
     addrs := make(
-        []*ps.ServerAddress, 0, ps.Len(conf.Servers)+ps.Len(conf.NewServers))
+        []*ps.ServerAddress, 0, serversLen+newServersLen)
     if conf.Servers != nil {
         for _, addr := range conf.Servers.Addresses {
             if ps.MultiAddrNotEqual(addr, localAddr) {

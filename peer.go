@@ -252,6 +252,7 @@ func (self *PeerHSM) Terminate() {
     self.SelfDispatch(hsm.NewStdEvent(ev.EventTerm))
     self.stopChan <- self
     self.group.Wait()
+    self.dispatchChan.Close()
     self.selfDispatchChan.Close()
 }
 

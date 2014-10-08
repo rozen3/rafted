@@ -38,8 +38,8 @@ func TestPeerCandidateEnterLeaderOnEnterLeaderEvent(t *testing.T) {
     peer.Send(ev.NewPeerActivateEvent())
     assert.Equal(t, StateCandidatePeerID, peer.QueryState())
 
-    mockLocal.On("GetCurrentTerm").Return(testTerm).Twice()
-    mockLocal.On("GetLocalAddr").Return(leaderAddr).Once()
+    mockLocal.On("GetCurrentTerm").Return(testTerm)
+    mockLocal.On("GetLocalAddr").Return(leaderAddr)
     peer.Send(ev.NewPeerEnterLeaderEvent())
     assert.Equal(t, StateStandardModePeerID, peer.QueryState())
 
@@ -133,11 +133,11 @@ func TestPeerLeaderHeartbeatTimeout(t *testing.T) {
         LeaderCommitIndex: testIndex,
     }
     nchan := mockLocal.Notifier().GetNotifyChan()
-    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
+    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout*2)
     assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
-    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
+    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout*2)
     assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
-    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
+    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout*2)
     assertGetAppendEntriesRequestEvent(t, requestChan.GetOutChan(), 0, request)
     assert.Equal(t, 1, len(mockLocal.PriorEvents))
 
@@ -209,10 +209,10 @@ func TestPeerStandardModeCatchingUp(t *testing.T) {
     mockLocal.On("SendPrior", mock.Anything).Return()
     peer.Send(ev.NewPeerEnterLeaderEvent())
     nchan := mockLocal.Notifier().GetNotifyChan()
-    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
+    assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout*2)
     heartbeatCount := 3
     for i := 0; i < aheadCount+heartbeatCount; i++ {
-        assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout)
+        assertGetHeartbeatTimeoutNotify(t, nchan, testConfig.HeartbeatTimeout*2)
     }
     assert.Equal(t, StateLeaderPeerID, peer.QueryState())
     assert.True(t, requestCount >= aheadCount+1+heartbeatCount)

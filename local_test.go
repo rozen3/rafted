@@ -33,10 +33,10 @@ var (
 
 func getTestLog(
     committedIndex, lastAppliedIndex uint64,
-    entry *ps.LogEntry) (ps.Log, error) {
+    entries []*ps.LogEntry) (ps.Log, error) {
 
     log := ps.NewMemoryLog()
-    if err := log.StoreLog(entry); err != nil {
+    if err := log.StoreLogs(entries); err != nil {
         return nil, err
     }
     if err := log.StoreCommittedIndex(committedIndex); err != nil {
@@ -57,14 +57,16 @@ func getTestLocal() (Local, error) {
         Servers:    servers,
         NewServers: nil,
     }
-    entry := &ps.LogEntry{
-        Term:  term,
-        Index: index,
-        Type:  ps.LogCommand,
-        Data:  testData,
-        Conf:  conf,
+    entries := []*ps.LogEntry{
+        &ps.LogEntry{
+            Term:  term,
+            Index: index,
+            Type:  ps.LogCommand,
+            Data:  testData,
+            Conf:  conf,
+        },
     }
-    log, err := getTestLog(index, index, entry)
+    log, err := getTestLog(index, index, entries)
     if err != nil {
         return nil, err
     }

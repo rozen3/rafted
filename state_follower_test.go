@@ -44,8 +44,8 @@ func TestFollowerHandleRequestVoteRequest(t *testing.T) {
     local.Send(reqEvent)
     assertGetRequestVoteResponseEvent(t, reqEvent, false, testTerm)
     // test handle new term request
-    assert.Equal(t, nil, local.GetVotedFor())
-    assert.Equal(t, nil, local.GetLeader())
+    assert.Equal(t, ps.ServerAddressNil, local.GetVotedFor())
+    assert.Equal(t, ps.ServerAddressNil, local.GetLeader())
     newTerm := testTerm + 1
     request.Term = newTerm
     local.Send(reqEvent)
@@ -55,7 +55,7 @@ func TestFollowerHandleRequestVoteRequest(t *testing.T) {
     assertGetTermChangeNotify(t, nchan, 0, testTerm, newTerm)
     // check internal status
     assert.Equal(t, candidate, local.GetVotedFor())
-    assert.Equal(t, nil, local.GetLeader())
+    assert.Equal(t, ps.ServerAddressNil, local.GetLeader())
     // check the state remains
     assert.Equal(t, StateFollowerID, local.QueryState())
     // test duplicated request
@@ -74,8 +74,8 @@ func TestFollowerHandleRequestVoteRequest(t *testing.T) {
     startTime := time.Now()
     local.Send(reqEvent)
     assertGetRequestVoteResponseEvent(t, reqEvent, false, newTerm)
-    assert.Equal(t, nil, local.GetVotedFor())
-    assert.Equal(t, nil, local.GetLeader())
+    assert.Equal(t, ps.ServerAddressNil, local.GetVotedFor())
+    assert.Equal(t, ps.ServerAddressNil, local.GetLeader())
     // still get term change notify
     assertGetTermChangeNotify(t, nchan, 0, newTerm-1, newTerm)
     // test election timeout ticker reset on RV
@@ -115,19 +115,19 @@ func TestFollowerHandleAppendEntriesRequest(t *testing.T) {
     assert.Equal(t, StateFollowerID, local.QueryState())
     local.Send(reqEvent)
     assertGetAppendEntriesResponseEvent(t, reqEvent, false, testTerm, testIndex)
-    assert.Equal(t, nil, local.GetVotedFor())
-    assert.Equal(t, nil, local.GetLeader())
+    assert.Equal(t, ps.ServerAddressNil, local.GetVotedFor())
+    assert.Equal(t, ps.ServerAddressNil, local.GetLeader())
     // test new term request
     request.Term = nextTerm
     reqEvent = ev.NewAppendEntriesRequestEvent(request)
     local.Send(reqEvent)
-    assertGetAppendEntriesResponseEvent(t, reqEvent, true, nextTerm, testIndex)
+    assertGetAppendEntriesResponseEvent(t, reqEvent, true, nextTerm, nextIndex)
     // check notify term change
     nchan := local.Notifier().GetNotifyChan()
     assertGetTermChangeNotify(t, nchan, 0, testTerm, nextTerm)
     assertGetLeaderChangeNotify(t, nchan, 0, leader)
     // check internal status
-    assert.Equal(t, nil, local.GetVotedFor())
+    assert.Equal(t, ps.ServerAddressNil, local.GetVotedFor())
     assert.Equal(t, leader, local.GetLeader())
     // check state remains
     assert.Equal(t, StateFollowerID, local.QueryState())
@@ -155,7 +155,7 @@ func TestFollowerHandleAppendEntriesRequest(t *testing.T) {
     assertGetAppendEntriesResponseEvent(t, reqEvent, false, nextTerm, nextIndex)
     assertGetTermChangeNotify(t, nchan, 0, nextTerm-1, nextTerm)
     assertGetLeaderChangeNotify(t, nchan, 0, leader)
-    assert.Equal(t, nil, local.GetVotedFor())
+    assert.Equal(t, ps.ServerAddressNil, local.GetVotedFor())
     assert.Equal(t, leader, local.GetLeader())
     // test election timeout ticker reset on this AP
     assertNotGetElectionTimeoutNotify(t, nchan,

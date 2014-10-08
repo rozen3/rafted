@@ -30,6 +30,7 @@ func NewMockLocal(
 
     return &MockLocal{
         log:           log,
+        stateMachine:  stateMachine,
         configManager: configManager,
         notifier:      notifier,
         Events:        make([]hsm.Event, 0),
@@ -138,14 +139,23 @@ func getTestPeerAndLocal() (Peer, *MockLocal, error) {
         Servers:    servers,
         NewServers: nil,
     }
-    entry := &ps.LogEntry{
-        Term:  term,
-        Index: index,
-        Type:  ps.LogCommand,
-        Data:  testData,
-        Conf:  conf,
+    entries := []*ps.LogEntry{
+        &ps.LogEntry{
+            Term:  term,
+            Index: index - 1,
+            Type:  ps.LogCommand,
+            Data:  testData,
+            Conf:  conf,
+        },
+        &ps.LogEntry{
+            Term:  term,
+            Index: index,
+            Type:  ps.LogCommand,
+            Data:  testData,
+            Conf:  conf,
+        },
     }
-    log, err := getTestLog(index, index, entry)
+    log, err := getTestLog(index, index, entries)
     if err != nil {
         return nil, nil, err
     }

@@ -6,6 +6,7 @@ import (
     "github.com/hhkbp2/rafted/str"
     "math/rand"
     "net"
+    "reflect"
     "strings"
     "time"
 )
@@ -16,6 +17,10 @@ var (
 
 var (
     MultiAddrStringSeperator string = ","
+)
+
+var (
+    ServerAddressNil *ServerAddress = nil
 )
 
 func init() {
@@ -47,10 +52,14 @@ func (self *Address) ISP() string {
     return self.Isp
 }
 
+func IsNil(i interface{}) bool {
+    return (i == nil || reflect.ValueOf(i).IsNil())
+}
+
 func AddrEqual(addr1 Addr, addr2 Addr) bool {
-    if (addr1 == nil) && (addr2 == nil) {
+    if IsNil(addr1) && IsNil(addr2) {
         return true
-    } else if (addr1 == nil) || (addr2 == nil) {
+    } else if IsNil(addr1) || IsNil(addr2) {
         return false
     }
     return ((addr1.Network() == addr2.Network()) &&
@@ -104,9 +113,9 @@ func (self *ServerAddress) String() string {
 }
 
 func MultiAddrEqual(addr1 MultiAddr, addr2 MultiAddr) bool {
-    if (addr1 == nil) && (addr2 == nil) {
+    if IsNil(addr1) && IsNil(addr2) {
         return true
-    } else if (addr1 == nil) || (addr2 == nil) {
+    } else if IsNil(addr1) || IsNil(addr2) {
         return false
     }
     addrs1 := addr1.AllAddr()
@@ -132,7 +141,7 @@ type MultiAddrSlice interface {
 }
 
 func Len(slice MultiAddrSlice) int {
-    if slice == nil {
+    if IsNil(slice) {
         return 0
     }
     return slice.Len()
@@ -156,9 +165,9 @@ func (self *ServerAddressSlice) Len() int {
 }
 
 func MultiAddrSliceEqual(slice1 MultiAddrSlice, slice2 MultiAddrSlice) bool {
-    if (slice1 == nil) && (slice2 == nil) {
+    if IsNil(slice1) && IsNil(slice2) {
         return true
-    } else if (slice1 == nil) || (slice2 == nil) {
+    } else if IsNil(slice1) || IsNil(slice2) {
         return false
     }
 

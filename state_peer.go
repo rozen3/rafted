@@ -330,7 +330,7 @@ func (self *LeaderPeerState) Entry(
             LastTime: self.LastContactTime(),
             Timeout:  self.heartbeatTimeout,
         }
-        peerHSM.SelfDispatch(ev.NewHeartbeatTimeoutEvent(timeout))
+        peerHSM.Dispatch(ev.NewHeartbeatTimeoutEvent(timeout))
     }
     self.ticker.Start(onTimeout)
     return nil

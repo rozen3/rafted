@@ -138,7 +138,9 @@ func NewTestRPCHSMBackend(
 }
 
 func TestMemoryBackendOneNodeCluster(t *testing.T) {
-    addrSlice := testServers
+    addrSlice := &ps.ServerAddressSlice{
+        Addresses: testServers.Addresses[0:1],
+    }
     serverAddr := addrSlice.Addresses[0]
     backend, err := NewTestMemoryHSMBackend(serverAddr, addrSlice)
     assert.Nil(t, err)
@@ -194,7 +196,7 @@ Outermost:
     }
 }
 
-func TestMemoryBackendContruction(t *testing.T) {
+func TestMemoryBackendConstruction(t *testing.T) {
     clusterSize := 3
     servers := ps.RandomMemoryMultiAddrSlice(clusterSize)
     testBackendConstruction(t, servers, NewTestMemoryHSMBackend)
@@ -214,6 +216,6 @@ func TestRPCBackendContruction(t *testing.T) {
 
 func TestXXX(t *testing.T) {
     assert.Equal(t, hsm.EventType(100+4), ev.EventTerm)
-    assert.Equal(t, hsm.EventType(1047), ev.EventClientUser)
-    assert.Equal(t, hsm.EventType(1058), ev.EventNotifyPersistError)
+    assert.Equal(t, hsm.EventType(1049), ev.EventClientUser)
+    assert.Equal(t, hsm.EventType(1060), ev.EventNotifyPersistError)
 }

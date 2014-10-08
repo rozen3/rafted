@@ -17,10 +17,7 @@ func getTestLocalAndPeersForCandidate(t *testing.T) (Local, *MockPeers) {
     peers.On("AddPeers", mock.Anything).Return().Once()
     peers.On("Broadcast", mock.Anything).Return().Once()
     peers.On("Broadcast", mock.Anything).Return().Once()
-    //    peers.On("Broadcast", mock.Anything).Return().Once()
-
-    // peers.On("Broadcast", mock.Anything).Return()
-    // peers.On("AddPeers", mock.Anything).Return()
+    peers.On("Broadcast", mock.Anything).Return().Once()
 
     return local, peers
 }
@@ -97,14 +94,14 @@ func TestCandidateHandleAppendEntriesRequest(t *testing.T) {
     request.Entries[0].Term = nextTerm
     reqEvent = ev.NewAppendEntriesRequestEvent(request)
     local.Send(reqEvent)
-    assertGetAppendEntriesResponseEvent(t, reqEvent, true, nextTerm, testIndex)
+    assertGetAppendEntriesResponseEvent(t, reqEvent, true, nextTerm, nextIndex)
     // check notifies
     assertGetStateChangeNotify(t, nchan, 0,
         ev.RaftStateCandidate, ev.RaftStateFollower)
     assertGetTermChangeNotify(t, nchan, 0, nextTerm-1, nextTerm)
     assertGetLeaderChangeNotify(t, nchan, 0, leader)
     // check internal status
-    assert.Equal(t, nil, local.GetVotedFor())
+    assert.Equal(t, ps.ServerAddressNil, local.GetVotedFor())
     assert.Equal(t, leader, local.GetLeader())
     assert.Equal(t, StateFollowerID, local.QueryState())
     local.Close()
